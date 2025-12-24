@@ -1,0 +1,55 @@
+.map-ban-view {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 70vh;
+  padding: 2rem 1rem;
+  width: 100%;
+}
+
+.team-leaders-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+  margin-bottom: 2rem;
+  width: 100%;
+  max-width: 1000px;
+}
+
+@media (min-width: 768px) {
+  .team-leaders-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.wait-turn-message {
+  margin-top: 1.5rem;
+  padding: 1rem;
+  background: rgba(234, 179, 8, 0.3);
+  border: 2px solid #eab308;
+  border-radius: 12px;
+  text-align: center;
+}
+
+.wait-turn-message p {
+  color: #fef08a;
+  font-size: 0.875rem;
+  margin: 0;
+}
+
+.watch-ban-message {
+  margin-top: 1.5rem;
+  padding: 1rem;
+  background: rgba(30, 41, 59, 0.5);
+  border: 2px solid rgba(107, 114, 128, 0.6);
+  border-radius: 12px;
+  text-align: center;
+}
+
+.watch-ban-message p {
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 0.875rem;
+  margin: 0;
+}
+

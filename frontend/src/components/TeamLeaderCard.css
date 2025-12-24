@@ -1,0 +1,74 @@
+.team-leader-card {
+  background: rgba(30, 41, 59, 0.8);
+  backdrop-filter: blur(10px);
+  border: 2px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  padding: 1.5rem;
+  transition: all 0.3s;
+}
+
+.team-leader-card.alpha {
+  border-color: rgba(59, 130, 246, 0.5);
+}
+
+.team-leader-card.bravo {
+  border-color: rgba(255, 107, 53, 0.5);
+}
+
+.team-leader-card.current-turn {
+  border-color: #ff6b35;
+  box-shadow: 0 0 20px rgba(255, 107, 53, 0.4);
+  background: rgba(40, 51, 69, 0.9);
+}
+
+.team-leader-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.team-leader-name {
+  color: #fff;
+  font-size: 1.3rem;
+  font-weight: 700;
+  margin: 0;
+}
+
+.team-leader-card.alpha .team-leader-name {
+  color: #3b82f6;
+}
+
+.team-leader-card.bravo .team-leader-name {
+  color: #ff6b35;
+}
+
+.turn-indicator {
+  background: rgba(255, 107, 53, 0.2);
+  border: 2px solid #ff6b35;
+  color: #ff6b35;
+  font-size: 0.85rem;
+  font-weight: 700;
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.team-leader-info {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.leader-label {
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 0.9rem;
+}
+
+.leader-name {
+  color: #fff;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
