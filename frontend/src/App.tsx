@@ -11,6 +11,8 @@ import RewardsPage from './components/RewardsPage';
 import SettingsPage from './components/SettingsPage';
 import FriendsPage from './components/FriendsPage';
 import MatchmakingPage from './components/MatchmakingPage';
+import MatchLobbyPage from './components/MatchLobbyPage';
+import MapBanPage from './components/MapBanPage';
 import AuthPage from './components/AuthPage';
 import NotFoundPage from './components/NotFoundPage';
 import Footer from './components/Footer';
@@ -21,10 +23,18 @@ interface User {
   avatar: string;
 }
 
+interface PartyMember {
+  id: string;
+  username: string;
+  avatar?: string;
+}
+
 function App() {
   const [currentPage, setCurrentPage] = useState('home');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [user, setUser] = useState<User | null>(null);
+  const [lobbyPartyMembers, setLobbyPartyMembers] = useState<PartyMember[]>([]);
+  const [selectedMap, setSelectedMap] = useState<string | undefined>();
 
   // Discord OAuth callback-ыг шалгах
   useEffect(() => {
@@ -79,8 +89,13 @@ function App() {
     setCurrentPage('home');
   };
 
+  const handleStartLobby = (partyMembers: PartyMember[]) => {
+    setLobbyPartyMembers(partyMembers);
+    setCurrentPage('mapban');
+  };
+
   // Check if current page is valid
-  const validPages = ['home', 'profile', 'leaderboard', 'rewards', 'settings', 'friends', 'matchmaking'];
+  const validPages = ['home', 'profile', 'leaderboard', 'rewards', 'settings', 'friends', 'matchmaking', 'matchlobby', 'mapban'];
   const isValidPage = validPages.includes(currentPage);
 
   if (!isAuthenticated) {
@@ -117,7 +132,9 @@ function App() {
         {currentPage === 'rewards' && <RewardsPage />}
         {currentPage === 'settings' && <SettingsPage />}
         {currentPage === 'friends' && <FriendsPage />}
-        {currentPage === 'matchmaking' && <MatchmakingPage onCancel={() => setCurrentPage('home')} />}
+        {currentPage === 'matchmaking' && <MatchmakingPage onCancel={() => setCurrentPage('home')} onStartLobby={handleStartLobby} />}
+        {currentPage === 'matchlobby' && <MatchLobbyPage partyMembers={lobbyPartyMembers} selectedMap={selectedMap} onCancel={() => setCurrentPage('home')} />}
+        {currentPage === 'mapban' && <MapBanPage partyMembers={lobbyPartyMembers} onCancel={() => setCurrentPage('home')} onMapSelected={(map) => { setSelectedMap(map); setCurrentPage('matchlobby'); }} />}
       </main>
 
       <Footer />

@@ -1,10 +1,35 @@
 import { useState, useEffect } from 'react';
 import './MatchmakingPage.css';
 
-export default function MatchmakingPage({ onCancel }: { onCancel: () => void }) {
+interface PartyMember {
+  id: string;
+  username: string;
+  avatar?: string;
+}
+
+interface MatchmakingPageProps {
+  onCancel: () => void;
+  onStartLobby?: (partyMembers: PartyMember[]) => void;
+}
+
+export default function MatchmakingPage({ onCancel, onStartLobby }: MatchmakingPageProps) {
   const [isSearching, setIsSearching] = useState(false);
   const [timer, setTimer] = useState(0);
+  const [partyMembers, setPartyMembers] = useState<PartyMember[]>([]);
   const estimatedTime = '01:30';
+
+  useEffect(() => {
+    // Load current user into party
+    const savedUser = localStorage.getItem('user');
+    if (savedUser) {
+      try {
+        const userData = JSON.parse(savedUser);
+        setPartyMembers([userData]);
+      } catch (e) {
+        // Invalid data
+      }
+    }
+  }, []);
 
   useEffect(() => {
     if (!isSearching) return;
@@ -15,6 +40,13 @@ export default function MatchmakingPage({ onCancel }: { onCancel: () => void }) 
 
     return () => clearInterval(interval);
   }, [isSearching]);
+
+  useEffect(() => {
+    // Navigate to lobby when party reaches 10 players
+    if (partyMembers.length === 10 && onStartLobby) {
+      onStartLobby(partyMembers);
+    }
+  }, [partyMembers, onStartLobby]);
 
   const handleFindMatch = () => {
     setIsSearching(true);
@@ -32,16 +64,85 @@ export default function MatchmakingPage({ onCancel }: { onCancel: () => void }) 
     setTimer(0);
   };
 
+  const handleInviteFriend = (slotIndex: number) => {
+    // TODO: Implement friend invitation logic
+    console.log('Invite friend to slot', slotIndex);
+    // This could open a friend selection modal or trigger an invite system
+  };
+
+  const handleFillBots = () => {
+    const botNames = [
+      'BotAlpha', 'BotBeta', 'BotGamma', 'BotDelta', 'BotEpsilon',
+      'BotZeta', 'BotEta', 'BotTheta', 'BotIota'
+    ];
+    
+    // Get current user from party or localStorage
+    let currentUser = partyMembers.find(m => m.id && !m.id.startsWith('bot-'));
+    if (!currentUser) {
+      const savedUser = localStorage.getItem('user');
+      if (savedUser) {
+        try {
+          currentUser = JSON.parse(savedUser);
+        } catch (e) {
+          // Invalid data
+        }
+      }
+    }
+    
+    // Generate exactly 9 bots to fill to 10 total
+    const botsNeeded = currentUser ? 9 : 10;
+    const bots: PartyMember[] = botNames.slice(0, botsNeeded).map((name, index) => ({
+      id: `bot-${index + 1}`,
+      username: name,
+    }));
+    
+    // Set party with user first (if exists), then bots (exactly 10 total)
+    const filledParty = currentUser ? [currentUser, ...bots] : bots;
+    setPartyMembers(filledParty);
+    
+    // Auto-start matchmaking when filled
+    setTimeout(() => {
+      setIsSearching(true);
+      setTimer(0);
+    }, 500);
+  };
+
+  const renderPartySlot = (index: number) => {
+    // Only show first 5 slots in UI, but party can have up to 10 members
+    const member = index < 5 ? partyMembers[index] : undefined;
+    
+    if (member) {
+      return (
+        <div key={index} className="party-slot filled">
+          <div className="party-slot-avatar">
+            {member.avatar ? (
+              <img src={member.avatar} alt={member.username} />
+            ) : (
+              <div className="party-slot-avatar-placeholder">
+                {member.username.charAt(0).toUpperCase()}
+              </div>
+            )}
+          </div>
+          <div className="party-slot-info">
+            <div className="party-slot-username">{member.username}</div>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div key={index} className="party-slot empty" onClick={() => handleInviteFriend(index)}>
+        <div className="party-slot-add-icon">+</div>
+      </div>
+    );
+  };
+
   return (
     <div className="matchmaking-page">
       <div className="matchmaking-content">
         {!isSearching ? (
           <>
             <h1 className="matchmaking-title">Find Match</h1>
-            <p className="matchmaking-subtitle">Click below to start searching for opponents</p>
-            <button className="find-match-btn-large" onClick={handleFindMatch}>
-              Find Match
-            </button>
           </>
         ) : (
           <>
@@ -81,8 +182,8 @@ export default function MatchmakingPage({ onCancel }: { onCancel: () => void }) 
 
             <div className="timer-section">
               <div className="timer-display">{formatTime(timer)}</div>
-              <div className="estimated-time">
-                Estimated Time: <span className="time-value">{estimatedTime}</span>
+              <div className="player-count">
+                {partyMembers.length}/10
               </div>
             </div>
 
@@ -93,16 +194,25 @@ export default function MatchmakingPage({ onCancel }: { onCancel: () => void }) 
         )}
       </div>
 
-      <div className="party-status">
-        <h3 className="party-title">Party Status</h3>
-        <div className="party-member">
-          <div className="member-avatar"></div>
-          <div className="member-info">
-            <span className="member-icon">👥</span>
-            <span className="member-status">Solo Queue</span>
-          </div>
+      <div className="party-slots">
+        <div className="party-slots-top-row">
+          {[0, 1, 2].map((index) => renderPartySlot(index))}
+        </div>
+        <div className="party-slots-bottom-row">
+          {[3, 4].map((index) => renderPartySlot(index))}
         </div>
       </div>
+
+      {!isSearching && (
+        <div className="matchmaking-actions">
+          <button className="fill-bots-btn" onClick={handleFillBots}>
+            Fill Bots
+          </button>
+          <button className="find-match-btn-large" onClick={handleFindMatch}>
+            Find Match
+          </button>
+        </div>
+      )}
     </div>
   );
 }
