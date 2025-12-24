@@ -1,0 +1,84 @@
+.leaderboard-card {
+  background: rgba(30, 41, 59, 0.6);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  padding: 1.5rem;
+}
+
+.card-title {
+  color: #fff;
+  font-size: 1.3rem;
+  font-weight: 700;
+  margin: 0 0 1.5rem 0;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.leaderboard-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.leaderboard-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem;
+  background: rgba(15, 23, 42, 0.5);
+  border-radius: 10px;
+  transition: all 0.3s;
+}
+
+.leaderboard-item:hover {
+  background: rgba(15, 23, 42, 0.8);
+  transform: translateX(5px);
+}
+
+.leaderboard-item.rank-1 {
+  border-left: 3px solid #ffd700;
+}
+
+.leaderboard-item.rank-2 {
+  border-left: 3px solid #c0c0c0;
+}
+
+.leaderboard-item.rank-3 {
+  border-left: 3px solid #cd7f32;
+}
+
+.player-info {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.rank-badge {
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 50%;
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+
+.player-avatar {
+  font-size: 1.5rem;
+}
+
+.player-name {
+  color: #fff;
+  font-weight: 600;
+  font-size: 1rem;
+}
+
+.player-points {
+  color: rgba(255, 255, 255, 0.7);
+  font-weight: 600;
+}
+

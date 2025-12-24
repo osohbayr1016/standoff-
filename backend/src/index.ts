@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { cors } from 'hono/cors';
 
 // 1. Durable Object - Real-time системд хэрэгтэй
 export class MatchQueueDO {
@@ -62,9 +63,84 @@ export class MatchQueueDO {
 }
 
 // 2. Hono API
-const app = new Hono<{ Bindings: { DB: D1Database, MATCH_QUEUE: DurableObjectNamespace } }>();
+const app = new Hono<{ Bindings: { 
+  DB: D1Database, 
+  MATCH_QUEUE: DurableObjectNamespace,
+  DISCORD_CLIENT_ID: string,
+  DISCORD_CLIENT_SECRET: string,
+  DISCORD_REDIRECT_URI: string
+} }>();
+
+// CORS-ийг идэвхжүүлэх
+app.use('/*', cors({
+  origin: ['http://localhost:5173', 'http://localhost:3000'],
+  credentials: true,
+}));
 
 app.get('/', (c) => c.text('Standoff 2 Platform API is Online!'));
+
+// Discord OAuth2 Callback
+app.get('/api/auth/callback', async (c) => {
+  const code = c.req.query('code');
+  
+  if (!code) {
+    return c.text("Code not found", 400);
+  }
+
+  try {
+    // 1. Кодоо "Access Token" болгож солих
+    const tokenResponse = await fetch('https://discord.com/api/oauth2/token', {
+      method: 'POST',
+      body: new URLSearchParams({
+        client_id: c.env.DISCORD_CLIENT_ID,
+        client_secret: c.env.DISCORD_CLIENT_SECRET,
+        grant_type: 'authorization_code',
+        code: code,
+        redirect_uri: c.env.DISCORD_REDIRECT_URI,
+      }),
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded'
+      },
+    });
+
+    const tokens = await tokenResponse.json() as any;
+
+    if (!tokens.access_token) {
+      return c.text("Failed to get access token", 400);
+    }
+
+    // 2. Access Token ашиглан хэрэглэгчийн мэдээллийг авах
+    const userResponse = await fetch('https://discord.com/api/users/@me', {
+      headers: {
+        Authorization: `Bearer ${tokens.access_token}`
+      },
+    });
+
+    const userData = await userResponse.json() as any;
+
+    // 3. Хэрэглэгчийг Database-д хадгалах
+    try {
+      await c.env.DB.prepare(
+        `INSERT OR REPLACE INTO players (id, username, discord_id, mmr, is_verified, created_at) 
+         VALUES (?, ?, ?, 1000, 0, CURRENT_TIMESTAMP)`
+      ).bind(
+        userData.id,
+        userData.username,
+        userData.id
+      ).run();
+    } catch (dbError) {
+      console.error('Database error:', dbError);
+    }
+
+    // 4. Хэрэглэгчийг Frontend рүү нь буцаах
+    return c.redirect(
+      `http://localhost:5173?id=${userData.id}&username=${userData.username}&avatar=${userData.avatar || ''}`
+    );
+  } catch (error) {
+    console.error('Auth error:', error);
+    return c.text("Authentication failed", 500);
+  }
+});
 
 app.get('/ws', async (c) => {
   const id = c.env.MATCH_QUEUE.idFromName('global-matchmaking');

@@ -1,0 +1,273 @@
+.leaderboard-page {
+  padding: 1rem 0;
+}
+
+.leaderboard-header {
+  background: rgba(30, 41, 59, 0.6);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.leaderboard-title-section {
+  flex: 1;
+}
+
+.leaderboard-title {
+  color: #fff;
+  font-size: 1.5rem;
+  font-weight: 800;
+  margin: 0 0 0.5rem 0;
+}
+
+.leaderboard-subtitle {
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 0.95rem;
+  margin: 0;
+}
+
+.leaderboard-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  width: 100%;
+}
+
+.filter-button {
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  padding: 0.65rem 1rem;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 100px;
+}
+
+.filter-button:hover {
+  border-color: rgba(255, 255, 255, 0.4);
+  background: rgba(15, 23, 42, 0.8);
+  color: #fff;
+}
+
+.filter-button.active {
+  background: rgba(255, 107, 53, 0.2);
+  border-color: #ff6b35;
+  color: #ff6b35;
+}
+
+.filter-button.active:hover {
+  background: rgba(255, 107, 53, 0.3);
+}
+
+.leaderboard-table {
+  background: rgba(30, 41, 59, 0.6);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  padding: 1rem;
+}
+
+.table-header-row {
+  display: grid;
+  grid-template-columns: 80px 2fr 80px 80px 80px;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.leaderboard-rows {
+  display: flex;
+  flex-direction: column;
+}
+
+.leaderboard-row {
+  display: grid;
+  grid-template-columns: 80px 2fr 80px 80px 80px;
+  gap: 0.75rem;
+  align-items: center;
+  padding: 0.75rem 1rem;
+  border-left: 4px solid transparent;
+  transition: all 0.3s;
+  font-size: 0.85rem;
+}
+
+.leaderboard-row:hover {
+  background: rgba(15, 23, 42, 0.4);
+}
+
+.leaderboard-row.rank-1 {
+  background: linear-gradient(90deg, rgba(255, 215, 0, 0.15) 0%, rgba(255, 215, 0, 0.05) 50%, transparent 100%);
+  border-left-color: #ffd700;
+}
+
+.leaderboard-row.rank-2 {
+  background: linear-gradient(90deg, rgba(192, 192, 192, 0.15) 0%, rgba(192, 192, 192, 0.05) 50%, transparent 100%);
+  border-left-color: #c0c0c0;
+}
+
+.leaderboard-row.rank-3 {
+  background: linear-gradient(90deg, rgba(205, 127, 50, 0.15) 0%, rgba(205, 127, 50, 0.05) 50%, transparent 100%);
+  border-left-color: #cd7f32;
+}
+
+.rank-cell {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.rank-badge-special {
+  font-size: 1.5rem;
+}
+
+.rank-number {
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 0.95rem;
+  font-weight: 600;
+  min-width: 25px;
+}
+
+.player-cell {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.player-avatar-small {
+  width: 35px;
+  height: 35px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.2rem;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+}
+
+.player-name-text {
+  color: #fff;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.elo-cell {
+  color: #ff6b35;
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+
+.wins-cell {
+  color: rgba(255, 255, 255, 0.9);
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.winrate-cell {
+  color: rgba(255, 255, 255, 0.9);
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+@media (min-width: 768px) {
+  .leaderboard-page {
+    padding: 2rem 0;
+  }
+
+  .leaderboard-header {
+    padding: 2rem;
+    margin-bottom: 2rem;
+  }
+
+  .leaderboard-title {
+    font-size: 2rem;
+  }
+
+  .leaderboard-filters {
+    gap: 0.75rem;
+  }
+
+  .filter-button {
+    padding: 0.75rem 1.5rem;
+    font-size: 0.95rem;
+    flex: none;
+    min-width: auto;
+  }
+
+  .leaderboard-table {
+    padding: 1.5rem;
+  }
+
+  .table-header-row {
+    grid-template-columns: 100px 2fr 1fr 1fr 1fr;
+    gap: 1rem;
+    padding: 1rem 1.5rem;
+    font-size: 0.9rem;
+  }
+
+  .leaderboard-row {
+    grid-template-columns: 100px 2fr 1fr 1fr 1fr;
+    gap: 1rem;
+    padding: 1rem 1.5rem;
+    font-size: 1rem;
+  }
+
+  .rank-badge-special {
+    font-size: 2rem;
+  }
+
+  .rank-number {
+    font-size: 1.1rem;
+    min-width: 30px;
+  }
+
+  .player-avatar-small {
+    width: 45px;
+    height: 45px;
+    font-size: 1.5rem;
+  }
+
+  .player-name-text {
+    font-size: 1rem;
+  }
+
+  .elo-cell,
+  .wins-cell,
+  .winrate-cell {
+    font-size: 1rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .leaderboard-header {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 2rem;
+  }
+
+  .leaderboard-filters {
+    width: auto;
+  }
+
+  .table-header-row,
+  .leaderboard-row {
+    grid-template-columns: 150px 2fr 1fr 1fr 1fr;
+  }
+}
+
