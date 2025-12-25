@@ -100,8 +100,23 @@ export class BackendService {
     private async handleMatchCreation(matchData: MatchData, client: Client) {
         console.log(`🎮 Creating match: ${matchData.lobbyId}`);
 
+        // Diagnostic: Check environment variables
+        const requiredVars = ['DISCORD_GUILD_ID', 'QUEUE_CHANNEL_ID', 'NEATQUEUE_BOT_ID', 'BACKEND_URL'];
+        console.log('📋 Environmental Variable Status:');
+        requiredVars.forEach(v => {
+            console.log(`   ${v}: ${process.env[v] ? '✅ SET' : '❌ MISSING'}`);
+        });
+
         try {
-            const guild = await client.guilds.fetch(process.env.DISCORD_GUILD_ID!);
+            const guildId = process.env.DISCORD_GUILD_ID;
+            if (!guildId) {
+                throw new Error('MISSING DISCORD_GUILD_ID in environment variables');
+            }
+
+            const guild = await client.guilds.fetch(guildId);
+            if (!guild) {
+                throw new Error(`Guild with ID ${guildId} not found by bot`);
+            }
 
             // Step 1: Trigger NeatQueue to create game server
             if (this.neatQueueService) {
