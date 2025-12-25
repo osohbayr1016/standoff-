@@ -46,17 +46,29 @@ export class NeatQueueService {
             }
 
             // Send the start command to NeatQueue
-            await channel.send('!start');
+            const startCommand = '!start';
+            console.log(`Sending start command: ${startCommand}`);
+            await channel.send(startCommand);
             // Or maybe just force start if it doesn't auto-start? 
             // Usually adding 10 players auto-starts it.
 
             // Wait for NeatQueue's response
+            console.log(`⏳ Monitoring channel ${channel.name} for 30s...`);
+
+            // Debug: listen for ALL messages from ANYONE to see if NeatQueue is saying ANYTHING
+            const debugCollector = channel.createMessageCollector({ time: 30000 });
+            debugCollector.on('collect', m => {
+                console.log(`📩 Channel Msg: [${m.author.username}] ${m.content.slice(0, 50)}... ${m.embeds.length ? '(contains embed)' : ''}`);
+            });
+
             const serverInfo = await this.waitForMatchCreation(channel);
+            debugCollector.stop();
 
             if (serverInfo) {
                 console.log('✅ NeatQueue match created successfully');
                 return { success: true, serverInfo };
             } else {
+                console.log('❌ Timeout: NeatQueue bot did not respond with a match embed.');
                 return { success: false, error: 'Timeout waiting for NeatQueue response' };
             }
 
