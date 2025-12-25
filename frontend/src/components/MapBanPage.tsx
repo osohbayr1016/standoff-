@@ -263,6 +263,7 @@ export default function MapBanPage({ partyMembers, onCancel: _onCancel, onMapSel
 
   return (
     <div className="map-ban-page">
+      <div className="cyber-grid-bg"></div>
       <MapBanView
         lobbyId="current-lobby"
         currentUserId={currentUserId}

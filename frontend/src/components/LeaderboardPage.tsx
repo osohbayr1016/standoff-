@@ -14,9 +14,13 @@ interface LeaderboardEntry {
   losses: number;
 }
 
+type FilterType = 'mmr' | 'winrate' | 'matches';
+
 export default function LeaderboardPage() {
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
+  const [filteredLeaderboard, setFilteredLeaderboard] = useState<LeaderboardEntry[]>([]);
   const [loading, setLoading] = useState(true);
+  const [activeFilter, setActiveFilter] = useState<FilterType>('mmr');
 
   useEffect(() => {
     fetchLeaderboard();
@@ -28,6 +32,7 @@ export default function LeaderboardPage() {
       if (res.ok) {
         const data = await res.json();
         setLeaderboard(data);
+        applyFilter(data, activeFilter);
       }
     } catch (err) {
       console.error('Error fetching leaderboard:', err);
@@ -35,6 +40,45 @@ export default function LeaderboardPage() {
       setLoading(false);
     }
   };
+
+  const applyFilter = (data: LeaderboardEntry[], filter: FilterType) => {
+    let sorted = [...data];
+
+    switch (filter) {
+      case 'mmr':
+        sorted.sort((a, b) => b.mmr - a.mmr);
+        break;
+      case 'winrate':
+        sorted.sort((a, b) => {
+          const winrateA = (a.wins + a.losses) > 0 ? a.wins / (a.wins + a.losses) : 0;
+          const winrateB = (b.wins + b.losses) > 0 ? b.wins / (b.wins + b.losses) : 0;
+          return winrateB - winrateA;
+        });
+        break;
+      case 'matches':
+        sorted.sort((a, b) => {
+          const matchesA = a.wins + a.losses;
+          const matchesB = b.wins + b.losses;
+          return matchesB - matchesA;
+        });
+        break;
+    }
+
+    // Recalculate ranks after sorting
+    const ranked = sorted.map((player, index) => ({
+      ...player,
+      rank: index + 1
+    }));
+
+    setFilteredLeaderboard(ranked);
+  };
+
+  useEffect(() => {
+    if (leaderboard.length > 0) {
+      applyFilter(leaderboard, activeFilter);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeFilter, leaderboard]);
 
   if (loading) {
     return (
@@ -54,6 +98,30 @@ export default function LeaderboardPage() {
         <div className="cyber-subtitle">GLOBAL RANKINGS</div>
       </div>
 
+      <div className="leaderboard-filters">
+        <button
+          className={`filter-btn ${activeFilter === 'mmr' ? 'active' : ''}`}
+          onClick={() => setActiveFilter('mmr')}
+        >
+          <span className="filter-icon">⚡</span>
+          <span className="filter-text">HIGHEST MMR</span>
+        </button>
+        <button
+          className={`filter-btn ${activeFilter === 'winrate' ? 'active' : ''}`}
+          onClick={() => setActiveFilter('winrate')}
+        >
+          <span className="filter-icon">📊</span>
+          <span className="filter-text">HIGHEST WINRATE</span>
+        </button>
+        <button
+          className={`filter-btn ${activeFilter === 'matches' ? 'active' : ''}`}
+          onClick={() => setActiveFilter('matches')}
+        >
+          <span className="filter-icon">🎯</span>
+          <span className="filter-text">HIGHEST MATCHES</span>
+        </button>
+      </div>
+
       <div className="leaderboard-container">
         <div className="leaderboard-table-header">
           <div className="header-rank">RANK</div>
@@ -64,7 +132,7 @@ export default function LeaderboardPage() {
         </div>
 
         <div className="leaderboard-list">
-          {leaderboard.map((player) => {
+          {filteredLeaderboard.map((player) => {
             const winRate = (player.wins + player.losses) > 0
               ? ((player.wins / (player.wins + player.losses)) * 100).toFixed(1)
               : '0.0';
@@ -109,7 +177,7 @@ export default function LeaderboardPage() {
             );
           })}
 
-          {leaderboard.length === 0 && (
+          {filteredLeaderboard.length === 0 && (
             <div className="no-data">NO RANKING DATA AVAILABLE</div>
           )}
         </div>

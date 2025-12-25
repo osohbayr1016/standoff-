@@ -169,6 +169,7 @@ export default function MatchLobbyPage({ partyMembers, selectedMap, onCancel: _o
 
   return (
     <div className="match-lobby-page">
+      <div className="cyber-grid-bg"></div>
       <h1 className="lobby-title">Match Lobby</h1>
 
       {selectedMap && (

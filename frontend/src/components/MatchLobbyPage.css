@@ -1,21 +1,55 @@
 /* ===== MOBILE FIRST: Base styles for mobile (< 768px) ===== */
 .match-lobby-page {
+  position: relative;
   padding: 1rem 0.5rem;
+  padding-top: calc(60px + 1rem); /* Account for fixed header */
   min-height: calc(100vh - 60px);
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 1rem;
   width: 100%;
+  overflow: hidden;
+  background: #0f172a;
+}
+
+.cyber-grid-bg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-image:
+    linear-gradient(rgba(255, 107, 53, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 107, 53, 0.05) 1px, transparent 1px);
+  background-size: 30px 30px;
+  opacity: 0.5;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.cyber-grid-bg::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: radial-gradient(circle at center, transparent 0%, #0f172a 90%);
 }
 
 .lobby-title {
   color: #fff;
   font-size: 1.5rem;
-  font-weight: 800;
+  font-weight: 900;
   margin: 0;
+  margin-top: 0.5rem;
   text-align: center;
-  text-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  text-shadow: 2px 2px 0px rgba(255, 107, 53, 0.5), 0 0 20px rgba(255, 107, 53, 0.3);
+  position: relative;
+  z-index: 10;
 }
 
 .selected-map-display {
@@ -25,13 +59,17 @@
   justify-content: center;
   gap: 0.75rem;
   padding: 0.75rem 1.5rem;
-  background: rgba(30, 41, 59, 0.8);
+  background: rgba(15, 23, 42, 0.8);
   backdrop-filter: blur(10px);
   border: 2px solid rgba(255, 107, 53, 0.5);
-  border-radius: 10px;
+  border-radius: 0;
   margin-bottom: 0.5rem;
   width: 100%;
   max-width: 400px;
+  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  position: relative;
+  z-index: 10;
 }
 
 .selected-map-image {
@@ -59,11 +97,12 @@
 }
 
 .selected-map-name {
-  color: #ff6b35;
+  color: var(--primary);
   font-size: 1.1rem;
-  font-weight: 800;
+  font-weight: 900;
   text-transform: uppercase;
-  letter-spacing: 1px;
+  letter-spacing: 2px;
+  text-shadow: 0 0 10px rgba(255, 107, 53, 0.5);
 }
 
 /* Teams - Mobile: Stack vertically */
@@ -76,11 +115,15 @@
 }
 
 .lobby-team {
-  background: rgba(30, 41, 59, 0.8);
+  background: rgba(15, 23, 42, 0.8);
   backdrop-filter: blur(10px);
-  border-radius: 12px;
+  border-radius: 0;
   padding: 1rem;
   border: 2px solid rgba(255, 255, 255, 0.1);
+  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  position: relative;
+  z-index: 10;
 }
 
 .team-alpha {
@@ -94,11 +137,14 @@
 .team-header {
   color: #fff;
   font-size: 1.1rem;
-  font-weight: 700;
+  font-weight: 900;
   margin-bottom: 0.75rem;
   text-align: center;
   padding-bottom: 0.5rem;
   border-bottom: 2px solid rgba(255, 255, 255, 0.1);
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  text-shadow: 0 0 10px rgba(255, 107, 53, 0.3);
 }
 
 .team-alpha .team-header {
@@ -121,8 +167,10 @@
   gap: 0.75rem;
   padding: 0.5rem;
   background: rgba(15, 23, 42, 0.6);
-  border-radius: 10px;
+  border-radius: 0;
   transition: all 0.3s;
+  clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px);
+  border: 1px solid rgba(255, 255, 255, 0.05);
 }
 
 .lobby-player:hover {
@@ -189,15 +237,18 @@
 
 .ready-btn {
   background: rgba(34, 197, 94, 0.2);
-  border: 1px solid #22c55e;
+  border: 2px solid #22c55e;
   color: #22c55e;
   font-size: 0.65rem;
-  font-weight: 700;
+  font-weight: 900;
   padding: 0.35rem 0.6rem;
-  border-radius: 4px;
+  border-radius: 0;
   cursor: default;
   text-transform: uppercase;
   transition: all 0.3s;
+  clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px);
+  letter-spacing: 1px;
+  font-family: monospace;
 }
 
 .ready-btn.clickable {
@@ -233,7 +284,12 @@
 .match-starting {
   color: #fff;
   font-size: 1.1rem;
-  font-weight: 700;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  text-shadow: 0 0 10px rgba(255, 107, 53, 0.5);
+  position: relative;
+  z-index: 10;
 }
 
 .countdown-time {
@@ -289,7 +345,7 @@
   }
 
   .lobby-title {
-    font-size: 2rem;
+    font-size: 2.5rem;
   }
 
   .selected-map-display {

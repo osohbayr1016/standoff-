@@ -33,10 +33,12 @@ export default function ProfilePage({ user, onFindMatch, onLogout }: ProfilePage
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [avatarError, setAvatarError] = useState(false);
 
   useEffect(() => {
     if (user?.id) {
       fetchProfile();
+      setAvatarError(false); // Reset avatar error when user changes
     }
   }, [user]);
 
@@ -48,6 +50,7 @@ export default function ProfilePage({ user, onFindMatch, onLogout }: ProfilePage
         const data = await res.json();
         setProfile(data);
         setNewNickname(data.standoff_nickname || '');
+        setAvatarError(false); // Reset avatar error when profile loads
       } else {
         console.error('Failed to fetch profile');
       }
@@ -115,10 +118,21 @@ export default function ProfilePage({ user, onFindMatch, onLogout }: ProfilePage
         <div className="profile-info">
           <div className="profile-avatar-container">
             <div className="profile-avatar-large">
-              {profile?.discord_avatar ?
-                <img src={`https://cdn.discordapp.com/avatars/${profile.discord_id}/${profile.discord_avatar}.png`} alt="Avatar" /> :
-                <div className="avatar-placeholder">{profile?.discord_username?.[0]}</div>
-              }
+              {(() => {
+                const avatarHash = profile?.discord_avatar || user?.avatar;
+                const discordId = profile?.discord_id || user?.id;
+                const displayName = profile?.discord_username || user?.username;
+                if (avatarHash && discordId && !avatarError) {
+                  return (
+                    <img 
+                      src={`https://cdn.discordapp.com/avatars/${discordId}/${avatarHash}.png`} 
+                      alt="Avatar"
+                      onError={() => setAvatarError(true)}
+                    />
+                  );
+                }
+                return <div className="avatar-placeholder">{displayName?.[0]?.toUpperCase() || '?'}</div>;
+              })()}
               <div className="online-status-indicator"></div>
             </div>
             <div className="rank-border-glow"></div>
