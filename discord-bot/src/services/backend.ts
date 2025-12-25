@@ -85,7 +85,7 @@ export class BackendService {
 
         switch (message.type) {
             case 'CREATE_MATCH':
-            case 'MATCH_READY':
+            case 'MATCH_START':
                 if (message.matchData) {
                     await this.handleMatchCreation(message.matchData, client);
                 }

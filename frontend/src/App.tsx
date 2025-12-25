@@ -11,7 +11,6 @@ import LeaderboardPage from './components/LeaderboardPage';
 import RewardsPage from './components/RewardsPage';
 import FriendsPage from './components/FriendsPage';
 import MatchmakingPage from './components/MatchmakingPage';
-import MatchLobbyPage from './components/MatchLobbyPage';
 import MapBanPage from './components/MapBanPage';
 import AuthPage from './components/AuthPage';
 import NotFoundPage from './components/NotFoundPage';
@@ -40,7 +39,6 @@ function AppContent() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [user, setUser] = useState<User | null>(null);
   const [lobbyPartyMembers, setLobbyPartyMembers] = useState<PartyMember[]>([]);
-  const [selectedMap, setSelectedMap] = useState<string | undefined>();
   const [showNicknameModal, setShowNicknameModal] = useState(false);
   const [inviteNotification, setInviteNotification] = useState<{ fromUser: any; lobbyId: string } | null>(null);
   const [activeLobbyId, setActiveLobbyId] = useState<string | undefined>(); // Track active lobby
@@ -105,9 +103,8 @@ function AppContent() {
       // Clear lobby state
       setActiveLobbyId(undefined);
       setLobbyPartyMembers([]);
-      setSelectedMap(undefined);
-      // Navigate back to matchmaking or home
-      if (currentPage === 'mapban' || currentPage === 'matchlobby') {
+      // Navigate back to matchmaking
+      if (currentPage === 'mapban') {
         setCurrentPage('matchmaking');
       }
     }
@@ -215,7 +212,7 @@ function AppContent() {
   };
 
   // Check if current page is valid
-  const validPages = ['home', 'profile', 'leaderboard', 'rewards', 'friends', 'matchmaking', 'matchlobby', 'mapban'];
+  const validPages = ['home', 'profile', 'leaderboard', 'rewards', 'friends', 'matchmaking', 'mapban'];
   const isValidPage = validPages.includes(currentPage);
 
   if (!isAuthenticated) {
@@ -275,9 +272,18 @@ function AppContent() {
         {currentPage === 'leaderboard' && <LeaderboardPage />}
         {currentPage === 'rewards' && <RewardsPage />}
         {currentPage === 'friends' && <FriendsPage />}
-        {currentPage === 'matchmaking' && <MatchmakingPage onCancel={() => setCurrentPage('home')} onStartLobby={handleStartLobby} />}
-        {currentPage === 'matchlobby' && <MatchLobbyPage partyMembers={lobbyPartyMembers} selectedMap={selectedMap} onCancel={() => setCurrentPage('home')} />}
-        {currentPage === 'mapban' && <MapBanPage partyMembers={lobbyPartyMembers} onCancel={() => setCurrentPage('home')} onMapSelected={(map) => { setSelectedMap(map); setCurrentPage('matchlobby'); }} />}
+        {currentPage === 'matchmaking' && (
+          <MatchmakingPage
+            onCancel={() => setCurrentPage('home')}
+            onStartLobby={handleStartLobby}
+          />
+        )}
+        {currentPage === 'mapban' && (
+          <MapBanPage
+            partyMembers={lobbyPartyMembers}
+            onCancel={() => setCurrentPage('home')}
+          />
+        )}
       </main>
 
       <Footer />

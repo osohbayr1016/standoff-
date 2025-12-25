@@ -149,98 +149,7 @@ export class MatchQueueDO {
     this.broadcastToAll(message);
   }
 
-  startReadyPhase() {
-    if (!this.currentLobby) return;
 
-    // Initialize readyPhaseState if it doesn't exist
-    if (!this.currentLobby.readyPhaseState) {
-      this.currentLobby.readyPhaseState = {
-        phaseActive: false,
-        readyPlayers: [],
-        readyPhaseStartTimestamp: undefined,
-        readyPhaseTimeout: 60
-      };
-    }
-
-    const readyState = this.currentLobby.readyPhaseState;
-    readyState.phaseActive = true;
-    readyState.readyPhaseStartTimestamp = Date.now();
-    readyState.readyPlayers = []; // Reset ready players for new phase
-
-    // Start timer check interval
-    this.stopReadyPhaseTimer(); // Clear any existing timer
-    this.readyPhaseTimer = setInterval(() => {
-      this.checkReadyPhaseTimer();
-    }, 1000); // Check every second
-
-    this.broadcastLobbyUpdate();
-  }
-
-  stopReadyPhaseTimer() {
-    if (this.readyPhaseTimer) {
-      clearInterval(this.readyPhaseTimer);
-      this.readyPhaseTimer = null;
-    }
-  }
-
-  checkReadyPhaseTimer() {
-    if (!this.currentLobby || !this.currentLobby.readyPhaseState) return;
-
-    const readyState = this.currentLobby.readyPhaseState;
-    
-    if (!readyState.phaseActive || !readyState.readyPhaseStartTimestamp) {
-      this.stopReadyPhaseTimer();
-      return;
-    }
-
-    const elapsed = Date.now() - readyState.readyPhaseStartTimestamp;
-    const timeLeft = readyState.readyPhaseTimeout * 1000 - elapsed;
-
-    // If timer expired and not all players are ready (9/10 or less)
-    if (timeLeft <= 0 && readyState.readyPlayers.length < 10) {
-      this.cancelMatchAndRequeue();
-    }
-  }
-
-  cancelMatchAndRequeue() {
-    if (!this.currentLobby) return;
-
-    // Stop the ready phase timer
-    this.stopReadyPhaseTimer();
-
-    // Get all players from the lobby
-    const players = this.currentLobby.players || [];
-
-    // Send MATCH_CANCELLED message to all players
-    this.broadcastToAll(JSON.stringify({
-      type: 'MATCH_CANCELLED',
-      reason: 'Timer expired - Not all players ready',
-      lobbyId: this.currentLobby.id
-    }));
-
-    // Requeue all players
-    players.forEach((player: any) => {
-      if (player.id && !player.id.startsWith('bot_')) {
-        // Add back to local queue (web users)
-        this.localQueue.set(player.id, {
-          id: player.id,
-          username: player.username || player.name,
-          avatar: player.avatar,
-          mmr: player.mmr || 1000
-        });
-      }
-      // Bots don't need to be requeued
-    });
-
-    // Clear lobby and reset match state
-    this.currentLobby = null;
-    this.matchState = 'IDLE';
-
-    // Broadcast updated queue
-    this.broadcastMergedQueue();
-
-    console.log('Match cancelled - players requeued');
-  }
 
   async syncWithNeatQueue() {
     if (!this.env.NEATQUEUE_API_KEY || !this.env.DISCORD_CHANNEL_ID) {
@@ -349,43 +258,7 @@ export class MatchQueueDO {
           }
         }
 
-        // PLAYER_READY - User confirms ready in Match Lobby
-        if (data.type === 'PLAYER_READY') {
-          if (this.currentLobby && (this.matchState === 'LOBBY' || this.matchState === 'GAME')) {
-            // Defensive: Ensure readyPhaseState exists
-            if (!this.currentLobby.readyPhaseState) {
-              this.currentLobby.readyPhaseState = {
-                phaseActive: false,
-                readyPlayers: [],
-                readyPhaseStartTimestamp: undefined,
-                readyPhaseTimeout: 60
-              };
-            }
 
-            const readyState = this.currentLobby.readyPhaseState;
-
-            // Only accept ready if ready phase is active
-            if (!readyState.phaseActive) {
-              return; // Ready phase not started yet
-            }
-
-            // Validate userId exists
-            const userId = data.userId || currentUserId;
-            if (userId && !readyState.readyPlayers.includes(userId)) {
-              readyState.readyPlayers.push(userId);
-              
-              // Check if all 10 players are ready
-              if (readyState.readyPlayers.length >= 10) {
-                // All players ready - stop timer and proceed
-                this.stopReadyPhaseTimer();
-                readyState.phaseActive = false;
-                // Match can proceed (existing logic will handle this)
-              }
-              
-              this.broadcastLobbyUpdate();
-            }
-          }
-        }
 
         // BAN_MAP - Captain bans a map
         if (data.type === 'BAN_MAP') {
@@ -416,7 +289,7 @@ export class MatchQueueDO {
             if (map && !banState.bannedMaps.includes(map) && banState.mapBanPhase) {
               // Add to banned maps
               banState.bannedMaps.push(map);
-              
+
               // Add to ban history
               banState.banHistory.push({
                 team: team || banState.currentBanTeam,
@@ -435,15 +308,21 @@ export class MatchQueueDO {
                 if (remainingMap) {
                   banState.selectedMap = remainingMap;
                   banState.mapBanPhase = false;
-                  
-                  // Start ready phase
-                  this.startReadyPhase();
+
+                  // Trigger direct match start
+                  this.matchState = 'GAME';
+                  this.broadcastToAll(JSON.stringify({
+                    type: 'MATCH_START',
+                    lobbyId: this.currentLobby.id,
+                    selectedMap: remainingMap,
+                    matchData: this.currentLobby
+                  }));
                 }
               } else {
                 // Switch teams for next ban (alternating: alpha -> bravo -> alpha -> ...)
                 const previousTeam = banState.currentBanTeam;
                 banState.currentBanTeam = banState.currentBanTeam === 'alpha' ? 'bravo' : 'alpha';
-                
+
                 // Reset turn start timestamp when team switches
                 if (previousTeam !== banState.currentBanTeam) {
                   banState.currentTurnStartTimestamp = Date.now();
