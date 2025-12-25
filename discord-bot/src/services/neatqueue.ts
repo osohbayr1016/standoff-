@@ -37,11 +37,20 @@ export class NeatQueueService {
 
                 // Skip if it looks like a generated bot ID (e.g. "bot_123...") unless we can add them
                 // For now, let's try to add everyone who has a valid-looking Discord ID (numeric)
+                // Check bot presence in channel
+                const botsInChannel = channel.guild.members.cache.filter(m => m.user.bot);
+                console.log(`🤖 Bots in guild: ${botsInChannel.map(b => `${b.user.username}(${b.id})`).join(', ')}`);
+                console.log(`🔍 Waiting for responses from Bot ID: ${this.neatQueueBotId}`);
+
+                const permissions = channel.permissionsFor(this.client.user!);
+                console.log(`📜 Bot Permissions in #${channel.name}: SEND_MESSAGES=${permissions?.has('SendMessages')}, VIEW_CHANNEL=${permissions?.has('ViewChannel')}, READ_MESSAGE_HISTORY=${permissions?.has('ReadMessageHistory')}`);
+
                 if (discordId && /^\d+$/.test(discordId)) {
-                    console.log(`Adding player ${player.username} (${discordId}) to queue...`);
-                    await channel.send(`!add <@${discordId}>`);
-                    // Small delay to prevent rate limits / order issues
-                    await new Promise(r => setTimeout(r, 500));
+                    const addCommand = `!add <@${discordId}>`;
+                    console.log(`📤 Sending: ${addCommand}`);
+                    await channel.send(addCommand);
+                    // Small delay
+                    await new Promise(r => setTimeout(r, 700));
                 }
             }
 
