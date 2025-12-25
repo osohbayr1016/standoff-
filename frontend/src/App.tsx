@@ -200,7 +200,24 @@ function AppContent() {
       }
     }
 
-    // 5. Handle Match State Error (match not found or user not in match)
+    // 5. Handle SERVER_READY (Async Server Allocation)
+    if (lastMessage.type === "SERVER_READY") {
+      console.log("Server Ready Update:", lastMessage);
+      if (matchData) {
+        // Merge server info into existing match data
+        const updatedMatchData = {
+          ...matchData,
+          matchData: {
+            ...matchData.matchData,
+            serverInfo: lastMessage.serverInfo
+          },
+          serverInfo: lastMessage.serverInfo
+        };
+        setMatchData(updatedMatchData);
+      }
+    }
+
+    // 6. Handle Match State Error (match not found or user not in match)
     if (lastMessage.type === "MATCH_STATE_ERROR") {
       console.log("Match State Error:", lastMessage);
       // Clear invalid lobby state
