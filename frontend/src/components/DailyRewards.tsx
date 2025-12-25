@@ -88,7 +88,7 @@ export default function DailyRewards() {
         <div className="rewards-counter">{completedDays} / {rewardProgress.length || 10}</div>
       </div>
 
-      <button className="find-match-btn-secondary">Тоглолт олох</button>
+      <button className="find-match-btn-secondary">УРАМШУУЛАЛ АВАХ</button>
     </div>
   );
 }

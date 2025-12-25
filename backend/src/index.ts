@@ -10,14 +10,82 @@ import { setupAdminRoutes } from './routes/admin';
 import { setupFriendsRoutes } from './routes/friends';
 import neatqueueWebhook from './webhooks/neatqueue';
 
+// ============= Type Definitions =============
+interface QueuePlayer {
+  id: string;
+  discord_id?: string;
+  username: string;
+  name?: string;
+  avatar?: string | null;
+  elo?: number;
+}
+
+interface MapBanState {
+  bannedMaps: string[];
+  currentBanTeam: 'alpha' | 'bravo';
+  banHistory: Array<{ team: 'alpha' | 'bravo'; map: string; timestamp: number }>;
+  selectedMap?: string;
+  mapBanPhase: boolean;
+  lastBanTimestamp?: number;
+  currentTurnStartTimestamp?: number;
+  banTimeout: number;
+}
+
+interface ReadyPhaseState {
+  phaseActive: boolean;
+  readyPlayers: string[];
+  readyPhaseStartTimestamp?: number;
+  readyPhaseTimeout: number;
+}
+
+interface ServerInfo {
+  ip: string;
+  password: string;
+  matchLink?: string;
+  matchId?: string;
+  note?: string;
+}
+
+interface Lobby {
+  id: string;
+  players: QueuePlayer[];
+  captainA: QueuePlayer;
+  captainB: QueuePlayer;
+  teamA: QueuePlayer[];
+  teamB: QueuePlayer[];
+  readyPlayers: string[];
+  mapBanState: MapBanState;
+  readyPhaseState: ReadyPhaseState;
+  serverInfo?: ServerInfo;
+}
+
+interface Env {
+  MATCH_QUEUE: DurableObjectNamespace;
+  DB: D1Database;
+  DISCORD_CLIENT_ID: string;
+  DISCORD_CLIENT_SECRET: string;
+  DISCORD_REDIRECT_URI: string;
+  DISCORD_SERVER_ID: string;
+  DISCORD_CHANNEL_ID: string;
+  FRONTEND_URL: string;
+  NEATQUEUE_API_KEY?: string;
+  NEATQUEUE_WEBHOOK_SECRET?: string;
+}
+
+interface WebhookData {
+  type: string;
+  data: Record<string, unknown>;
+}
+
 // 1. Durable Object - Real-time системд хэрэгтэй
 export class MatchQueueDO {
   sessions: Set<WebSocket> = new Set();
-  userSockets: Map<string, WebSocket> = new Map(); // Global User Registry: UserId -> WebSocket
-  localQueue: Map<string, any> = new Map(); // Local Web Users: ID -> { id, username, avatar, elo }
-  remoteQueue: any[] = []; // Cache of NeatQueue players
+  userSockets: Map<string, WebSocket> = new Map();
+  localQueue: Map<string, QueuePlayer> = new Map();
+  remoteQueue: QueuePlayer[] = [];
 
-  constructor(public state: DurableObjectState, public env: any) { }
+  constructor(public state: DurableObjectState, public env: Env) { }
+
 
   async fetch(request: Request) {
     const url = new URL(request.url);
@@ -32,30 +100,10 @@ export class MatchQueueDO {
       console.log('📢 DO Internal Broadcast:', body.type);
 
       // Handle NeatQueue webhook events relayed from Worker
-      if (body.type === 'NEATQUEUE_MATCH_STARTED') {
-        this.matchState = 'GAME'; // Transition to game state
-
-        // Broadcast globally so all clients (even on home page) know
+      if (body.type.startsWith('NEATQUEUE_')) {
+        // Just broadcast globally for now
         this.broadcastToAll(JSON.stringify({
-          type: 'NEATQUEUE_MATCH_STARTED',
-          data: body.data
-        }));
-
-        // Also trigger a lobby update
-        await this.broadcastLobbyUpdate();
-      } else if (body.type === 'NEATQUEUE_TEAMS_CREATED') {
-        this.broadcastToAll(JSON.stringify({
-          type: 'NEATQUEUE_TEAMS_CREATED',
-          data: body.data
-        }));
-      } else if (body.type === 'NEATQUEUE_MATCH_COMPLETED') {
-        // Reset state
-        this.matchState = 'IDLE';
-        this.currentLobby = null;
-        await this.saveMatchState();
-
-        this.broadcastToAll(JSON.stringify({
-          type: 'NEATQUEUE_MATCH_COMPLETED',
+          type: body.type,
           data: body.data
         }));
       }
@@ -71,9 +119,7 @@ export class MatchQueueDO {
         sessionsCount: this.sessions.size,
         remoteQueueCount: this.remoteQueue.length,
         localPlayers: Array.from(this.localQueue.values()),
-        remotePlayers: this.remoteQueue,
-        matchState: this.matchState,
-        lobbyId: this.currentLobby?.id,
+        activeLobbies: Array.from(this.activeLobbies.values()), // Debug active lobbies
         registeredUsers: Array.from(this.userSockets.keys())
       }), { headers: { 'Content-Type': 'application/json' } });
     }
@@ -83,7 +129,7 @@ export class MatchQueueDO {
       return new Response('Expected Upgrade: websocket', { status: 426 });
     }
 
-    // 1. WebSocket холболт үүсгэх
+    // 1. WebSocket Connection
     const [client, server] = Object.values(new WebSocketPair());
 
     this.handleSession(server);
@@ -96,12 +142,14 @@ export class MatchQueueDO {
       const body = await request.json() as { lobbyId: string; serverInfo: { ip: string; password: string; matchLink?: string } };
 
       // Load match state if not initialized
-      if (!this.initialized || !this.currentLobby) {
+      if (!this.initialized) {
         await this.loadMatchState();
       }
 
+      const lobby = this.activeLobbies.get(body.lobbyId);
+
       // Validate lobbyId
-      if (!this.currentLobby || this.currentLobby.id !== body.lobbyId) {
+      if (!lobby) {
         return new Response(JSON.stringify({
           success: false,
           error: 'Lobby not found or invalid lobbyId'
@@ -115,7 +163,7 @@ export class MatchQueueDO {
       const matchLink = body.serverInfo.matchLink || `standoff://connect/${body.serverInfo.ip}/${body.serverInfo.password}`;
 
       // Store server info in lobby
-      this.currentLobby.serverInfo = {
+      lobby.serverInfo = {
         ...body.serverInfo,
         matchLink
       };
@@ -124,33 +172,33 @@ export class MatchQueueDO {
       await this.saveMatchState();
 
       // Check if all players are ready
-      const readyPhaseState = this.currentLobby.readyPhaseState;
-      const players = this.currentLobby.players || [];
+      const readyPhaseState = lobby.readyPhaseState;
+      const players = lobby.players || [];
       const allPlayersReady = readyPhaseState.readyPlayers.length >= players.length;
 
-      // Broadcast to all connected clients
-      if (allPlayersReady && this.matchState === 'GAME') {
-        // All players ready and match started - send MATCH_START
-        this.broadcastToAll(JSON.stringify({
+      // Broadcast to LOBBY clients
+      if (allPlayersReady) {
+        // Match Started
+        this.broadcastToLobby(lobby.id, JSON.stringify({
           type: 'MATCH_START',
-          lobbyId: this.currentLobby.id,
-          selectedMap: this.currentLobby.mapBanState?.selectedMap,
-          matchData: this.currentLobby,
-          serverInfo: this.currentLobby.serverInfo
+          lobbyId: lobby.id,
+          selectedMap: lobby.mapBanState?.selectedMap,
+          matchData: lobby,
+          serverInfo: lobby.serverInfo
         }));
       } else {
-        // Server ready but waiting for players - send SERVER_READY
-        this.broadcastToAll(JSON.stringify({
+        // Server Ready (waiting for ready phase?)
+        this.broadcastToLobby(lobby.id, JSON.stringify({
           type: 'SERVER_READY',
-          lobbyId: body.lobbyId,
-          serverInfo: this.currentLobby.serverInfo
+          lobbyId: lobby.id,
+          serverInfo: lobby.serverInfo
         }));
       }
 
-      // Also send LOBBY_UPDATE to sync state
-      await this.broadcastLobbyUpdate();
+      // Sync
+      await this.broadcastLobbyUpdate(lobby.id);
 
-      console.log('✅ Server info received via API:', this.currentLobby.serverInfo);
+      console.log(`✅ Server info updated for lobby ${lobby.id}:`, lobby.serverInfo);
 
       return new Response(JSON.stringify({
         success: true,
@@ -159,11 +207,11 @@ export class MatchQueueDO {
         status: 200,
         headers: { 'Content-Type': 'application/json' }
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('❌ Error handling server info:', error);
       return new Response(JSON.stringify({
         success: false,
-        error: error.message || 'Internal server error'
+        error: error instanceof Error ? error.message : 'Internal server error'
       }), {
         status: 500,
         headers: { 'Content-Type': 'application/json' }
@@ -171,19 +219,42 @@ export class MatchQueueDO {
     }
   }
 
-  matchState: 'IDLE' | 'LOBBY' | 'GAME' = 'IDLE';
-  currentLobby: any = null; // Will include: { id, players, captains, teams, readyPlayers, mapBanState, readyPhaseState, serverInfo }
-  readyPhaseTimer: any = null; // Timer for ready phase countdown
+  // Helper: Broadcast to All (Global)
+  broadcastToAll(message: string) {
+    for (const ws of this.userSockets.values()) {
+      if (ws.readyState === WebSocket.READY_STATE_OPEN) {
+        ws.send(message);
+      }
+    }
+  }
+
+  // Multi-Match Architecture State
+  activeLobbies: Map<string, Lobby> = new Map();
+  playerLobbyMap: Map<string, string> = new Map(); // UserId -> LobbyId
+
+  // Legacy/Global state (Removed/Deprecated)
+  // matchState: 'IDLE' | 'LOBBY' | 'GAME' = 'IDLE'; 
+  // currentLobby: Lobby | null = null;
+
+  readyPhaseTimer: ReturnType<typeof setTimeout> | null = null;
   initialized: boolean = false; // Track if we've loaded from storage
 
   // Load match state from storage
   async loadMatchState() {
     try {
-      const savedState = await this.state.storage.get<{ matchState: string; currentLobby: any }>('matchState');
+      const savedState = await this.state.storage.get<{
+        lobbies: [string, Lobby][],
+        playerMap: [string, string][]
+      }>('matchState_v2');
+
       if (savedState) {
-        this.matchState = savedState.matchState as 'IDLE' | 'LOBBY' | 'GAME';
-        this.currentLobby = savedState.currentLobby;
-        console.log('✅ Loaded match state from storage:', this.matchState, this.currentLobby?.id);
+        this.activeLobbies = new Map(savedState.lobbies);
+        this.playerLobbyMap = new Map(savedState.playerMap);
+        console.log(`✅ Loaded ${this.activeLobbies.size} active lobbies from storage.`);
+      } else {
+        // Fallback: Check legacy state and migrate if possible? 
+        // For now, clean slate is better for major refactor.
+        console.log('ℹ️ No v2 match state found, starting fresh.');
       }
     } catch (error) {
       console.error('❌ Error loading match state:', error);
@@ -194,11 +265,12 @@ export class MatchQueueDO {
   // Save match state to storage
   async saveMatchState() {
     try {
-      await this.state.storage.put('matchState', {
-        matchState: this.matchState,
-        currentLobby: this.currentLobby
+      // Serialize Maps to Arrays for JSON storage
+      await this.state.storage.put('matchState_v2', {
+        lobbies: Array.from(this.activeLobbies.entries()),
+        playerMap: Array.from(this.playerLobbyMap.entries())
       });
-      console.log('💾 Saved match state to storage:', this.matchState, this.currentLobby?.id);
+      console.log(`💾 Saved state: ${this.activeLobbies.size} lobbies, ${this.playerLobbyMap.size} players.`);
     } catch (error) {
       console.error('❌ Error saving match state:', error);
     }
@@ -216,134 +288,123 @@ export class MatchQueueDO {
       await this.syncWithNeatQueue(); // Updates this.remoteQueue
       const merged = this.getMergedQueue();
 
-      // MATCH TRIGGER LOGIC
-      // Threshold: 10 players (5v5)
-      if (this.matchState === 'IDLE' && merged.length >= 10) {
-        await this.startMatch(merged.slice(0, 10)); // Top 10 players
-      } else if (this.matchState === 'LOBBY') {
-        // Check if in map ban phase
-        if (this.currentLobby?.mapBanState?.mapBanPhase) {
-          // MAP BAN TIMEOUT CHECK
-          const banState = this.currentLobby.mapBanState;
-          const lastActivity = banState.currentTurnStartTimestamp || banState.lastBanTimestamp || Date.now();
-          const elapsed = (Date.now() - lastActivity) / 1000;
-          const TIMEOUT_BUFFER = 5; // 5 seconds buffer
-
-          if (elapsed > (banState.banTimeout + TIMEOUT_BUFFER)) {
-            console.log("⏰ Map Ban Timeout detected, auto-banning...");
-
-            const ALL_MAPS = ['Hanami', 'Rust', 'Zone 7', 'Dune', 'Breeze', 'Province', 'Sandstone'];
-            const availableMaps = ALL_MAPS.filter(m => !banState.bannedMaps.includes(m));
-
-            if (availableMaps.length > 1) {
-              const randomMap = availableMaps[Math.floor(Math.random() * availableMaps.length)];
-
-              // Perform Auto-Ban
-              banState.bannedMaps.push(randomMap);
-              banState.banHistory.push({
-                team: banState.currentBanTeam,
-                map: randomMap,
-                timestamp: Date.now()
-              });
-              banState.lastBanTimestamp = Date.now();
-
-              // Switch Teams
-              const previousTeam = banState.currentBanTeam;
-              banState.currentBanTeam = banState.currentBanTeam === 'alpha' ? 'bravo' : 'alpha';
-              banState.currentTurnStartTimestamp = Date.now(); // Reset timer for next turn
-
-              await this.broadcastLobbyUpdate();
-            } else if (availableMaps.length === 1) {
-              // If only 1 map left, we should have finished already, but force finish here
-              const remainingMap = availableMaps[0];
-              banState.selectedMap = remainingMap;
-              banState.mapBanPhase = false;
-
-              // Start ready phase instead of immediately starting match
-              const readyPhaseState = this.currentLobby.readyPhaseState;
-              readyPhaseState.phaseActive = true;
-              readyPhaseState.readyPlayers = [];
-              readyPhaseState.readyPhaseStartTimestamp = Date.now();
-              readyPhaseState.readyPhaseTimeout = 30; // 30 seconds
-
-              // Save state before broadcasting
-              await this.saveMatchState();
-              this.broadcastToAll(JSON.stringify({
-                type: 'READY_PHASE_STARTED',
-                lobbyId: this.currentLobby.id,
-                selectedMap: remainingMap,
-                readyPhaseTimeout: 30
-              }));
-              // Also send LOBBY_UPDATE to sync state
-              await this.broadcastLobbyUpdate();
-            }
-          }
-        } else if (this.currentLobby?.readyPhaseState?.phaseActive) {
-          // READY PHASE TIMEOUT CHECK
-          const readyPhaseState = this.currentLobby.readyPhaseState;
-          const players = this.currentLobby.players || [];
-          const allPlayersReady = readyPhaseState.readyPlayers.length >= players.length;
-
-          if (readyPhaseState.readyPhaseStartTimestamp) {
-            const elapsed = (Date.now() - readyPhaseState.readyPhaseStartTimestamp) / 1000;
-            const timeRemaining = readyPhaseState.readyPhaseTimeout - elapsed;
-
-            if (timeRemaining <= 0 && !allPlayersReady) {
-              // Timeout - cancel match and re-enter players to queue
-              console.log("⏰ Ready phase timeout, cancelling match...");
-
-              const lobbyId = this.currentLobby.id;
-
-              // Re-enter players to queue
-              players.forEach((p: any) => {
-                const playerId = p.id || p.discord_id;
-                if (playerId && !this.localQueue.has(playerId)) {
-                  this.localQueue.set(playerId, p);
-                }
-              });
-
-              // Broadcast cancellation before clearing state
-              this.broadcastToAll(JSON.stringify({
-                type: 'MATCH_CANCELLED',
-                reason: 'Ready phase timeout',
-                lobbyId: lobbyId
-              }));
-
-              // Clear match state
-              this.matchState = 'IDLE';
-              this.currentLobby = null;
-              await this.saveMatchState();
-
-              // Broadcast updated queue
-              this.broadcastMergedQueue();
-            }
-          }
-        }
-      } else {
-        // Just broadcast queue if match isn't starting
-        this.broadcastMergedQueue();
+      // 1. MATCHMAKING CHECK
+      // Always check if we have enough players to start a NEW match
+      if (merged.length >= 10) {
+        await this.startMatch(merged.slice(0, 10));
       }
+
+      // 2. LOBBY TIMEOUT CHECKS
+      for (const [lobbyId, lobby] of this.activeLobbies) {
+        try {
+          const banState = lobby.mapBanState;
+          const readyState = lobby.readyPhaseState;
+
+          // A. MAP BAN
+          if (banState?.mapBanPhase) {
+            const lastActivity = banState.currentTurnStartTimestamp || banState.lastBanTimestamp || Date.now();
+            const elapsed = (Date.now() - lastActivity) / 1000;
+            if (elapsed > (banState.banTimeout + 5)) {
+              // Auto Ban Logic
+              console.log(`⏰ [${lobbyId}] Auto-banning map...`);
+              const ALL_MAPS = ['Hanami', 'Rust', 'Zone 7', 'Dune', 'Breeze', 'Province', 'Sandstone'];
+              const availableMaps = ALL_MAPS.filter(m => !banState.bannedMaps.includes(m));
+
+              if (availableMaps.length > 0) {
+                const randomMap = availableMaps[Math.floor(Math.random() * availableMaps.length)];
+                banState.bannedMaps.push(randomMap);
+                banState.banHistory.push({
+                  team: banState.currentBanTeam,
+                  map: randomMap,
+                  timestamp: Date.now(),
+                  // isAutoBan: true // Removed type error
+                });
+                banState.currentBanTeam = banState.currentBanTeam === 'alpha' ? 'bravo' : 'alpha';
+                banState.currentTurnStartTimestamp = Date.now();
+
+                // End condition
+                if (banState.bannedMaps.length >= 6) {
+                  const finalMap = ALL_MAPS.find(m => !banState.bannedMaps.includes(m));
+                  banState.selectedMap = finalMap;
+                  banState.mapBanPhase = false;
+
+                  // Start Ready Phase
+                  if (finalMap) { // Type check
+                    lobby.readyPhaseState.phaseActive = true;
+                    lobby.readyPhaseState.readyPhaseStartTimestamp = Date.now();
+                    lobby.readyPhaseState.readyPhaseTimeout = 30;
+
+                    this.broadcastToLobby(lobbyId, JSON.stringify({
+                      type: 'READY_PHASE_STARTED',
+                      lobbyId: lobbyId,
+                      selectedMap: finalMap,
+                      readyPhaseTimeout: 30
+                    }));
+                  }
+                }
+                await this.broadcastLobbyUpdate(lobbyId);
+              }
+            }
+          }
+
+          // B. READY PHASE
+          if (readyState?.phaseActive) {
+            const elapsed = (Date.now() - (readyState.readyPhaseStartTimestamp || Date.now())) / 1000;
+            const playerCount = lobby.players.length;
+            const readyCount = readyState.readyPlayers.length;
+
+            if (elapsed > readyState.readyPhaseTimeout && readyCount < playerCount) {
+              console.log(`⏰ [${lobbyId}] Ready timeout. Cancelling.`);
+              // Cancel Match
+              this.broadcastToLobby(lobbyId, JSON.stringify({
+                type: 'MATCH_CANCELLED',
+                reason: 'Ready timer expired'
+              }));
+
+              // Clean up
+              this.activeLobbies.delete(lobbyId);
+              lobby.players.forEach(p => {
+                const pid = p.id || p.discord_id;
+                if (pid) this.playerLobbyMap.delete(pid);
+              });
+              await this.saveMatchState();
+            }
+          }
+        } catch (err) {
+          console.error(`❌ Error in lobby loop ${lobbyId}:`, err);
+        }
+      }
+
+      // 3. BROADCAST QUEUE STATUS
+      this.broadcastMergedQueue();
+
+      this.broadcastToAll(JSON.stringify({
+        type: 'DEBUG_QUEUE_STATUS',
+        localQueueSize: this.localQueue.size,
+        remoteQueueSize: this.remoteQueue.length,
+        activeLobbies: this.activeLobbies.size,
+        timestamp: Date.now()
+      }));
+
     } catch (error) {
-      console.error('❌ Error in DO alarm:', error);
+      console.error('❌ Alarm error:', error);
     } finally {
-      const SECONDS = 5;
-
-      // Optimization: Only reschedule if we have active users OR an active match
-      // If no one is connected and no match is running, let the DO sleep.
-      // It will wake up on next fetch() / WebSocket connection.
-      const hasActiveUsers = this.sessions.size > 0;
-      // Also check remote queue count? No, because we only care if someone is WATCHING the queue.
-      // But if we want to keep syncing remote queue even if no one is watching... maybe not needed.
-      // Let's safe-guard: If we have local users OR we are in a match.
-
-      const shouldReschedule = hasActiveUsers || this.matchState !== 'IDLE';
-
+      // Reschedule
+      const shouldReschedule = this.activeLobbies.size > 0 || this.localQueue.size > 0 || this.sessions.size > 0;
       if (shouldReschedule) {
-        await this.state.storage.setAlarm(Date.now() + SECONDS * 1000);
-      } else {
-        console.log("💤 No active users or match, stopping alarm loop.");
+        await this.state.storage.setAlarm(Date.now() + 1000);
       }
     }
+  }
+
+  broadcastMergedQueue() {
+    const merged = this.getMergedQueue();
+    const message = JSON.stringify({
+      type: 'QUEUE_UPDATE',
+      players: merged,
+      count: merged.length
+    });
+    this.broadcastToAll(message);
   }
 
   getMergedQueue() {
@@ -356,36 +417,32 @@ export class MatchQueueDO {
     return merged;
   }
 
-  async startMatch(players: any[]) {
+  async startMatch(players: QueuePlayer[]) {
     console.log("Starting Match with:", players.length, "players");
-    this.matchState = 'LOBBY';
 
-    // Select Captains (first 2 players, or random/highest ELO)
+    // Select Captains
     const captain1 = players[0];
-    const captain2 = players[1] || players[0]; // Fallback
+    const captain2 = players[1] || players[0];
 
-    // Distribute all 10 players into 5v5 teams
-    // Simple distribution: alternate players (captain1, captain2, p3, p4, ...)
-    // Or use snake draft, or random, or ELO-balanced
-    const teamA = [];
-    const teamB = [];
+    const teamA: QueuePlayer[] = [];
+    const teamB: QueuePlayer[] = [];
 
     for (let i = 0; i < players.length; i++) {
-      if (i % 2 === 0) {
-        teamA.push(players[i]);
-      } else {
-        teamB.push(players[i]);
-      }
+      if (i % 2 === 0) teamA.push(players[i]);
+      else teamB.push(players[i]);
     }
 
-    this.currentLobby = {
-      id: crypto.randomUUID(),
-      players: players,
+    const sortedPlayers = [...teamA, ...teamB];
+    const lobbyId = crypto.randomUUID();
+
+    const newLobby: Lobby = {
+      id: lobbyId,
+      players: sortedPlayers,
       captainA: captain1,
       captainB: captain2,
-      teamA: teamA, // Now contains 5 players
-      teamB: teamB, // Now contains 5 players
-      readyPlayers: [], // Initialize ready list
+      teamA: teamA,
+      teamB: teamB,
+      readyPlayers: [],
       mapBanState: {
         bannedMaps: [],
         currentBanTeam: 'alpha',
@@ -393,56 +450,85 @@ export class MatchQueueDO {
         selectedMap: undefined,
         mapBanPhase: true,
         lastBanTimestamp: undefined,
-        currentTurnStartTimestamp: Date.now(), // Track when current turn started
-        banTimeout: 15 // 15 seconds
+        currentTurnStartTimestamp: Date.now(),
+        banTimeout: 15
       },
       readyPhaseState: {
         phaseActive: false,
         readyPlayers: [],
         readyPhaseStartTimestamp: undefined,
-        readyPhaseTimeout: 30 // 30 seconds
+        readyPhaseTimeout: 30
       }
     };
 
-    // Save to storage
+    // Store in Active Lobbies
+    this.activeLobbies.set(lobbyId, newLobby);
+
+    // Map players to this lobby
+    sortedPlayers.forEach(p => {
+      if (p.id) this.playerLobbyMap.set(p.id, lobbyId);
+      if (p.discord_id) this.playerLobbyMap.set(p.discord_id, lobbyId);
+    });
+
     await this.saveMatchState();
 
-    // ... (rest of startMatch)
-
-    this.broadcastLobbyUpdate(); // Send initial state (replaces MATCH_READY? No, keep MATCH_READY for transition)
-    // Actually MATCH_READY is for transition to MapBan.
-    // LOBBY_UPDATE is for sync within pages.
-
-    // We keep sending MATCH_READY to trigger the page switch initially.
+    // Broadcast MATCH_READY to these players
     const message = JSON.stringify({
       type: 'MATCH_READY',
-      lobbyId: this.currentLobby.id,
-      players: players,
+      lobbyId: newLobby.id,
+      players: sortedPlayers,
       captains: [captain1, captain2]
     });
 
-    this.broadcastToAll(message);
+    this.broadcastToLobby(lobbyId, message);
 
-    // Cleanup Local Queue (Web users enter match)
-    players.forEach(p => {
+    // Cleanup Local Queue
+    sortedPlayers.forEach(p => {
       if (this.localQueue.has(p.id)) {
         this.localQueue.delete(p.id);
       }
     });
   }
 
-  async broadcastLobbyUpdate() {
-    if (!this.currentLobby) return;
+  // Helper: Broadcast to specific lobby participants
+  broadcastToLobby(lobbyId: string, message: string) {
+    const lobby = this.activeLobbies.get(lobbyId);
+    if (!lobby) return;
 
-    // Save state before broadcasting
-    await this.saveMatchState();
-
-    const message = JSON.stringify({
-      type: 'LOBBY_UPDATE',
-      lobby: this.currentLobby
+    lobby.players.forEach(p => {
+      const socketKey = p.id || p.discord_id;
+      if (socketKey && this.userSockets.has(socketKey)) {
+        const ws = this.userSockets.get(socketKey);
+        if (ws && ws.readyState === WebSocket.READY_STATE_OPEN) {
+          ws.send(message);
+        }
+      }
     });
-    this.broadcastToAll(message);
+
+    // Debug: also log
+    // console.log(`📢 Sent ${JSON.parse(message).type} to lobby ${lobbyId}`);
   }
+
+  async broadcastLobbyUpdate(lobbyId?: string) {
+    if (lobbyId) {
+      const lobby = this.activeLobbies.get(lobbyId);
+      if (lobby) {
+        await this.saveMatchState();
+        this.broadcastToLobby(lobbyId, JSON.stringify({
+          type: 'LOBBY_UPDATE',
+          lobby: lobby
+        }));
+      }
+    } else {
+      // Legacy or Global Update? 
+      // Just update all lobbies
+      for (const [id, _] of this.activeLobbies) {
+        this.broadcastLobbyUpdate(id);
+      }
+    }
+  }
+
+
 
 
 
@@ -494,610 +580,291 @@ export class MatchQueueDO {
     ws.accept();
     this.sessions.add(ws);
 
-    // Load match state from storage on first connection
-    if (!this.initialized) {
-      await this.loadMatchState();
-    }
+    // Initial load if needed
+    if (!this.initialized) await this.loadMatchState();
 
-    // Ensure the alarm is running!
+    // Ensure alarm
     this.state.storage.getAlarm().then(currentAlarm => {
-      if (!currentAlarm) {
-        console.log("⏰ Waking up DO alarm loop...");
-        this.state.storage.setAlarm(Date.now() + 1000);
-      }
+      if (!currentAlarm) this.state.storage.setAlarm(Date.now() + 1000);
     });
 
     let currentUserId: string | null = null;
     let currentUserData: any = null;
 
-    ws.addEventListener('message', async (msg: MessageEvent) => {
+    ws.addEventListener('message', async (event: MessageEvent) => {
       try {
-        const data = JSON.parse(msg.data as string);
+        const msg = JSON.parse(event.data as string);
 
-        // REGISTER: User connects and identifies themselves
-        if (data.type === 'REGISTER') {
-          if (data.userId) {
-            currentUserId = data.userId;
+        // 1. REGISTER
+        if (msg.type === 'REGISTER') {
+          if (msg.userId) {
+            currentUserId = msg.userId;
             currentUserData = {
-              id: data.userId,
-              username: data.username,
-              avatar: data.avatar,
-              elo: data.elo
+              id: msg.userId,
+              username: msg.username,
+              avatar: msg.avatar,
+              elo: msg.elo
             };
-            this.userSockets.set(data.userId, ws);
-            // Confirm registration to client
-            ws.send(JSON.stringify({ type: 'REGISTER_ACK', userId: data.userId }));
+            this.userSockets.set(msg.userId, ws);
+            ws.send(JSON.stringify({ type: 'REGISTER_ACK', userId: msg.userId }));
 
-            // Catch-up: If match is already loading/started, send them to it
-            if ((this.matchState === 'LOBBY' || this.matchState === 'GAME') && this.currentLobby) {
-              const players = this.currentLobby.players || [];
-              const isUserInMatch = players.some((p: any) => p.id === data.userId || p.discord_id === data.userId);
-
-              if (isUserInMatch) {
-                // Send MATCH_READY to trigger navigation
+            // Check if in active lobby
+            const lobbyId = this.playerLobbyMap.get(msg.userId);
+            if (lobbyId) {
+              const lobby = this.activeLobbies.get(lobbyId); // Using lobbyId from map
+              if (lobby) {
+                // Send existing state
                 ws.send(JSON.stringify({
                   type: 'MATCH_READY',
-                  lobbyId: this.currentLobby.id,
-                  players: this.currentLobby.players,
-                  captains: [this.currentLobby.captainA, this.currentLobby.captainB]
+                  lobbyId: lobby.id,
+                  players: lobby.players,
+                  captains: [lobby.captainA, lobby.captainB]
                 }));
-                // Also send LOBBY_UPDATE immediately with current state
                 ws.send(JSON.stringify({
                   type: 'LOBBY_UPDATE',
-                  lobby: this.currentLobby
+                  lobby: lobby
                 }));
               } else {
-                // Not in match, send normal queue status
+                // Stale map entry?
+                this.playerLobbyMap.delete(msg.userId);
                 this.broadcastMergedQueue();
               }
             } else {
-              // Normal: Send queue status
               this.broadcastMergedQueue();
             }
           }
         }
 
-        // ... rest of handlers ...
-
-        // JOIN_QUEUE - Add to LOCAL queue
-        if (data.type === 'JOIN_QUEUE') {
-          // Robust Join: Accept data from payload if available, or fallback to register data
-          const userId = data.userId || currentUserId;
-          const user = {
-            id: userId,
-            username: data.username || (currentUserData ? currentUserData.username : 'Unknown Player'),
-            avatar: data.avatar || (currentUserData ? currentUserData.avatar : undefined),
-            elo: data.elo || (currentUserData ? currentUserData.elo : 1000)
-          };
-
+        // 2. JOIN_QUEUE
+        if (msg.type === 'JOIN_QUEUE') {
+          const userId = msg.userId || currentUserId;
           if (userId) {
+            // Check if already in match
+            if (this.playerLobbyMap.has(userId)) {
+              ws.send(JSON.stringify({ type: 'ERROR', message: 'Already in a match' }));
+              return;
+            }
+
+            const user = {
+              id: userId,
+              username: msg.username || (currentUserData?.username ?? 'Unknown'),
+              avatar: msg.avatar || currentUserData?.avatar,
+              elo: msg.elo || currentUserData?.elo || 1000
+            };
             this.localQueue.set(userId, user);
-            // console.log("User joined local queue:", userId);
-
-            // Immediate sync with NeatQueue to show current Discord state
-            // Use waitUntil if available, but in DO we just don't await the sync
             this.syncWithNeatQueue();
-
             this.broadcastMergedQueue();
           }
         }
 
-
-
-        // BAN_MAP - Captain bans a map
-        if (data.type === 'BAN_MAP') {
-          if (this.currentLobby && this.matchState === 'LOBBY') {
-            const { map, team } = data;
-
-            // Defensive: Ensure mapBanState exists
-            if (!this.currentLobby.mapBanState) {
-              this.currentLobby.mapBanState = {
-                bannedMaps: [],
-                currentBanTeam: 'alpha',
-                banHistory: [],
-                selectedMap: undefined,
-                mapBanPhase: true,
-                lastBanTimestamp: undefined,
-                currentTurnStartTimestamp: Date.now(),
-                banTimeout: 15
-              };
-            }
-
-            const banState = this.currentLobby.mapBanState;
-
-            // Defensive: Ensure arrays exist
-            if (!banState.bannedMaps) banState.bannedMaps = [];
-            if (!banState.banHistory) banState.banHistory = [];
-
-            // Validate ban
-            if (map && !banState.bannedMaps.includes(map) && banState.mapBanPhase) {
-              // Add to banned maps
-              banState.bannedMaps.push(map);
-
-              // Add to ban history
-              banState.banHistory.push({
-                team: team || banState.currentBanTeam,
-                map: map,
-                timestamp: Date.now()
-              });
-
-              // Update last ban timestamp
-              banState.lastBanTimestamp = Date.now();
-
-              // Check if ban phase should end (6 maps banned, 1 remaining)
-              const ALL_MAPS = ['Hanami', 'Rust', 'Zone 7', 'Dune', 'Breeze', 'Province', 'Sandstone'];
-              if (banState.bannedMaps.length >= 6) {
-                // Find remaining map
-                const remainingMap = ALL_MAPS.find(m => !banState.bannedMaps.includes(m));
-                if (remainingMap) {
-                  banState.selectedMap = remainingMap;
-                  banState.mapBanPhase = false;
-
-                  // Start ready phase instead of immediately starting match
-                  const readyPhaseState = this.currentLobby.readyPhaseState;
-                  readyPhaseState.phaseActive = true;
-                  readyPhaseState.readyPlayers = [];
-                  readyPhaseState.readyPhaseStartTimestamp = Date.now();
-                  readyPhaseState.readyPhaseTimeout = 30; // 30 seconds
-
-                  // Save state before broadcasting
-                  this.saveMatchState().then(() => {
-                    this.broadcastToAll(JSON.stringify({
-                      type: 'READY_PHASE_STARTED',
-                      lobbyId: this.currentLobby.id,
-                      selectedMap: remainingMap,
-                      readyPhaseTimeout: 30
-                    }));
-                    // Also send LOBBY_UPDATE to sync state
-                    this.broadcastLobbyUpdate();
-                  });
-                }
-              } else {
-                // Switch teams for next ban (alternating: alpha -> bravo -> alpha -> ...)
-                const previousTeam = banState.currentBanTeam;
-                banState.currentBanTeam = banState.currentBanTeam === 'alpha' ? 'bravo' : 'alpha';
-
-                // Reset turn start timestamp when team switches
-                if (previousTeam !== banState.currentBanTeam) {
-                  banState.currentTurnStartTimestamp = Date.now();
-                }
-              }
-
-              this.broadcastLobbyUpdate();
-            }
-          }
-        }
-
-        // PLAYER_READY - Player marks themselves as ready
-        if (data.type === 'PLAYER_READY') {
-          const userId = data.userId || currentUserId;
-          if (!userId || !this.currentLobby) {
-            return;
-          }
-
-          // Validate player is in the match
-          const players = this.currentLobby.players || [];
-          const player = players.find((p: any) => p.id === userId || p.discord_id === userId);
-
-          if (!player) {
-            ws.send(JSON.stringify({
-              type: 'ERROR',
-              message: 'Player not in match'
-            }));
-            return;
-          }
-
-          // Check if ready phase is active
-          const readyPhaseState = this.currentLobby.readyPhaseState;
-          if (!readyPhaseState.phaseActive) {
-            ws.send(JSON.stringify({
-              type: 'ERROR',
-              message: 'Ready phase not active'
-            }));
-            return;
-          }
-
-          // Add player to ready list if not already present
-          if (!readyPhaseState.readyPlayers.includes(userId)) {
-            readyPhaseState.readyPlayers.push(userId);
-
-            // Check if all players are ready
-            const allPlayersReady = readyPhaseState.readyPlayers.length >= players.length;
-
-            if (allPlayersReady) {
-              // All players ready - trigger server creation
-              readyPhaseState.phaseActive = false;
-              this.matchState = 'GAME';
-
-              // Broadcast ALL_PLAYERS_READY message
-              await this.saveMatchState();
-              this.broadcastToAll(JSON.stringify({
-                type: 'ALL_PLAYERS_READY',
-                lobbyId: this.currentLobby.id
-              }));
-
-              // Trigger server creation by notifying Discord Bot
-              const botWs = this.userSockets.get('discord-bot');
-              if (botWs) {
-                botWs.send(JSON.stringify({
-                  type: 'CREATE_MATCH',
-                  lobbyId: this.currentLobby.id,
-                  matchData: {
-                    id: this.currentLobby.id,
-                    lobbyId: this.currentLobby.id,
-                    players: this.currentLobby.players,
-                    teamAlpha: this.currentLobby.teamA,
-                    teamBravo: this.currentLobby.teamB,
-                    captainA: this.currentLobby.captainA,
-                    captainB: this.currentLobby.captainB,
-                    map: this.currentLobby.mapBanState?.selectedMap
-                  }
-                }));
-                console.log('🎮 Sent CREATE_MATCH to Discord bot');
-              } else {
-                console.warn('⚠️ Discord bot not connected, cannot trigger match creation');
-              }
-
-              // For now, we'll wait for SERVER_CREATED message from Discord bot
-              // When server is ready, we'll send MATCH_START
-            } else {
-              // Not all ready yet, just update state
-              await this.saveMatchState();
-              this.broadcastLobbyUpdate();
-            }
-          } else {
-            // Player already ready, just send update
-            this.broadcastLobbyUpdate();
-          }
-        }
-
-        // SERVER_CREATED - Discord bot created game server via NeatQueue
-        if (data.type === 'SERVER_CREATED') {
-          if (this.currentLobby && data.lobbyId === this.currentLobby.id) {
-            // Store server info in lobby
-            this.currentLobby.serverInfo = data.serverInfo;
-
-            // Save state
-            await this.saveMatchState();
-
-            // If all players are ready, send MATCH_START
-            const readyPhaseState = this.currentLobby.readyPhaseState;
-            const players = this.currentLobby.players || [];
-            const allPlayersReady = readyPhaseState.readyPlayers.length >= players.length;
-
-            if (allPlayersReady && this.matchState === 'GAME') {
-              // Send MATCH_START with server info
-              this.broadcastToAll(JSON.stringify({
-                type: 'MATCH_START',
-                lobbyId: this.currentLobby.id,
-                selectedMap: this.currentLobby.mapBanState?.selectedMap,
-                matchData: this.currentLobby,
-                serverInfo: data.serverInfo
-              }));
-            } else {
-              // Just send SERVER_READY (server ready but waiting for players)
-              this.broadcastToAll(JSON.stringify({
-                type: 'SERVER_READY',
-                lobbyId: data.lobbyId,
-                serverInfo: data.serverInfo
-              }));
-            }
-
-            console.log('✅ Game server ready:', data.serverInfo);
-          }
-        }
-
-        // SERVER_CREATION_FAILED - Failed to create server
-        if (data.type === 'SERVER_CREATION_FAILED') {
-          if (this.currentLobby && data.lobbyId === this.currentLobby.id) {
-            // Notify all players
-            this.broadcastToAll(JSON.stringify({
-              type: 'SERVER_ERROR',
-              lobbyId: data.lobbyId,
-              error: data.error || 'Failed to create game server'
-            }));
-
-            console.error('❌ Server creation failed:', data.error);
-          }
-        }
-
-        // LEAVE_QUEUE - Remove from LOCAL queue
-        if (data.type === 'LEAVE_QUEUE') {
-          const userId = data.userId || currentUserId;
-          if (userId) {
+        // 3. LEAVE_QUEUE
+        if (msg.type === 'LEAVE_QUEUE') {
+          const userId = msg.userId || currentUserId;
+          if (userId && this.localQueue.has(userId)) {
             this.localQueue.delete(userId);
             this.broadcastMergedQueue();
           }
         }
 
-        // LEAVE_MATCH - Remove player from active match
-        if (data.type === 'LEAVE_MATCH') {
-          const userId = data.userId || currentUserId;
-          const lobbyId = data.lobbyId;
+        // 4. BAN_MAP
+        if (msg.type === 'BAN_MAP') {
+          const userId = currentUserId;
+          if (!userId) return;
 
-          if (!userId) {
-            ws.send(JSON.stringify({
-              type: 'ERROR',
-              message: 'User ID required to leave match'
-            }));
-            return;
-          }
+          const lobbyId = this.playerLobbyMap.get(userId);
+          const lobby = lobbyId ? this.activeLobbies.get(lobbyId) : null;
 
-          // Load match state if not initialized
-          if (!this.initialized || !this.currentLobby) {
-            await this.loadMatchState();
-          }
+          if (lobby && lobby.mapBanState?.mapBanPhase) {
+            const { map, team } = msg;
+            const banState = lobby.mapBanState;
 
-          // Validate user is in an active match
-          if (!this.currentLobby || (lobbyId && this.currentLobby.id !== lobbyId)) {
-            ws.send(JSON.stringify({
-              type: 'ERROR',
-              message: 'No active match found or invalid lobby ID'
-            }));
-            return;
-          }
+            // Security: Check Turn & Captain
+            if (banState.currentBanTeam !== team) return; // Wrong turn
 
-          const players = this.currentLobby.players || [];
-          const playerIndex = players.findIndex((p: any) => p.id === userId || p.discord_id === userId);
+            const captain = banState.currentBanTeam === 'alpha' ? lobby.captainA : lobby.captainB;
+            const isCaptain = (captain.id === userId || captain.discord_id === userId) || userId === 'discord-bot';
 
-          if (playerIndex === -1) {
-            ws.send(JSON.stringify({
-              type: 'ERROR',
-              message: 'Player not in this match'
-            }));
-            return;
-          }
+            if (!isCaptain) return; // Unauthorized
 
-          // Remove player from lobby
-          this.currentLobby.players.splice(playerIndex, 1);
+            // Apply Ban
+            if (map && !banState.bannedMaps.includes(map)) {
+              banState.bannedMaps.push(map);
+              banState.banHistory.push({ team, map, timestamp: Date.now() });
+              banState.lastBanTimestamp = Date.now();
 
-          // Remove from teams
-          const teamAIndex = this.currentLobby.teamA?.findIndex((p: any) => p.id === userId || p.discord_id === userId);
-          if (teamAIndex !== undefined && teamAIndex !== -1) {
-            this.currentLobby.teamA.splice(teamAIndex, 1);
-          }
+              // Logic for End Phase
+              const ALL_MAPS = ['Hanami', 'Rust', 'Zone 7', 'Dune', 'Breeze', 'Province', 'Sandstone'];
+              if (banState.bannedMaps.length >= 6) {
+                const remaining = ALL_MAPS.find(m => !banState.bannedMaps.includes(m));
+                if (remaining) {
+                  banState.selectedMap = remaining;
+                  banState.mapBanPhase = false;
 
-          const teamBIndex = this.currentLobby.teamB?.findIndex((p: any) => p.id === userId || p.discord_id === userId);
-          if (teamBIndex !== undefined && teamBIndex !== -1) {
-            this.currentLobby.teamB.splice(teamBIndex, 1);
-          }
+                  // Start Ready
+                  lobby.readyPhaseState.phaseActive = true;
+                  lobby.readyPhaseState.readyPhaseStartTimestamp = Date.now();
+                  lobby.readyPhaseState.readyPhaseTimeout = 30;
 
-          // Remove from ready players if in ready phase
-          if (this.currentLobby.readyPhaseState?.readyPlayers) {
-            const readyIndex = this.currentLobby.readyPhaseState.readyPlayers.indexOf(userId);
-            if (readyIndex !== -1) {
-              this.currentLobby.readyPhaseState.readyPlayers.splice(readyIndex, 1);
+                  // Notify
+                  this.broadcastToLobby(lobby.id, JSON.stringify({
+                    type: 'READY_PHASE_STARTED',
+                    lobbyId: lobby.id,
+                    selectedMap: remaining,
+                    readyPhaseTimeout: 30
+                  }));
+                }
+              } else {
+                // Switch Turn
+                banState.currentBanTeam = banState.currentBanTeam === 'alpha' ? 'bravo' : 'alpha';
+                banState.currentTurnStartTimestamp = Date.now();
+              }
+              await this.broadcastLobbyUpdate(lobby.id);
             }
           }
-
-          console.log(`Player ${userId} left match ${this.currentLobby.id}`);
-
-          // Check if match should be cancelled (no players left or too few)
-          if (this.currentLobby.players.length === 0) {
-            console.log('All players left, resetting match state');
-            this.matchState = 'IDLE';
-            this.currentLobby = null;
-            await this.saveMatchState();
-
-            // Broadcast match reset
-            this.broadcastToAll(JSON.stringify({
-              type: 'MATCH_CANCELLED',
-              reason: 'All players left the match'
-            }));
-          } else {
-            // Save updated state and broadcast to remaining players
-            await this.saveMatchState();
-            this.broadcastLobbyUpdate();
-          }
-
-          // Send confirmation to leaving player
-          ws.send(JSON.stringify({
-            type: 'LEAVE_MATCH_SUCCESS',
-            message: 'Successfully left the match',
-            lobbyId: lobbyId || this.currentLobby?.id
-          }));
         }
 
+        // 5. PLAYER_READY
+        if (msg.type === 'PLAYER_READY') {
+          const userId = msg.userId || currentUserId;
+          if (!userId) return;
 
-        // SEND_INVITE: User A invites User B
-        if (data.type === 'SEND_INVITE') {
-          const { targetId, fromUser, lobbyId } = data; // fromUser contains { id, username, avatar }
-          const targetWs = this.userSockets.get(targetId);
+          const lobbyId = this.playerLobbyMap.get(userId);
+          const lobby = lobbyId ? this.activeLobbies.get(lobbyId) : null;
 
-          if (targetWs && targetWs.readyState === WebSocket.READY_STATE_OPEN) {
-            targetWs.send(JSON.stringify({
-              type: 'INVITE_RECEIVED',
-              fromUser: fromUser,
-              lobbyId: lobbyId, // If inviting to a specific lobby
-              timestamp: Date.now()
-            }));
-            // console.log(`Invite sent from ${fromUser.username} to ${targetId}`);
-          } else {
-            // Optional: Send back "User offline" message
-          }
-        }
+          if (lobby && lobby.readyPhaseState.phaseActive) {
+            if (!lobby.readyPhaseState.readyPlayers.includes(userId)) {
+              lobby.readyPhaseState.readyPlayers.push(userId);
 
-        // FILL_BOTS: Fill queue with bots to reach 10 players and start match
-        if (data.type === 'FILL_BOTS') {
-          if (this.matchState !== 'IDLE') {
-            // Already in a match, ignore
-            return;
-          }
+              const allReady = lobby.readyPhaseState.readyPlayers.length >= lobby.players.length;
+              if (allReady) {
+                lobby.readyPhaseState.phaseActive = false; // Phase done
+                // Match Proceed
+                this.broadcastToLobby(lobby.id, JSON.stringify({
+                  type: 'ALL_PLAYERS_READY',
+                  lobbyId: lobby.id
+                }));
 
-          const merged = this.getMergedQueue();
-          const currentCount = merged.length;
-          const needed = 10 - currentCount;
-
-          if (needed <= 0) {
-            // Already have 10+, just start the match
-            if (merged.length >= 10) {
-              this.startMatch(merged.slice(0, 10));
+                // Trigger Bot
+                const botWs = this.userSockets.get('discord-bot');
+                if (botWs) {
+                  botWs.send(JSON.stringify({
+                    type: 'CREATE_MATCH',
+                    lobbyId: lobby.id,
+                    matchData: { ...lobby, map: lobby.mapBanState?.selectedMap }
+                  }));
+                }
+              }
+              await this.broadcastLobbyUpdate(lobby.id);
             }
-            return;
           }
-
-          // Generate bot players
-          const botNames = [
-            'Bot Alpha', 'Bot Beta', 'Bot Gamma', 'Bot Delta', 'Bot Echo',
-            'Bot Foxtrot', 'Bot Golf', 'Bot Hotel', 'Bot India', 'Bot Juliet'
-          ];
-
-          const bots = [];
-          for (let i = 0; i < needed; i++) {
-            const botId = `bot_${Date.now()}_${i}_${Math.random().toString(36).substr(2, 9)}`;
-            bots.push({
-              id: botId,
-              discord_id: botId,
-              username: botNames[i % botNames.length],
-              name: botNames[i % botNames.length],
-              avatar: undefined,
-              elo: 1000 + Math.floor(Math.random() * 500) // Random ELO between 1000-1500
-            });
-          }
-
-          // Combine real players with bots
-          const allPlayers = [...merged, ...bots].slice(0, 10);
-
-          // Start the match with filled players
-          this.startMatch(allPlayers);
         }
 
-        // REQUEST_MATCH_STATE: Request current match state by lobbyId
-        if (data.type === 'REQUEST_MATCH_STATE') {
-          const requestedLobbyId = data.lobbyId;
-          const userId = currentUserId || data.userId;
-
-          // Load from storage if not initialized or currentLobby is null
-          if (!this.initialized || !this.currentLobby) {
-            await this.loadMatchState();
+        // 6. REQUEST_MATCH_STATE
+        if (msg.type === 'REQUEST_MATCH_STATE') {
+          const requestedLobbyId = msg.lobbyId;
+          const lobby = this.activeLobbies.get(requestedLobbyId);
+          if (lobby) {
+            // Return state
+            ws.send(JSON.stringify({
+              type: 'LOBBY_UPDATE',
+              lobby: lobby
+            }));
           }
+        }
 
-          if (this.currentLobby && this.currentLobby.id === requestedLobbyId) {
-            // Check if user is in this match
-            const players = this.currentLobby.players || [];
-            const isUserInMatch = userId && players.some((p: any) => p.id === userId || p.discord_id === userId);
+        // 7. LEAVE_MATCH
+        if (msg.type === 'LEAVE_MATCH') {
+          const userId = msg.userId || currentUserId;
+          const lobbyId = msg.lobbyId;
 
-            if (isUserInMatch) {
-              // User is in match, send appropriate state
-              if (this.matchState === 'LOBBY') {
-                // Send MATCH_READY to trigger navigation
+          if (userId && lobbyId) {
+            const lobby = this.activeLobbies.get(lobbyId); // Using provided lobbyId
+            if (lobby) {
+              // Check if user is in this lobby
+              const pIndex = lobby.players.findIndex(p => p.id === userId || p.discord_id === userId);
+              if (pIndex !== -1) {
+                // Remove from main list
+                lobby.players.splice(pIndex, 1);
+
+                // Remove from Teams
+                const tA = lobby.teamA.findIndex(p => p.id === userId || p.discord_id === userId);
+                if (tA !== -1) lobby.teamA.splice(tA, 1);
+
+                const tB = lobby.teamB.findIndex(p => p.id === userId || p.discord_id === userId);
+                if (tB !== -1) lobby.teamB.splice(tB, 1);
+
+                // Remove from Ready
+                const rIdx = lobby.readyPhaseState.readyPlayers.indexOf(userId);
+                if (rIdx !== -1) lobby.readyPhaseState.readyPlayers.splice(rIdx, 1);
+
+                // Remove from map registration
+                this.playerLobbyMap.delete(userId);
+
+                console.log(`Player ${userId} left lobby ${lobbyId}`);
+
+                // If empty, delete lobby
+                if (lobby.players.length === 0) {
+                  this.activeLobbies.delete(lobbyId);
+                  console.log(`Lobby ${lobbyId} is empty and deleted.`);
+                } else {
+                  await this.broadcastLobbyUpdate(lobbyId);
+                }
+
+                await this.saveMatchState();
+
                 ws.send(JSON.stringify({
-                  type: 'MATCH_READY',
-                  lobbyId: this.currentLobby.id,
-                  players: this.currentLobby.players,
-                  captains: [this.currentLobby.captainA, this.currentLobby.captainB]
-                }));
-                // Also send LOBBY_UPDATE with current state
-                ws.send(JSON.stringify({
-                  type: 'LOBBY_UPDATE',
-                  lobby: this.currentLobby
-                }));
-              } else if (this.matchState === 'GAME') {
-                // Match has started, send MATCH_START
-                ws.send(JSON.stringify({
-                  type: 'MATCH_START',
-                  lobbyId: this.currentLobby.id,
-                  selectedMap: this.currentLobby.mapBanState?.selectedMap,
-                  matchData: this.currentLobby
+                  type: 'LEAVE_MATCH_SUCCESS',
+                  lobbyId: lobbyId
                 }));
               }
             } else {
-              // User not in match
-              ws.send(JSON.stringify({
-                type: 'MATCH_STATE_ERROR',
-                error: 'User not in match',
-                lobbyId: requestedLobbyId
-              }));
+              // Lobby not found? Maybe already deleted.
+              // Clean up map just in case
+              this.playerLobbyMap.delete(userId);
+              ws.send(JSON.stringify({ type: 'LEAVE_MATCH_SUCCESS' }));
             }
-          } else {
-            // Match doesn't exist or different lobbyId
-            ws.send(JSON.stringify({
-              type: 'MATCH_STATE_ERROR',
-              error: 'Match not found',
-              lobbyId: requestedLobbyId
-            }));
           }
         }
 
-        // DEBUG_DUMP: Request full state for debugging
-        if (data.type === 'DEBUG_DUMP') {
-          ws.send(JSON.stringify({
-            type: 'DEBUG_STATE',
-            localQueue: Array.from(this.localQueue.values()),
-            remoteQueue: this.remoteQueue,
-            currentLobby: this.currentLobby,
-            matchState: this.matchState,
-            timestamp: Date.now()
-          }));
-        }
-
-        // RESET_MATCH: Force clear match state (Admin/Debug only)
-        if (data.type === 'RESET_MATCH') {
-          console.log('⚠️ RESET_MATCH requested! Clearing lobby state...');
-
-          this.matchState = 'IDLE';
-          this.currentLobby = null;
-          this.state.storage.delete('matchState');
-          this.state.storage.delete('currentLobby');
-
-          // Broadcast update to all connected clients
-          this.broadcastToAll(JSON.stringify({
-            type: 'MATCH_RESET',
-            timestamp: Date.now()
-          }));
-
-          // Force update queue status
+        // 8. RESET_MATCH (Admin)
+        if (msg.type === 'RESET_MATCH') {
+          console.log("⚠️ RESET_MATCH: Clearing all lobbies.");
+          this.activeLobbies.clear();
+          this.playerLobbyMap.clear();
+          await this.saveMatchState();
+          this.broadcastToAll(JSON.stringify({ type: 'MATCH_RESET' }));
           this.broadcastMergedQueue();
         }
 
+        // 9. FILL_BOTS (Debug)
+        if (msg.type === 'FILL_BOTS') {
+          // Ensure we are not already in a match?
+          // With multi-lobby, checking 'this.matchState' is obsolete.
+          // We just check if user is in a match?
+          // The button was removed, but if triggered via WS manually:
+          const merged = this.getMergedQueue();
+          const needed = 10 - merged.length;
+          if (needed > 0) {
+            const bots = [];
+            for (let i = 0; i < needed; i++) {
+              bots.push({ id: `bot_${i}`, username: `Bot ${i}`, elo: 1000 }); // simplified
+            }
+            const all = [...merged, ...bots].slice(0, 10);
+            this.startMatch(all);
+          }
+        }
+
+
       } catch (err) {
-        console.error('WebSocket Error:', err);
+        console.error('WS Message Error:', err);
       }
     });
 
     ws.addEventListener('close', () => {
       this.sessions.delete(ws);
-      if (currentUserId) {
-        this.userSockets.delete(currentUserId);
-      }
+      if (currentUserId) this.userSockets.delete(currentUserId);
     });
   }
-
-  broadcastMergedQueue() {
-    // Convert local map to array
-    const localPlayers = Array.from(this.localQueue.values());
-
-    // Combine lists (avoid duplicates if same user is in both)
-    // We assume ID is common key. If NeatQueue uses Discord ID and we store Discord ID as `id`, it works.
-    const merged = [...this.remoteQueue];
-
-    localPlayers.forEach(lp => {
-      // Avoid adding if already in remote (by ID)
-      // Check both 'id' and 'discord_id' fields just in case
-      const inRemote = merged.find(rp => rp.id === lp.id || rp.discord_id === lp.id);
-      if (!inRemote) {
-        merged.push(lp);
-      }
-    });
-
-    const message = JSON.stringify({
-      type: 'QUEUE_UPDATE',
-      count: merged.length,
-      players: merged,
-      source: 'Merged'
-    });
-
-    this.broadcastToAll(message);
-  }
-
-  broadcastToAll(msg: string) {
-    this.sessions.forEach(s => {
-      try {
-        if (s.readyState === WebSocket.READY_STATE_OPEN) s.send(msg);
-      } catch (e) { /* ignore */ }
-    });
-  }
-
 
 }
 

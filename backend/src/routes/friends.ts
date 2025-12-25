@@ -24,7 +24,7 @@ export function setupFriendsRoutes(app: Hono<any>) {
                 username: players.discord_username,
                 nickname: players.standoff_nickname,
                 avatar: players.discord_avatar,
-                mmr: players.mmr,
+                mmr: players.elo,
                 wins: players.wins,
                 losses: players.losses
             })

@@ -141,12 +141,7 @@ export default function MatchmakingPage({
     }
   };
 
-  const handleFillBots = () => {
-    // Send message to backend to fill with bots and start match
-    sendMessage({
-      type: "FILL_BOTS",
-    });
-  };
+
 
   // ... helper methods ...
   const getAvatarUrl = (member: PartyMember) => {
@@ -360,19 +355,7 @@ export default function MatchmakingPage({
             <span className="btn-content">ДАРААЛАЛААС ГАРАХ</span>
           </button>
         )}
-        {partyMembers.length < 10 &&
-          (window.location.hostname === "localhost" ||
-            window.location.hostname === "127.0.0.1") && (
-            <button
-              className="fill-bots-btn"
-              onClick={handleFillBots}
-              style={{ marginTop: "12px" }}
-            >
-              <span className="btn-content">
-                БОТУУДААР ДҮҮРГЭХ ({partyMembers.length}/10)
-              </span>
-            </button>
-          )}
+
       </div>
     </div>
   );

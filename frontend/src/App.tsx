@@ -172,6 +172,22 @@ function AppContent() {
             }));
           }
           setLobbyPartyMembers(players);
+
+          // AUTO-NAVIGATE TO MAP BAN IF USER IS IN MATCH
+          if (user && user.id) {
+            const rawPlayers = lastMessage.players || [];
+            const isUserInMatch = rawPlayers.some((p: any) =>
+              String(p.id) === String(user.id) ||
+              (p.discord_id && String(p.discord_id) === String(user.id))
+            );
+
+            if (isUserInMatch) {
+              console.log("User is in match! Navigating to mapban...");
+              setCurrentPage("mapban");
+              // Also ensure we don't treat this as "navigated away"
+              setUserNavigatedAway(false);
+            }
+          }
         }
       }
     }
@@ -182,6 +198,7 @@ function AppContent() {
       if (lastMessage.selectedMap) {
         setSelectedMap(lastMessage.selectedMap);
       }
+      setCurrentPage("ready");
     }
 
     // 4. Lobby Update / Match Start Catch-up (Persistence)
@@ -335,6 +352,19 @@ function AppContent() {
         if (lobby.readyPhaseState?.phaseActive) {
           if (lobby.mapBanState?.selectedMap) {
             setSelectedMap(lobby.mapBanState.selectedMap);
+          }
+          // Auto-navigate to ready page if we are not already there
+          if (currentPage !== "ready" && currentPage !== "matchgame") {
+            setCurrentPage("ready");
+          }
+        } else if (!userNavigatedAway) {
+          // If ready phase is NOT active, check for other states if user should be in match
+          if (lobby.serverInfo && currentPage !== "matchgame") {
+            console.log("Auto-navigating to MATCH GAME due to LOBBY_UPDATE");
+            setCurrentPage("matchgame");
+          } else if (lobby.mapBanState?.mapBanPhase && currentPage !== "mapban") {
+            console.log("Auto-navigating to MAP BAN due to LOBBY_UPDATE");
+            setCurrentPage("mapban");
           }
         }
       }

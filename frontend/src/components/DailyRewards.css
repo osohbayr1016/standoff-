@@ -1,9 +1,23 @@
 .rewards-card {
-  background: rgba(30, 41, 59, 0.6);
-  backdrop-filter: blur(10px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 16px;
+  background: rgba(16, 20, 30, 0.6);
+  backdrop-filter: blur(16px);
+  border: 1px solid var(--glass-border);
+  border-radius: 0;
   padding: 1.5rem;
+  clip-path: polygon(20px 0, 100% 0, 100% calc(100% - 20px), calc(100% - 20px) 100%, 0 100%, 0 20px);
+  position: relative;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+}
+
+.rewards-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 2px;
+  background: linear-gradient(90deg, var(--secondary), transparent);
+  opacity: 0.5;
 }
 
 .rewards-progress {
@@ -26,25 +40,30 @@
 .reward-icon {
   width: 50px;
   height: 50px;
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.1);
+  border-radius: 0;
+  background: rgba(255, 255, 255, 0.05);
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 1.5rem;
-  border: 2px solid rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   transition: all 0.3s;
+  clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
 }
 
 .reward-icon.completed {
-  background: rgba(34, 197, 94, 0.2);
+  background: rgba(34, 197, 94, 0.1);
   border-color: #22c55e;
   color: #22c55e;
+  box-shadow: 0 0 15px rgba(34, 197, 94, 0.2);
 }
 
 .reward-label {
-  color: rgba(255, 255, 255, 0.7);
+  color: var(--text-secondary);
   font-size: 0.75rem;
+  font-family: var(--font-display);
+  text-transform: uppercase;
+  letter-spacing: 1px;
 }
 
 .progress-connector {
@@ -52,8 +71,8 @@
   top: 25px;
   left: 60%;
   width: 80%;
-  height: 2px;
-  background: rgba(255, 255, 255, 0.2);
+  height: 1px;
+  background: rgba(255, 255, 255, 0.1);
 }
 
 .rewards-section {
@@ -61,9 +80,11 @@
   align-items: center;
   justify-content: space-between;
   padding: 1.25rem;
-  background: rgba(15, 23, 42, 0.5);
-  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 0;
   margin-bottom: 1rem;
+  clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
 }
 
 .rewards-header {
@@ -78,33 +99,40 @@
 
 .rewards-title {
   color: #fff;
+  font-family: var(--font-display);
   font-weight: 600;
-  font-size: 1rem;
+  font-size: 1.1rem;
+  letter-spacing: 0.5px;
 }
 
 .rewards-counter {
-  color: #fff;
+  color: var(--primary);
+  font-family: monospace;
   font-weight: 700;
-  font-size: 1.1rem;
+  font-size: 1.2rem;
+  text-shadow: 0 0 10px rgba(255, 107, 53, 0.4);
 }
 
 .find-match-btn-secondary {
   width: 100%;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: #fff;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--primary);
+  font-family: var(--font-display);
   font-size: 1.1rem;
   font-weight: 700;
   padding: 1rem;
-  border: none;
-  border-radius: 8px;
+  border: 1px solid var(--primary);
+  border-radius: 0;
   cursor: pointer;
   transition: all 0.3s;
   text-transform: uppercase;
-  letter-spacing: 1px;
+  letter-spacing: 2px;
+  clip-path: polygon(15px 0, 100% 0, 100% calc(100% - 15px), calc(100% - 15px) 100%, 0 100%, 0 15px);
 }
 
 .find-match-btn-secondary:hover {
+  background: var(--primary);
+  color: #000;
   transform: translateY(-2px);
-  box-shadow: 0 6px 25px rgba(102, 126, 234, 0.4);
+  box-shadow: 0 0 20px rgba(255, 107, 53, 0.4);
 }
-

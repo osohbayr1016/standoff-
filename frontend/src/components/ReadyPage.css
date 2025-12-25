@@ -3,7 +3,7 @@
   height: 100vh;
   background: #020617;
   color: #f8fafc;
-  font-family: 'Outfit', sans-serif;
+  font-family: 'Rajdhani', sans-serif;
   overflow: hidden;
   position: relative;
 }
@@ -496,12 +496,13 @@
 /* Action Container */
 .action-container {
   position: absolute;
-  bottom: -150px;
+  bottom: -100px;
   left: 50%;
   transform: translateX(-50%);
   width: 100%;
   display: flex;
   justify-content: center;
+  z-index: 20;
 }
 
 .mega-ready-btn {

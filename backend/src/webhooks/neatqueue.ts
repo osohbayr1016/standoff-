@@ -3,7 +3,7 @@ import { Hono } from 'hono';
 // Environment bindings type
 interface Env {
     NEATQUEUE_WEBHOOK_SECRET: string;
-    CONNECTIONS: DurableObjectNamespace;
+    MATCH_QUEUE: DurableObjectNamespace;
     [key: string]: any;
 }
 

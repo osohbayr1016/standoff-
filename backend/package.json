@@ -16,6 +16,7 @@
     "@types/node": "^25.0.3",
     "@types/ws": "^8.18.1",
     "drizzle-kit": "^0.31.8",
+    "typescript": "^5.9.3",
     "wrangler": "^4.4.0",
     "ws": "^8.18.3"
   }

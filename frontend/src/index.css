@@ -1,3 +1,6 @@
+@import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
+
 * {
   margin: 0;
   padding: 0;
@@ -5,9 +8,7 @@
 }
 
 :root {
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
   line-height: 1.5;
   font-weight: 400;
   color-scheme: dark;
@@ -16,61 +17,93 @@
   -moz-osx-font-smoothing: grayscale;
 
   --primary: #ff6b35;
+  /* Neon Orange */
   --primary-hover: #ff8c61;
-  --bg-dark: #0f172a;
-  --glass-bg: rgba(30, 41, 59, 0.7);
-  --glass-border: rgba(255, 255, 255, 0.1);
+  --secondary: #38bdf8;
+  /* Cyber Blue */
+  --secondary-glow: rgba(56, 189, 248, 0.5);
+
+  --bg-dark: #030712;
+  /* Deep Space */
+  --bg-panel: rgba(17, 24, 39, 0.7);
+
+  --glass-bg: rgba(17, 24, 39, 0.6);
+  --glass-border: rgba(255, 255, 255, 0.08);
+  --glass-highlight: rgba(255, 255, 255, 0.05);
+
   --text-primary: #ffffff;
-  --text-secondary: rgba(255, 255, 255, 0.7);
+  --text-secondary: #94a3b8;
+
+  --font-display: 'Rajdhani', sans-serif;
+  --font-body: 'Inter', sans-serif;
 }
 
 body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
-  background: radial-gradient(circle at top center, #1e293b 0%, #0f172a 100%);
+  background-color: var(--bg-dark);
+  /* Cyber Grid Background */
+  background-image:
+    linear-gradient(rgba(255, 107, 53, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 107, 53, 0.03) 1px, transparent 1px),
+    radial-gradient(circle at 50% 0%, #1e1b4b 0%, var(--bg-dark) 60%);
+  background-size: 50px 50px, 50px 50px, 100% 100%;
   background-attachment: fixed;
+
   color: var(--text-primary);
   overflow-x: hidden;
   font-size: 14px;
-  /* Default for mobile */
 }
 
-/* Custom Scrollbar */
+/* Premium Scrollbar */
 ::-webkit-scrollbar {
   width: 6px;
 }
 
 ::-webkit-scrollbar-track {
-  background: rgba(15, 23, 42, 0.5);
+  background: var(--bg-dark);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.2);
+  background: linear-gradient(180deg, var(--primary), #9a3412);
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.3);
+  background: var(--primary-hover);
 }
 
-/* Selection */
 ::selection {
   background: rgba(255, 107, 53, 0.3);
   color: #fff;
 }
 
 button {
-  font-family: inherit;
+  font-family: var(--font-display);
+  /* Use Rajdhani for buttons */
+  letter-spacing: 0.5px;
   border: none;
   outline: none;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
+  text-transform: uppercase;
 }
 
 button:focus-visible {
-  outline: 2px solid var(--primary);
-  outline-offset: 2px;
+  outline: 2px solid var(--secondary);
+  outline-offset: 4px;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: 1px;
 }
 
 a {
@@ -86,10 +119,56 @@ a {
   flex-direction: column;
 }
 
+/* Utility Animations */
+@keyframes flicker {
+
+  0%,
+  19.999%,
+  22%,
+  62.999%,
+  64%,
+  64.999%,
+  70%,
+  100% {
+    opacity: 0.99;
+  }
+
+  20%,
+  21.999%,
+  63%,
+  63.999%,
+  65%,
+  69.999% {
+    opacity: 0.4;
+  }
+}
+
+.scanline {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 5px;
+  background: rgba(56, 189, 248, 0.1);
+  opacity: 0.4;
+  animation: scanline 8s linear infinite;
+  pointer-events: none;
+  z-index: 9999;
+}
+
+@keyframes scanline {
+  0% {
+    top: -5%;
+  }
+
+  100% {
+    top: 105%;
+  }
+}
+
 @media (min-width: 768px) {
   body {
     font-size: 16px;
-    /* Larger font for desktop/tablet */
   }
 
   ::-webkit-scrollbar {

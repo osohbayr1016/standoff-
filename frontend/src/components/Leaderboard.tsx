@@ -26,11 +26,11 @@ export default function Leaderboard() {
         setLoading(true);
         const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8787';
         const response = await fetch(`${backendUrl}/api/leaderboard`);
-        
+
         if (!response.ok) {
           throw new Error('Failed to fetch leaderboard');
         }
-        
+
         const data = await response.json();
         // Get top 5 players
         const top5 = data.slice(0, 5).map((player: any, index: number) => ({
@@ -96,10 +96,10 @@ export default function Leaderboard() {
               <span className="rank-badge">{player.rank}</span>
               <span className="player-avatar">
                 {getAvatarUrl(player) ? (
-                  <img 
-                    src={getAvatarUrl(player)!} 
+                  <img
+                    src={getAvatarUrl(player)!}
                     alt={getDisplayName(player)}
-                    style={{ width: '24px', height: '24px', borderRadius: '50%' }}
+                    style={{ width: '100%', height: '100%' }}
                   />
                 ) : (
                   RANK_EMOJIS[player.rank - 1] || '👤'
