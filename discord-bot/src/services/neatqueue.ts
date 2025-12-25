@@ -90,8 +90,8 @@ export class NeatQueueService {
                 // This is a template - adjust based on actual NeatQueue embed structure
                 const serverInfo: any = {
                     matchId: null,
-                    serverIp: null,
-                    serverPassword: null,
+                    ip: null,
+                    password: null,
                     teams: {
                         alpha: [],
                         bravo: []
@@ -104,9 +104,9 @@ export class NeatQueueService {
                     const value = field.value;
 
                     if (name.includes('server') || name.includes('ip')) {
-                        serverInfo.serverIp = value;
+                        serverInfo.ip = value;
                     } else if (name.includes('password')) {
-                        serverInfo.serverPassword = value;
+                        serverInfo.password = value;
                     } else if (name.includes('team') && name.includes('alpha')) {
                         serverInfo.teams.alpha = this.parsePlayerList(value);
                     } else if (name.includes('team') && name.includes('bravo')) {
@@ -130,8 +130,8 @@ export class NeatQueueService {
             const content = message.content;
             return {
                 matchId: null,
-                serverIp: this.extractServerIp(content),
-                serverPassword: null,
+                ip: this.extractServerIp(content),
+                password: null,
                 rawMessage: content
             };
 
