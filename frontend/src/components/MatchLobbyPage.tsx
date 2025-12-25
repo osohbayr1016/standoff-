@@ -155,13 +155,26 @@ export default function MatchLobbyPage({ lobby, serverInfo: initialServerInfo }:
               <div className="server-actions">
                 {isLive && serverInfo?.ip && serverInfo?.password ? (
                   <div className="live-actions">
+                    <div className="server-details-row">
+                      <div className="detail-box" onClick={() => handleCopy(serverInfo.ip)}>
+                        <span className="label">IP</span>
+                        <code>{serverInfo.ip}</code>
+                      </div>
+                      <div className="detail-box" onClick={() => handleCopy(serverInfo.password || '')}>
+                        <span className="label">PASS</span>
+                        <code>{serverInfo.password}</code>
+                      </div>
+                    </div>
                     <div className="button-group">
-                      <a 
-                        href={serverInfo.matchLink || `standoff://connect/${serverInfo.ip}/${serverInfo.password}`} 
+                      <a
+                        href={serverInfo.matchLink || `standoff://connect/${serverInfo.ip}/${serverInfo.password}`}
                         className="play-btn"
                       >
                         <Crosshair className="icon" /> JOIN MATCH
                       </a>
+                      <button className="copy-btn" onClick={() => handleCopy(`connect ${serverInfo.ip}; password ${serverInfo.password}`)}>
+                        <Copy className="icon" /> COPY CMD
+                      </button>
                     </div>
                   </div>
                 ) : (
@@ -228,13 +241,26 @@ export default function MatchLobbyPage({ lobby, serverInfo: initialServerInfo }:
           <div className="server-actions">
             {isLive && serverInfo?.ip && serverInfo?.password ? (
               <div className="live-actions">
+                <div className="server-details-row">
+                  <div className="detail-box" onClick={() => handleCopy(serverInfo.ip)}>
+                    <span className="label">IP</span>
+                    <code>{serverInfo.ip}</code>
+                  </div>
+                  <div className="detail-box" onClick={() => handleCopy(serverInfo.password || '')}>
+                    <span className="label">PASS</span>
+                    <code>{serverInfo.password}</code>
+                  </div>
+                </div>
                 <div className="button-group">
-                  <a 
-                    href={serverInfo.matchLink || `standoff://connect/${serverInfo.ip}/${serverInfo.password}`} 
+                  <a
+                    href={serverInfo.matchLink || `standoff://connect/${serverInfo.ip}/${serverInfo.password}`}
                     className="play-btn"
                   >
                     <Crosshair className="icon" /> JOIN MATCH
                   </a>
+                  <button className="copy-btn" onClick={() => handleCopy(`connect ${serverInfo.ip}; password ${serverInfo.password}`)}>
+                    <Copy className="icon" /> COPY CMD
+                  </button>
                 </div>
               </div>
             ) : (
