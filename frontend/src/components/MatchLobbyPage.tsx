@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Hexagon, CheckCircle, Crosshair, Copy, ArrowRight, Shield, Server, Users } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { motion } from 'framer-motion';
+import { Hexagon, Crosshair, Copy } from 'lucide-react';
 import './MatchLobbyPage.css';
 
 interface Player {
@@ -13,7 +13,7 @@ interface Player {
 
 interface MatchLobbyPageProps {
   lobby: any; // The full lobby object
-  onMatchStart: (matchData: any) => void; // Parent handler to switch page
+  onMatchStart?: (matchData: any) => void; // Parent handler to switch page
   serverInfo?: any; // If already present
 }
 
@@ -33,7 +33,7 @@ const getLevelColor = (level: number) => {
   return '#a855f7'; // Purple
 };
 
-export default function MatchLobbyPage({ lobby, onMatchStart, serverInfo: initialServerInfo }: MatchLobbyPageProps) {
+export default function MatchLobbyPage({ lobby, serverInfo: initialServerInfo }: MatchLobbyPageProps) {
   const [matchState, setMatchState] = useState<'LOBBY' | 'Readey' | 'LIVE'>('LOBBY');
   // Derived state
   const serverInfo = initialServerInfo || lobby?.serverInfo;
@@ -191,21 +191,21 @@ export default function MatchLobbyPage({ lobby, onMatchStart, serverInfo: initia
                 <div className="button-group">
                   <a href={`standoff://connect/${serverInfo.ip}/${serverInfo.password}`} className="play-btn">
                     <Crosshair className="icon" /> JOIN SERVER
-                  </a>
+                  </a >
                   <button className="copy-btn" onClick={() => handleCopy(`connect ${serverInfo.ip}; password ${serverInfo.password}`)}>
                     <Copy className="icon" /> COPY CMD
                   </button>
-                </div>
-              </div>
+                </div >
+              </div >
             ) : (
               <div className="waiting-state">
                 <div className="spinner"></div>
                 <span>ALLOCATING GAME SERVER...</span>
               </div>
             )}
-          </div>
-        </motion.div>
-      </div>
-    </div>
+          </div >
+        </motion.div >
+      </div >
+    </div >
   );
 }
