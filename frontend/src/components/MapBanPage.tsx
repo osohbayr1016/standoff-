@@ -180,7 +180,6 @@ export default function MapBanPage({ partyMembers, onCancel: _onCancel, onMapSel
     // Send ban message to server
     sendMessage({
       type: 'BAN_MAP',
-      lobbyId: lobbyId,
       map: mapName,
       team: userTeam
     });
