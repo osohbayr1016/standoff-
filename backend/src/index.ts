@@ -57,6 +57,52 @@ export class MatchQueueDO {
       // Threshold: 10 players (5v5)
       if (this.matchState === 'IDLE' && merged.length >= 10) {
         this.startMatch(merged.slice(0, 10)); // Top 10 players
+      } else if (this.matchState === 'LOBBY' && this.currentLobby?.mapBanState?.mapBanPhase) {
+        // MAP BAN TIMEOUT CHECK
+        const banState = this.currentLobby.mapBanState;
+        const lastActivity = banState.currentTurnStartTimestamp || banState.lastBanTimestamp || Date.now();
+        const elapsed = (Date.now() - lastActivity) / 1000;
+        const TIMEOUT_BUFFER = 5; // 5 seconds buffer
+
+        if (elapsed > (banState.banTimeout + TIMEOUT_BUFFER)) {
+          console.log("⏰ Map Ban Timeout detected, auto-banning...");
+
+          const ALL_MAPS = ['Hanami', 'Rust', 'Zone 7', 'Dune', 'Breeze', 'Province', 'Sandstone'];
+          const availableMaps = ALL_MAPS.filter(m => !banState.bannedMaps.includes(m));
+
+          if (availableMaps.length > 1) {
+            const randomMap = availableMaps[Math.floor(Math.random() * availableMaps.length)];
+
+            // Perform Auto-Ban
+            banState.bannedMaps.push(randomMap);
+            banState.banHistory.push({
+              team: banState.currentBanTeam,
+              map: randomMap,
+              timestamp: Date.now()
+            });
+            banState.lastBanTimestamp = Date.now();
+
+            // Switch Teams
+            const previousTeam = banState.currentBanTeam;
+            banState.currentBanTeam = banState.currentBanTeam === 'alpha' ? 'bravo' : 'alpha';
+            banState.currentTurnStartTimestamp = Date.now(); // Reset timer for next turn
+
+            this.broadcastLobbyUpdate();
+          } else if (availableMaps.length === 1) {
+            // If only 1 map left, we should have finished already, but force finish here
+            const remainingMap = availableMaps[0];
+            banState.selectedMap = remainingMap;
+            banState.mapBanPhase = false;
+            this.matchState = 'GAME';
+
+            this.broadcastToAll(JSON.stringify({
+              type: 'MATCH_START',
+              lobbyId: this.currentLobby.id,
+              selectedMap: remainingMap,
+              matchData: this.currentLobby
+            }));
+          }
+        }
       } else {
         // Just broadcast queue if match isn't starting
         this.broadcastMergedQueue();

@@ -27,9 +27,31 @@ export class NeatQueueService {
 
             console.log('🎮 Triggering NeatQueue match creation...');
 
+            // Step 1: Force add players to the queue
+            // Filter out bots or invalid IDs if necessary
+            for (const player of players) {
+                // Assuming player object has discord_id. If it's a bot ID (starts with 'bot_'), skip it?
+                // NeatQueue might not support adding non-discord users.
+                // If it's a real player from web, they should have a discord_id.
+                const discordId = player.discord_id || player.id;
+
+                // Skip if it looks like a generated bot ID (e.g. "bot_123...") unless we can add them
+                // For now, let's try to add everyone who has a valid-looking Discord ID (numeric)
+                if (discordId && /^\d+$/.test(discordId)) {
+                    console.log(`Adding player ${player.username} (${discordId}) to queue...`);
+                    await channel.send(`!add <@${discordId}>`);
+                    // Small delay to prevent rate limits / order issues
+                    await new Promise(r => setTimeout(r, 500));
+                }
+            }
+
             // Send the start command to NeatQueue
             // Note: Adjust this command based on your NeatQueue configuration
-            await channel.send('/start');
+            await channel.send('/start'); // Try slash command first? Bots can't send slash commands easily.
+            // If NeatQueue supports text command:
+            // await channel.send('!start'); 
+            // Or maybe just force start if it doesn't auto-start? 
+            // Usually adding 10 players auto-starts it.
 
             // Wait for NeatQueue's response
             const serverInfo = await this.waitForMatchCreation(channel);
