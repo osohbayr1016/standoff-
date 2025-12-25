@@ -26,6 +26,8 @@ export default function MapBanPage({ partyMembers, onCancel: _onCancel, onMapSel
   const [mapBanPhase, setMapBanPhase] = useState(true);
   const [timeLeft, setTimeLeft] = useState(BAN_TIMEOUT);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const autoBanInProgressRef = useRef<boolean>(false);
+  const pendingTeamSwitchRef = useRef<boolean>(false);
 
   const { sendMessage, lastMessage } = useWebSocket(); // Hook
 
@@ -76,11 +78,12 @@ export default function MapBanPage({ partyMembers, onCancel: _onCancel, onMapSel
         ];
       });
 
-      // Clear timer before switching teams
+      // Clear timer and reset auto-ban flag
       if (timerRef.current) {
         clearInterval(timerRef.current);
         timerRef.current = null;
       }
+      autoBanInProgressRef.current = false;
 
       // When only 1 map remains (6 maps banned), end ban phase
       if (newBanned.length >= 6) {
@@ -90,16 +93,12 @@ export default function MapBanPage({ partyMembers, onCancel: _onCancel, onMapSel
           setTimeout(() => {
             setSelectedMap(remainingMap);
             setMapBanPhase(false);
+            setTimeLeft(0);
           }, 100);
         }
       } else {
-        // Switch teams for next ban (only if more than 1 map remains)
-        // Use setTimeout to ensure state update happens after bannedMaps update
-        setTimeout(() => {
-          setCurrentBanTeam((prevTeam) => {
-            return prevTeam === 'alpha' ? 'bravo' : 'alpha';
-          });
-        }, 150);
+        // Mark that we need to switch teams after this state update completes
+        pendingTeamSwitchRef.current = true;
       }
 
       return newBanned;
@@ -107,32 +106,64 @@ export default function MapBanPage({ partyMembers, onCancel: _onCancel, onMapSel
   };
 
   const handleBanMap = (mapName: string) => {
+    // Prevent banning if auto-ban is in progress
+    if (autoBanInProgressRef.current) {
+      return;
+    }
+    // Prevent banning if already banned
+    if (bannedMaps.includes(mapName)) {
+      return;
+    }
     if (banMapRef.current) {
       banMapRef.current(mapName, currentBanTeam);
     }
   };
 
+  // Handle team switching after a ban completes
   useEffect(() => {
-    if (!mapBanPhase || bannedMaps.length >= 6) {
+    if (pendingTeamSwitchRef.current && bannedMaps.length < 6 && mapBanPhase) {
+      pendingTeamSwitchRef.current = false;
+      // Clear any running timer before switching teams
       if (timerRef.current) {
         clearInterval(timerRef.current);
         timerRef.current = null;
       }
+      // Switch teams for next ban
+      setCurrentBanTeam((prevTeam) => {
+        return prevTeam === 'alpha' ? 'bravo' : 'alpha';
+      });
+    }
+  }, [bannedMaps.length, mapBanPhase]);
+
+  // Timer effect - resets when team changes or ban phase starts
+  useEffect(() => {
+    // Check if ban phase should end
+    if (!mapBanPhase) {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+      setTimeLeft(0);
       return;
     }
 
-    // Reset timer when team changes
-    setTimeLeft(BAN_TIMEOUT);
-
-    // Clear any existing timer
+    // Clear any existing timer before starting a new one
     if (timerRef.current) {
       clearInterval(timerRef.current);
       timerRef.current = null;
     }
 
+    // Reset timer to full time when team changes
+    setTimeLeft(BAN_TIMEOUT);
+
     // Start new timer
     timerRef.current = setInterval(() => {
       setTimeLeft((prev) => {
+        // Don't count down if already at 0 or below
+        if (prev <= 0) {
+          return 0;
+        }
+
         const newTime = prev - 1;
 
         if (newTime <= 0) {
@@ -142,12 +173,19 @@ export default function MapBanPage({ partyMembers, onCancel: _onCancel, onMapSel
             timerRef.current = null;
           }
 
+          // Prevent multiple auto-bans from triggering
+          if (autoBanInProgressRef.current) {
+            return 0;
+          }
+
           // Time's up - auto ban random map for current team
-          // Capture currentBanTeam value before state update
+          autoBanInProgressRef.current = true;
           const teamToBan = currentBanTeam;
 
           setBannedMaps((currentBanned) => {
+            // Check if we should end ban phase
             if (currentBanned.length >= 6) {
+              autoBanInProgressRef.current = false;
               return currentBanned; // Don't ban if already at 6
             }
 
@@ -156,11 +194,14 @@ export default function MapBanPage({ partyMembers, onCancel: _onCancel, onMapSel
             if (availableMaps.length > 1 && banMapRef.current) {
               const randomMap = availableMaps[Math.floor(Math.random() * availableMaps.length)];
               // Use captured team value to ban for the correct team
+              // Small delay to ensure state updates properly
               setTimeout(() => {
-                if (banMapRef.current) {
+                if (banMapRef.current && autoBanInProgressRef.current) {
                   banMapRef.current(randomMap, teamToBan);
                 }
-              }, 100);
+              }, 50);
+            } else {
+              autoBanInProgressRef.current = false;
             }
             return currentBanned;
           });

@@ -15,6 +15,16 @@ interface MatchLobbyPageProps {
   onCancel: () => void;
 }
 
+const mapImages: Record<string, string> = {
+  Hanami: '/1200px-Hanami_Map.png',
+  Rust: '/1200px-Rust_Map.png',
+  'Zone 7': '/1200px-Zone_7_Map.jpg',
+  Dune: '/1200px-Dune_Map.png',
+  Breeze: '/1200px-Breeze_Standoff_2_Map.jpg',
+  Province: '/1200px-Province_Map.jpg',
+  Sandstone: '/1200px-Sandstone_Map.jpg',
+};
+
 export default function MatchLobbyPage({ partyMembers, selectedMap, onCancel: _onCancel }: MatchLobbyPageProps) {
   const [countdown, setCountdown] = useState(5);
   const [allReady, setAllReady] = useState(false);
@@ -156,8 +166,18 @@ export default function MatchLobbyPage({ partyMembers, selectedMap, onCancel: _o
 
       {selectedMap && (
         <div className="selected-map-display">
-          <span className="selected-map-label">Selected Map:</span>
-          <span className="selected-map-name">{selectedMap}</span>
+          {mapImages[selectedMap] && (
+            <div 
+              className="selected-map-image"
+              style={{
+                backgroundImage: `url(${mapImages[selectedMap]})`
+              }}
+            />
+          )}
+          <div className="selected-map-text">
+            <span className="selected-map-label">Selected Map:</span>
+            <span className="selected-map-name">{selectedMap}</span>
+          </div>
         </div>
       )}
 
