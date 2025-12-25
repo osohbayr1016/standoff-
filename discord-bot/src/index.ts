@@ -3,6 +3,7 @@ import dotenv from 'dotenv';
 import { setupEventHandlers } from './events';
 import { commands } from './commands';
 import { BackendService } from './services/backend';
+import { NeatQueueService } from './services/neatqueue';
 
 dotenv.config();
 
@@ -66,6 +67,23 @@ const backendService = new BackendService(
     process.env.BACKEND_WEBHOOK_SECRET
 );
 
+// Initialize NeatQueue service if configured
+if (process.env.QUEUE_CHANNEL_ID && process.env.NEATQUEUE_BOT_ID && process.env.NEATQUEUE_API_KEY) {
+    console.log('✅ NeatQueue service configured');
+    const neatQueueService = new NeatQueueService(
+        process.env.QUEUE_CHANNEL_ID,
+        process.env.NEATQUEUE_BOT_ID,
+        process.env.NEATQUEUE_API_KEY,
+        backendService
+    );
+    backendService.setNeatQueueService(neatQueueService);
+} else {
+    console.log('⚠️ NeatQueue not fully configured - will use dummy server info');
+    console.log('   QUEUE_CHANNEL_ID:', process.env.QUEUE_CHANNEL_ID ? 'Set' : 'Missing');
+    console.log('   NEATQUEUE_BOT_ID:', process.env.NEATQUEUE_BOT_ID ? 'Set' : 'Missing');
+    console.log('   NEATQUEUE_API_KEY:', process.env.NEATQUEUE_API_KEY ? 'Set' : 'Missing');
+}
+
 // Register slash commands
 async function registerCommands(botToken: string) {
     try {
@@ -103,6 +121,7 @@ client.once(Events.ClientReady, async (c) => {
 
 // Setup event handlers
 setupEventHandlers(client, backendService);
+
 
 // Handle command interactions
 client.on(Events.InteractionCreate, async (interaction) => {
