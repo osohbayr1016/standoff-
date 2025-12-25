@@ -28,7 +28,22 @@ export class NeatQueueService {
             console.log('🎮 Triggering NeatQueue match creation...');
 
             // Step 1: Force add players to the queue
-            // Filter out bots or invalid IDs if necessary
+            try {
+                // Diagnostic info
+                const guild = channel.guild;
+                // Fetch members to ensure cache is populated for diagnostics
+                await guild.members.fetch().catch(() => { });
+
+                const botsInChannel = guild.members.cache.filter(m => m.user.bot);
+                console.log(`🤖 Bots in guild: ${botsInChannel.map(b => `${b.user.username}(${b.id})`).join(', ')}`);
+                console.log(`🔍 Waiting for responses from Bot ID: ${this.neatQueueBotId}`);
+
+                const permissions = channel.permissionsFor(this.client.user!);
+                console.log(`📜 Bot Permissions in #${channel.name}: SEND_MESSAGES=${permissions?.has('SendMessages')}, VIEW_CHANNEL=${permissions?.has('ViewChannel')}, READ_MESSAGE_HISTORY=${permissions?.has('ReadMessageHistory')}`);
+            } catch (diagError) {
+                console.warn('⚠️ Diagnostic check failed (non-critical):', diagError);
+            }
+
             for (const player of players) {
                 // Assuming player object has discord_id. If it's a bot ID (starts with 'bot_'), skip it?
                 // NeatQueue might not support adding non-discord users.
