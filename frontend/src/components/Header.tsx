@@ -70,6 +70,11 @@ export default function Header({ currentPage, user, onNavigate, onLogout, active
           </div>
 
           <div className="mobile-nav-links">
+            {activeLobbyId && !['mapban', 'matchlobby'].includes(currentPage) && (
+              <button className="mobile-nav-link return-match-btn-mobile" onClick={() => { onNavigate('mapban'); setShowDropdown(false); }}>
+                <span className="pulse-dot"></span> RETURN TO MATCH
+              </button>
+            )}
             <button className={`mobile-nav-link ${currentPage === 'home' ? 'active' : ''}`} onClick={() => { onNavigate('home'); setShowDropdown(false); }}>Home</button>
             <button className={`mobile-nav-link ${currentPage === 'matchmaking' ? 'active' : ''}`} onClick={() => { onNavigate('matchmaking'); setShowDropdown(false); }}>Matchmaking</button>
             <button className={`mobile-nav-link ${currentPage === 'leaderboard' ? 'active' : ''}`} onClick={() => { onNavigate('leaderboard'); setShowDropdown(false); }}>Leaderboard</button>
