@@ -302,6 +302,51 @@ export class MatchQueueDO {
           }
         }
 
+        // FILL_BOTS: Fill queue with bots to reach 10 players and start match
+        if (data.type === 'FILL_BOTS') {
+          if (this.matchState !== 'IDLE') {
+            // Already in a match, ignore
+            return;
+          }
+
+          const merged = this.getMergedQueue();
+          const currentCount = merged.length;
+          const needed = 10 - currentCount;
+
+          if (needed <= 0) {
+            // Already have 10+, just start the match
+            if (merged.length >= 10) {
+              this.startMatch(merged.slice(0, 10));
+            }
+            return;
+          }
+
+          // Generate bot players
+          const botNames = [
+            'Bot Alpha', 'Bot Beta', 'Bot Gamma', 'Bot Delta', 'Bot Echo',
+            'Bot Foxtrot', 'Bot Golf', 'Bot Hotel', 'Bot India', 'Bot Juliet'
+          ];
+
+          const bots = [];
+          for (let i = 0; i < needed; i++) {
+            const botId = `bot_${Date.now()}_${i}_${Math.random().toString(36).substr(2, 9)}`;
+            bots.push({
+              id: botId,
+              discord_id: botId,
+              username: botNames[i % botNames.length],
+              name: botNames[i % botNames.length],
+              avatar: undefined,
+              mmr: 1000 + Math.floor(Math.random() * 500) // Random MMR between 1000-1500
+            });
+          }
+
+          // Combine real players with bots
+          const allPlayers = [...merged, ...bots].slice(0, 10);
+          
+          // Start the match with filled players
+          this.startMatch(allPlayers);
+        }
+
       } catch (err) {
         console.error('WebSocket Error:', err);
       }
@@ -390,6 +435,17 @@ setupFriendsRoutes(app);
 
 app.get('/', (c) => c.text('Standoff 2 Platform API is Online!'));
 
+// Debug endpoint to check environment variables (remove in production)
+app.get('/api/debug/env', async (c) => {
+  return c.json({
+    hasClientId: !!c.env.DISCORD_CLIENT_ID,
+    hasClientSecret: !!c.env.DISCORD_CLIENT_SECRET,
+    hasRedirectUri: !!c.env.DISCORD_REDIRECT_URI,
+    redirectUri: c.env.DISCORD_REDIRECT_URI || 'NOT SET',
+    clientId: c.env.DISCORD_CLIENT_ID || 'NOT SET'
+  });
+});
+
 // Discord OAuth2 Callback
 app.get('/api/auth/callback', async (c) => {
   const code = c.req.query('code');
@@ -398,16 +454,33 @@ app.get('/api/auth/callback', async (c) => {
     return c.text("Code not found", 400);
   }
 
+  // Validate environment variables
+  const clientId = c.env.DISCORD_CLIENT_ID;
+  const clientSecret = c.env.DISCORD_CLIENT_SECRET;
+  const redirectUri = c.env.DISCORD_REDIRECT_URI;
+
+  if (!clientId || !clientSecret || !redirectUri) {
+    console.error('Missing Discord environment variables:', {
+      hasClientId: !!clientId,
+      hasClientSecret: !!clientSecret,
+      hasRedirectUri: !!redirectUri
+    });
+    return c.json({
+      error: "Server configuration error",
+      message: "Discord OAuth credentials are not configured properly"
+    }, 500);
+  }
+
   try {
     // 1. Кодоо "Access Token" болгож солих
     const tokenResponse = await fetch('https://discord.com/api/oauth2/token', {
       method: 'POST',
       body: new URLSearchParams({
-        client_id: c.env.DISCORD_CLIENT_ID,
-        client_secret: c.env.DISCORD_CLIENT_SECRET,
+        client_id: clientId,
+        client_secret: clientSecret,
         grant_type: 'authorization_code',
         code: code,
-        redirect_uri: c.env.DISCORD_REDIRECT_URI,
+        redirect_uri: redirectUri,
       }),
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded'
@@ -421,7 +494,7 @@ app.get('/api/auth/callback', async (c) => {
       return c.json({
         error: "Failed to get access token",
         details: tokens,
-        sent_redirect_uri: c.env.DISCORD_REDIRECT_URI
+        sent_redirect_uri: redirectUri
       }, 400);
     }
 

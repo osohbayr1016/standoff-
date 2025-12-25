@@ -36,11 +36,11 @@ const allMaps = [
 const mapImages: Record<string, string> = {
   Hanami: '/1200px-Hanami_Map.png',
   Rust: '/1200px-Rust_Map.png',
-  'Zone 7': '/1200px-Zone7_Standoff_2_Map.jpg',
+  'Zone 7': '/1200px-Zone_7_Map.jpg',
   Dune: '/1200px-Dune_Map.png',
   Breeze: '/1200px-Breeze_Standoff_2_Map.jpg',
   Province: '/1200px-Province_Map.jpg',
-  Sandstone: '/1200px-Standstone_Standoff_2_Map.jpg',
+  Sandstone: '/1200px-Sandstone_Map.jpg',
 };
 
 export default function MapBanView({

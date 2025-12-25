@@ -25,5 +25,12 @@
         "MatchQueueDO"
       ]
     }
-  ]
+  ],
+  "vars": {
+    "DISCORD_CLIENT_ID": "1453495820585533480",
+    "DISCORD_REDIRECT_URI": "http://localhost:8787/api/auth/callback",
+    "DISCORD_SERVER_ID": "1452635831901753357",
+    "DISCORD_CHANNEL_ID": "1453526990798983394",
+    "FRONTEND_URL": "http://localhost:5173"
+  }
 }
