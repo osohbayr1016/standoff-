@@ -21,9 +21,10 @@ interface ProfileData {
 interface ProfilePageProps {
   user: User | null;
   onFindMatch: () => void;
+  onLogout: () => void;
 }
 
-export default function ProfilePage({ user, onFindMatch }: ProfilePageProps) {
+export default function ProfilePage({ user, onFindMatch, onLogout }: ProfilePageProps) {
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [loading, setLoading] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
@@ -31,6 +32,7 @@ export default function ProfilePage({ user, onFindMatch }: ProfilePageProps) {
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
   useEffect(() => {
     if (user?.id) {
@@ -166,9 +168,14 @@ export default function ProfilePage({ user, onFindMatch }: ProfilePageProps) {
             <div className="elo-label">COMPETITIVE MMR</div>
             <div className="elo-value">{profile?.mmr || 1000}</div>
           </div>
-          <button className="find-match-btn" onClick={onFindMatch}>
-            <span className="btn-glitch-effect">INITIATE MATCH</span>
-          </button>
+          <div className="header-buttons-group">
+            <button className="find-match-btn" onClick={onFindMatch}>
+              <span className="btn-glitch-effect">INITIATE MATCH</span>
+            </button>
+            <button className="logout-btn" onClick={() => setShowLogoutConfirm(true)}>
+              LOGOUT
+            </button>
+          </div>
         </div>
       </div>
 
@@ -213,12 +220,6 @@ export default function ProfilePage({ user, onFindMatch }: ProfilePageProps) {
           <div className="stat-value-large">{totalMatches}</div>
           <div className="stat-subtext">COMPLETED OPERATIONS</div>
         </div>
-
-        <div className="stat-card matches-card">
-          <div className="stat-title">K/D RATIO</div>
-          <div className="stat-value-large highlight">1.52</div>
-          <div className="stat-subtext">AVERAGE PERFORMANCE</div>
-        </div>
       </div>
 
       <div className="profile-bottom-section">
@@ -241,6 +242,29 @@ export default function ProfilePage({ user, onFindMatch }: ProfilePageProps) {
           </div>
         </div>
       </div>
+
+      {showLogoutConfirm && (
+        <div className="logout-confirm-overlay" onClick={() => setShowLogoutConfirm(false)}>
+          <div className="logout-confirm-dialog" onClick={(e) => e.stopPropagation()}>
+            <h3 className="confirm-title">Are you sure?</h3>
+            <p className="confirm-message">Do you want to logout?</p>
+            <div className="confirm-actions">
+              <button 
+                className="confirm-btn confirm-yes" 
+                onClick={() => { onLogout(); setShowLogoutConfirm(false); }}
+              >
+                YES
+              </button>
+              <button 
+                className="confirm-btn confirm-no" 
+                onClick={() => setShowLogoutConfirm(false)}
+              >
+                NO
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -258,7 +258,7 @@ function AppContent() {
           </>
         )}
 
-        {currentPage === 'profile' && <ProfilePage user={user} onFindMatch={handleFindMatch} />}
+        {currentPage === 'profile' && <ProfilePage user={user} onFindMatch={handleFindMatch} onLogout={handleLogout} />}
         {currentPage === 'leaderboard' && <LeaderboardPage />}
         {currentPage === 'rewards' && <RewardsPage />}
         {currentPage === 'friends' && <FriendsPage />}
