@@ -49,6 +49,7 @@ export class BackendService {
                 console.log('✅ Connected to backend WebSocket');
 
                 // Register as bot
+                console.log('👤 Sending REGISTER message for discord-bot...');
                 this.send({
                     type: 'REGISTER',
                     userId: 'discord-bot',
