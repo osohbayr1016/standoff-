@@ -2,7 +2,7 @@
 .match-lobby-page {
   position: relative;
   padding: 1rem 0.5rem;
-  padding-top: calc(60px + 1rem); /* Account for fixed header */
+  padding-top: 0; /* Main-content already has top padding */
   min-height: calc(100vh - 60px);
   display: flex;
   flex-direction: column;
@@ -309,6 +309,23 @@
   color: rgba(255, 255, 255, 0.7);
   font-size: 0.9rem;
   font-weight: 600;
+}
+
+.ready-phase-timer {
+  margin-top: 0.5rem;
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 1rem;
+  font-weight: 700;
+  font-family: monospace;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.ready-phase-timer .timer-value {
+  color: var(--primary);
+  font-size: 1.2rem;
+  font-weight: 900;
+  text-shadow: 0 0 10px rgba(255, 107, 53, 0.5);
 }
 
 .launch-game-btn {

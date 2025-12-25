@@ -47,32 +47,52 @@ export default function MatchLobbyPage({ partyMembers, selectedMap, onCancel: _o
     return '';
   })();
 
+  const [readyPhaseTimeLeft, setReadyPhaseTimeLeft] = useState(60);
+
   // Listen for LOBBY_UPDATE from server
   useEffect(() => {
     if (lastMessage && lastMessage.type === 'LOBBY_UPDATE') {
       const lobby = lastMessage.lobby;
-      if (lobby && lobby.readyPlayers) {
+      
+      // Sync ready players from readyPhaseState
+      if (lobby && lobby.readyPhaseState) {
+        const readyState = lobby.readyPhaseState;
+        setReadyPlayers(new Set(readyState.readyPlayers || []));
+        
+        // Calculate ready phase timer
+        if (readyState.phaseActive && readyState.readyPhaseStartTimestamp) {
+          const elapsed = Date.now() - readyState.readyPhaseStartTimestamp;
+          const remaining = Math.max(0, readyState.readyPhaseTimeout - Math.floor(elapsed / 1000));
+          setReadyPhaseTimeLeft(remaining);
+        }
+      } else if (lobby && lobby.readyPlayers) {
+        // Fallback to old format
         setReadyPlayers(new Set(lobby.readyPlayers));
       }
     }
-  }, [lastMessage]);
+    
+    // Handle MATCH_CANCELLED
+    if (lastMessage && lastMessage.type === 'MATCH_CANCELLED') {
+      alert('Match cancelled: ' + (lastMessage.reason || 'Not all players ready in time'));
+      // Navigate back will be handled by parent component
+      if (onCancel) {
+        onCancel();
+      }
+    }
+  }, [lastMessage, onCancel]);
 
-  // Auto-ready bots after a short delay
+  // Auto-ready bots after a short delay - send to server
   useEffect(() => {
     const botReadyTimer = setTimeout(() => {
-      setReadyPlayers((prev) => {
-        const newReady = new Set(prev);
-        partyMembers.forEach((player) => {
-          // Auto-ready bots (players whose ID starts with 'bot-')
-          if (player.id && player.id.startsWith('bot-')) {
-            newReady.add(player.id);
-          }
-        });
-        return newReady;
+      partyMembers.forEach((player) => {
+        // Auto-ready bots (players whose ID starts with 'bot-')
+        if (player.id && player.id.startsWith('bot-')) {
+          sendMessage({ type: 'PLAYER_READY', userId: player.id });
+        }
       });
     }, 1000);
     return () => clearTimeout(botReadyTimer);
-  }, [partyMembers]);
+  }, [partyMembers, sendMessage]);
 
   const handleLaunchGame = useCallback(() => {
     // TODO: Implement launch game logic - could connect to Discord or open game client
@@ -110,7 +130,18 @@ export default function MatchLobbyPage({ partyMembers, selectedMap, onCancel: _o
   const handleReadyClick = (playerId: string) => {
     // Send ready status to server
     sendMessage({ type: 'PLAYER_READY', userId: playerId });
+    // Don't update local state - wait for server confirmation via LOBBY_UPDATE
   };
+  
+  // Ready phase timer countdown
+  useEffect(() => {
+    if (readyPhaseTimeLeft > 0) {
+      const timer = setInterval(() => {
+        setReadyPhaseTimeLeft((prev) => Math.max(0, prev - 1));
+      }, 1000);
+      return () => clearInterval(timer);
+    }
+  }, [readyPhaseTimeLeft]);
 
   // Split players into two teams of 5
   const teamAlpha = partyMembers.slice(0, 5);
@@ -214,7 +245,14 @@ export default function MatchLobbyPage({ partyMembers, selectedMap, onCancel: _o
         </div>
       ) : (
         <div className="lobby-status">
-          <div className="waiting-message">Waiting for players to be ready... ({readyPlayers.size}/10)</div>
+          <div className="waiting-message">
+            Waiting for players to be ready... ({readyPlayers.size}/10)
+          </div>
+          {readyPhaseTimeLeft > 0 && (
+            <div className="ready-phase-timer">
+              Time remaining: <span className="timer-value">{String(Math.floor(readyPhaseTimeLeft / 60)).padStart(2, '0')}:{String(readyPhaseTimeLeft % 60).padStart(2, '0')}</span>
+            </div>
+          )}
         </div>
       )}
     </div>

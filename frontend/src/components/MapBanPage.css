@@ -3,6 +3,7 @@
   width: 100%;
   min-height: calc(100vh - 60px);
   padding: 1rem 0.5rem;
+  padding-top: 0; /* Main-content already has top padding */
   overflow: hidden;
   background: #0f172a;
 }

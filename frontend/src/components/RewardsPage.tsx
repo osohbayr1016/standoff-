@@ -25,6 +25,7 @@ const achievementBadges = [
 export default function RewardsPage() {
   return (
     <div className="rewards-page">
+      <div className="cyber-grid-bg"></div>
       <h1 className="rewards-page-title">Rewards</h1>
 
       <div className="rewards-content">
