@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Hexagon, Crosshair, Copy } from 'lucide-react';
+import { useWebSocket } from './WebSocketContext';
 import './MatchLobbyPage.css';
 
 interface Player {
@@ -37,6 +38,7 @@ export default function MatchLobbyPage({ lobby, serverInfo: initialServerInfo }:
   const [matchState, setMatchState] = useState<'LOBBY' | 'Readey' | 'LIVE'>('LOBBY');
   const [serverInfo, setServerInfo] = useState(initialServerInfo || lobby?.serverInfo);
   const isLive = !!(serverInfo?.ip && serverInfo?.password);
+  const { leaveMatch } = useWebSocket();
 
   const teamA = lobby?.teamA || [];
   const teamB = lobby?.teamB || [];
@@ -71,6 +73,15 @@ export default function MatchLobbyPage({ lobby, serverInfo: initialServerInfo }:
   const handleCopy = (text: string) => {
     navigator.clipboard.writeText(text);
     // Toast logic here
+  };
+
+  const handleLeaveMatch = () => {
+    if (confirm('Are you sure you want to leave this match? You can requeue immediately after leaving.')) {
+      const user = JSON.parse(localStorage.getItem('user') || '{}');
+      if (user.id) {
+        leaveMatch(user.id, lobby?.id);
+      }
+    }
   };
 
   return (
@@ -184,7 +195,7 @@ export default function MatchLobbyPage({ lobby, serverInfo: initialServerInfo }:
                   </div>
                 )}
 
-                {/* Emergency Leave Match Button */}
+                {/* Leave Match Button */}
                 <button
                   className="copy-btn"
                   style={{
@@ -193,13 +204,7 @@ export default function MatchLobbyPage({ lobby, serverInfo: initialServerInfo }:
                     marginTop: '1rem',
                     width: '100%'
                   }}
-                  onClick={() => {
-                    if (confirm('Are you sure you want to leave this match? This will clear your match state.')) {
-                      localStorage.removeItem('activeLobbyId');
-                      localStorage.removeItem('matchData');
-                      window.location.href = '/';
-                    }
-                  }}
+                  onClick={handleLeaveMatch}
                 >
                   LEAVE MATCH
                 </button>

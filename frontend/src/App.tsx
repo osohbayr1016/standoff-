@@ -396,6 +396,20 @@ function AppContent() {
         setCurrentPage("matchmaking");
       }
     }
+
+    // 8. Handle Leave Match Success
+    if (lastMessage.type === "LEAVE_MATCH_SUCCESS") {
+      console.log("Leave Match Success:", lastMessage);
+      // Clear all match-related state
+      setActiveLobbyId(undefined);
+      setMatchData(null);
+      setLobbyPartyMembers([]);
+      setSelectedMap(undefined);
+      setUserNavigatedAway(false);
+      // Navigate to matchmaking page
+      setCurrentPage("matchmaking");
+    }
+
   }, [lastMessage, currentPage]);
 
   // Discord OAuth callback-ыг шалгах

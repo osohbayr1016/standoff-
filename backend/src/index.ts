@@ -764,6 +764,95 @@ export class MatchQueueDO {
           }
         }
 
+        // LEAVE_MATCH - Remove player from active match
+        if (data.type === 'LEAVE_MATCH') {
+          const userId = data.userId || currentUserId;
+          const lobbyId = data.lobbyId;
+
+          if (!userId) {
+            ws.send(JSON.stringify({
+              type: 'ERROR',
+              message: 'User ID required to leave match'
+            }));
+            return;
+          }
+
+          // Load match state if not initialized
+          if (!this.initialized || !this.currentLobby) {
+            await this.loadMatchState();
+          }
+
+          // Validate user is in an active match
+          if (!this.currentLobby || (lobbyId && this.currentLobby.id !== lobbyId)) {
+            ws.send(JSON.stringify({
+              type: 'ERROR',
+              message: 'No active match found or invalid lobby ID'
+            }));
+            return;
+          }
+
+          const players = this.currentLobby.players || [];
+          const playerIndex = players.findIndex((p: any) => p.id === userId || p.discord_id === userId);
+
+          if (playerIndex === -1) {
+            ws.send(JSON.stringify({
+              type: 'ERROR',
+              message: 'Player not in this match'
+            }));
+            return;
+          }
+
+          // Remove player from lobby
+          this.currentLobby.players.splice(playerIndex, 1);
+
+          // Remove from teams
+          const teamAIndex = this.currentLobby.teamA?.findIndex((p: any) => p.id === userId || p.discord_id === userId);
+          if (teamAIndex !== undefined && teamAIndex !== -1) {
+            this.currentLobby.teamA.splice(teamAIndex, 1);
+          }
+
+          const teamBIndex = this.currentLobby.teamB?.findIndex((p: any) => p.id === userId || p.discord_id === userId);
+          if (teamBIndex !== undefined && teamBIndex !== -1) {
+            this.currentLobby.teamB.splice(teamBIndex, 1);
+          }
+
+          // Remove from ready players if in ready phase
+          if (this.currentLobby.readyPhaseState?.readyPlayers) {
+            const readyIndex = this.currentLobby.readyPhaseState.readyPlayers.indexOf(userId);
+            if (readyIndex !== -1) {
+              this.currentLobby.readyPhaseState.readyPlayers.splice(readyIndex, 1);
+            }
+          }
+
+          console.log(`Player ${userId} left match ${this.currentLobby.id}`);
+
+          // Check if match should be cancelled (no players left or too few)
+          if (this.currentLobby.players.length === 0) {
+            console.log('All players left, resetting match state');
+            this.matchState = 'IDLE';
+            this.currentLobby = null;
+            await this.saveMatchState();
+
+            // Broadcast match reset
+            this.broadcastToAll(JSON.stringify({
+              type: 'MATCH_CANCELLED',
+              reason: 'All players left the match'
+            }));
+          } else {
+            // Save updated state and broadcast to remaining players
+            await this.saveMatchState();
+            this.broadcastLobbyUpdate();
+          }
+
+          // Send confirmation to leaving player
+          ws.send(JSON.stringify({
+            type: 'LEAVE_MATCH_SUCCESS',
+            message: 'Successfully left the match',
+            lobbyId: lobbyId || this.currentLobby?.id
+          }));
+        }
+
+
         // SEND_INVITE: User A invites User B
         if (data.type === 'SEND_INVITE') {
           const { targetId, fromUser, lobbyId } = data; // fromUser contains { id, username, avatar }

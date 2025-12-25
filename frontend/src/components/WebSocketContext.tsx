@@ -9,6 +9,7 @@ interface WebSocketContextType {
     isConnected: boolean;
     registerUser: (userId: string) => void;
     requestMatchState: (lobbyId: string) => void;
+    leaveMatch: (userId: string, lobbyId?: string) => void;
 }
 
 const WebSocketContext = createContext<WebSocketContextType | undefined>(undefined);
@@ -128,8 +129,22 @@ export const WebSocketProvider = ({ children, url }: { children: ReactNode; url:
         }
     }, []);
 
+    // Leave current match
+    const leaveMatch = useCallback((userId: string, lobbyId?: string) => {
+        if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+            console.log("Leaving match:", { userId, lobbyId });
+            socketRef.current.send(JSON.stringify({
+                type: 'LEAVE_MATCH',
+                userId: userId,
+                lobbyId: lobbyId
+            }));
+        } else {
+            console.warn('WebSocket not connected, cannot leave match');
+        }
+    }, []);
+
     return (
-        <WebSocketContext.Provider value={{ socket, sendMessage, lastMessage, messageLog, isConnected, registerUser, requestMatchState }}>
+        <WebSocketContext.Provider value={{ socket, sendMessage, lastMessage, messageLog, isConnected, registerUser, requestMatchState, leaveMatch }}>
             {children}
         </WebSocketContext.Provider>
     );
