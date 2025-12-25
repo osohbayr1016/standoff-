@@ -30,6 +30,25 @@ for (const envVar of requiredEnvVars) {
     }
 }
 
+// Validate Discord token
+const token = getDiscordToken();
+if (!token) {
+    console.error('❌ DISCORD_TOKEN or DISCORD_BOT_TOKEN is not set!');
+    process.exit(1);
+}
+
+// Check if token is a placeholder
+if (token.includes('your_bot_token') || token.includes('placeholder') || token.length < 50) {
+    console.error('❌ Invalid Discord token detected!');
+    console.error('   Token appears to be a placeholder or too short.');
+    console.error('   Token length:', token.length);
+    console.error('   Please set a valid Discord bot token in your environment variables.');
+    console.error('   Get your token from: https://discord.com/developers/applications');
+    process.exit(1);
+}
+
+console.log('✅ Discord token validated (length:', token.length, 'characters)');
+
 // Create Discord client
 const client = new Client({
     intents: [
@@ -48,11 +67,11 @@ const backendService = new BackendService(
 );
 
 // Register slash commands
-async function registerCommands() {
+async function registerCommands(botToken: string) {
     try {
         console.log('🔄 Registering slash commands...');
 
-        const rest = new REST().setToken(getDiscordToken()!);
+        const rest = new REST().setToken(botToken);
 
         await rest.put(
             Routes.applicationGuildCommands(
@@ -74,7 +93,7 @@ client.once(Events.ClientReady, async (c) => {
     console.log(`🎮 Serving ${c.guilds.cache.size} guild(s)`);
 
     // Register commands
-    await registerCommands();
+    await registerCommands(token);
 
     // Connect to backend
     await backendService.connect(client);
@@ -121,6 +140,6 @@ process.on('unhandledRejection', (error) => {
 });
 
 // Login
-client.login(getDiscordToken());
-
 console.log('🔄 Starting Discord bot...');
+client.login(token);
+
