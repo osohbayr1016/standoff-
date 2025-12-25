@@ -11,7 +11,6 @@ import LeaderboardPage from "./components/LeaderboardPage";
 import RewardsPage from "./components/RewardsPage";
 import FriendsPage from "./components/FriendsPage";
 import MatchmakingPage from "./components/MatchmakingPage";
-import MatchLobbyPage from "./components/MatchLobbyPage";
 import MapBanPage from "./components/MapBanPage";
 import AuthPage from "./components/AuthPage";
 import NotFoundPage from "./components/NotFoundPage";
@@ -46,7 +45,6 @@ function AppContent() {
       "rewards",
       "friends",
       "matchmaking",
-      "matchlobby",
       "mapban",
     ];
     if (savedPage && validPages.includes(savedPage)) {
@@ -130,15 +128,40 @@ function AppContent() {
       }
     }
 
-    // 3. Handle Match Cancelled
+    // 3. Lobby Update / Match Start Catch-up (Persistence)
+    if (lastMessage.type === "LOBBY_UPDATE" || lastMessage.type === "MATCH_START") {
+      console.log("Persistence Update:", lastMessage.type);
+      const lobby = lastMessage.lobby || lastMessage.matchData;
+
+      if (lobby && lobby.id) {
+        setActiveLobbyId(lobby.id);
+
+        // Update party members
+        if (lobby.players && Array.isArray(lobby.players)) {
+          const players = lobby.players.map((p: any) => ({
+            id: p.id || p.discord_id,
+            username: p.username || p.name || "Unknown",
+            avatar: p.avatar || p.avatar_url,
+            mmr: p.mmr || 1000,
+          }));
+          setLobbyPartyMembers(players);
+        }
+
+        // AUTO-NAVIGATE if idle
+        if (currentPage === "matchmaking" || currentPage === "home") {
+          setCurrentPage("mapban");
+        }
+      }
+    }
+
+    // 4. Handle Match Cancelled
     if (lastMessage.type === "MATCH_CANCELLED") {
       console.log("Match Cancelled:", lastMessage);
       // Clear lobby state
       setActiveLobbyId(undefined);
       setLobbyPartyMembers([]);
-      setSelectedMap(undefined);
       // Navigate back to matchmaking or home
-      if (currentPage === "mapban" || currentPage === "matchlobby") {
+      if (currentPage === "mapban") {
         setCurrentPage("matchmaking");
       }
     }
@@ -176,8 +199,7 @@ function AppContent() {
 
         try {
           const res = await fetch(
-            `${
-              import.meta.env.VITE_BACKEND_URL || "http://localhost:8787"
+            `${import.meta.env.VITE_BACKEND_URL || "http://localhost:8787"
             }/api/profile/${userData.id}`
           );
           if (res.ok) {
@@ -351,21 +373,10 @@ function AppContent() {
             onStartLobby={handleStartLobby}
           />
         )}
-        {currentPage === "matchlobby" && (
-          <MatchLobbyPage
-            partyMembers={lobbyPartyMembers}
-            selectedMap={selectedMap}
-            onCancel={() => setCurrentPage("home")}
-          />
-        )}
         {currentPage === "mapban" && (
           <MapBanPage
             partyMembers={lobbyPartyMembers}
             onCancel={() => setCurrentPage("home")}
-            onMapSelected={(map) => {
-              setSelectedMap(map);
-              setCurrentPage("matchlobby");
-            }}
           />
         )}
       </main>

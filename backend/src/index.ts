@@ -219,18 +219,27 @@ export class MatchQueueDO {
             ws.send(JSON.stringify({ type: 'REGISTER_ACK', userId: data.userId }));
 
             // Catch-up: If match is already loading/started, send them to it
-            if (this.matchState === 'LOBBY' && this.currentLobby) {
-              ws.send(JSON.stringify({
-                type: 'MATCH_READY',
-                lobbyId: this.currentLobby.id,
-                players: this.currentLobby.players,
-                captains: [this.currentLobby.captainA, this.currentLobby.captainB]
-              }));
-              // Also send LOBBY_UPDATE immediately with current state
-              ws.send(JSON.stringify({
-                type: 'LOBBY_UPDATE',
-                lobby: this.currentLobby
-              }));
+            if ((this.matchState === 'LOBBY' || this.matchState === 'GAME') && this.currentLobby) {
+              const players = this.currentLobby.players || [];
+              const isUserInMatch = players.some((p: any) => p.id === data.userId || p.discord_id === data.userId);
+
+              if (isUserInMatch) {
+                // Send MATCH_READY to trigger navigation
+                ws.send(JSON.stringify({
+                  type: 'MATCH_READY',
+                  lobbyId: this.currentLobby.id,
+                  players: this.currentLobby.players,
+                  captains: [this.currentLobby.captainA, this.currentLobby.captainB]
+                }));
+                // Also send LOBBY_UPDATE immediately with current state
+                ws.send(JSON.stringify({
+                  type: 'LOBBY_UPDATE',
+                  lobby: this.currentLobby
+                }));
+              } else {
+                // Not in match, send normal queue status
+                this.broadcastMergedQueue();
+              }
             } else {
               // Normal: Send queue status
               this.broadcastMergedQueue();
