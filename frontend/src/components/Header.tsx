@@ -62,8 +62,7 @@ export default function Header({
 
         {/* Desktop Nav */}
         <nav className="nav desktop-nav">
-<<<<<<< HEAD
-          {activeLobbyId && !["mapban", "matchlobby"].includes(currentPage) && (
+          {activeLobbyId && !["mapban", "matchlobby", "matchgame"].includes(currentPage) && (
             <button
               className="nav-link return-match-btn"
               onClick={() => {
@@ -83,17 +82,15 @@ export default function Header({
             Нүүр
           </button>
           <button
-            className={`nav-link ${
-              currentPage === "matchmaking" ? "active" : ""
-            }`}
+            className={`nav-link ${currentPage === "matchmaking" ? "active" : ""
+              }`}
             onClick={() => onNavigate("matchmaking")}
           >
             Тоглох
           </button>
           <button
-            className={`nav-link ${
-              currentPage === "leaderboard" ? "active" : ""
-            }`}
+            className={`nav-link ${currentPage === "leaderboard" ? "active" : ""
+              }`}
             onClick={() => onNavigate("leaderboard")}
           >
             Чансаа
@@ -130,7 +127,7 @@ export default function Header({
 
           <div className="mobile-nav-links">
             {activeLobbyId &&
-              !["mapban", "matchlobby"].includes(currentPage) && (
+              !["mapban", "matchlobby", "matchgame"].includes(currentPage) && (
                 <button
                   className="mobile-nav-link return-match-btn-mobile"
                   onClick={() => {
@@ -145,54 +142,18 @@ export default function Header({
                 </button>
               )}
             <button
-              className={`mobile-nav-link ${
-                currentPage === "home" ? "active" : ""
-              }`}
+              className={`mobile-nav-link ${currentPage === "home" ? "active" : ""
+                }`}
               onClick={() => {
                 onNavigate("home");
-=======
-          {activeLobbyId && !['mapban', 'matchlobby', 'matchgame'].includes(currentPage) && (
-            <button className="nav-link return-match-btn" onClick={() => {
-              if (onReturnToMatch) {
-                onReturnToMatch();
-              }
-              onNavigate('matchgame');
-            }}>
-              <span className="pulse-dot"></span> RETURN TO MATCH
-            </button>
-          )}
-          <button className={`nav-link ${currentPage === 'home' ? 'active' : ''}`} onClick={() => onNavigate('home')}>Home</button>
-          <button className={`nav-link ${currentPage === 'matchmaking' ? 'active' : ''}`} onClick={() => onNavigate('matchmaking')}>Matchmaking</button>
-          <button className={`nav-link ${currentPage === 'leaderboard' ? 'active' : ''}`} onClick={() => onNavigate('leaderboard')}>Leaderboard</button>
-          <button className={`nav-link ${currentPage === 'rewards' ? 'active' : ''}`} onClick={() => onNavigate('rewards')}>Rewards</button>
-          <button className={`nav-link ${currentPage === 'friends' ? 'active' : ''}`} onClick={() => onNavigate('friends')}>Friends</button>
-        </nav>
-
-        {/* Mobile Side Drawer */}
-        <div className={`mobile-nav-overlay ${showDropdown ? 'active' : ''}`} onClick={() => setShowDropdown(false)}></div>
-        <nav className={`mobile-nav-drawer ${showDropdown ? 'active' : ''}`}>
-          <div className="mobile-nav-header">
-            <span className="mobile-nav-title">MENU</span>
-            <button className="close-nav-btn" onClick={() => setShowDropdown(false)}>✕</button>
-          </div>
-
-          <div className="mobile-nav-links">
-            {activeLobbyId && !['mapban', 'matchlobby', 'matchgame'].includes(currentPage) && (
-              <button className="mobile-nav-link return-match-btn-mobile" onClick={() => {
-                if (onReturnToMatch) {
-                  onReturnToMatch();
-                }
-                onNavigate('matchgame');
->>>>>>> b37cefacd5935a9f26aa22491f4429ab5b1ef73e
                 setShowDropdown(false);
               }}
             >
               Нүүр
             </button>
             <button
-              className={`mobile-nav-link ${
-                currentPage === "matchmaking" ? "active" : ""
-              }`}
+              className={`mobile-nav-link ${currentPage === "matchmaking" ? "active" : ""
+                }`}
               onClick={() => {
                 onNavigate("matchmaking");
                 setShowDropdown(false);
@@ -201,9 +162,8 @@ export default function Header({
               Тоглолт олох
             </button>
             <button
-              className={`mobile-nav-link ${
-                currentPage === "leaderboard" ? "active" : ""
-              }`}
+              className={`mobile-nav-link ${currentPage === "leaderboard" ? "active" : ""
+                }`}
               onClick={() => {
                 onNavigate("leaderboard");
                 setShowDropdown(false);
@@ -212,9 +172,8 @@ export default function Header({
               Чансаа
             </button>
             <button
-              className={`mobile-nav-link ${
-                currentPage === "rewards" ? "active" : ""
-              }`}
+              className={`mobile-nav-link ${currentPage === "rewards" ? "active" : ""
+                }`}
               onClick={() => {
                 onNavigate("rewards");
                 setShowDropdown(false);
@@ -223,9 +182,8 @@ export default function Header({
               Урамшуулал
             </button>
             <button
-              className={`mobile-nav-link ${
-                currentPage === "friends" ? "active" : ""
-              }`}
+              className={`mobile-nav-link ${currentPage === "friends" ? "active" : ""
+                }`}
               onClick={() => {
                 onNavigate("friends");
                 setShowDropdown(false);
@@ -254,16 +212,12 @@ export default function Header({
                   )}
                 </div>
                 <div className="mobile-user-details">
-<<<<<<< HEAD
                   <span className="mobile-username">
                     {user.standoff_nickname || user.username}
                   </span>
-=======
-                  <span className="mobile-username">{user.standoff_nickname || user.username}</span>
->>>>>>> b37cefacd5935a9f26aa22491f4429ab5b1ef73e
                   <span className="mobile-elo">ELO: {user.elo || 1000}</span>
-                </div>
-              </div>
+                </div >
+              </div >
               <button
                 className="mobile-logout-btn"
                 onClick={() => {
@@ -273,28 +227,31 @@ export default function Header({
               >
                 Гарах
               </button>
-            </div>
-          )}
-        </nav>
+            </div >
+          )
+          }
+        </nav >
 
         {/* Desktop User Info (Hidden on Mobile if Drawer is used for user info too, or keep concise) */}
-        {user && (
-          <div
-            className="user-info desktop-user-info"
-            onClick={() => onNavigate("profile")}
-            style={{ cursor: "pointer" }}
-          >
-            <div className="user-avatar-frame-header">
-              {getAvatarUrl() ? (
-                <img src={getAvatarUrl()!} alt="avatar" />
-              ) : (
-                <div className="avatar-fallback-header">{user.username[0]}</div>
-              )}
+        {
+          user && (
+            <div
+              className="user-info desktop-user-info"
+              onClick={() => onNavigate("profile")}
+              style={{ cursor: "pointer" }}
+            >
+              <div className="user-avatar-frame-header">
+                {getAvatarUrl() ? (
+                  <img src={getAvatarUrl()!} alt="avatar" />
+                ) : (
+                  <div className="avatar-fallback-header">{user.username[0]}</div>
+                )}
+              </div>
+              <span className="user-elo">ELO: {user.elo || 1000}</span>
             </div>
-            <span className="user-elo">ELO: {user.elo || 1000}</span>
-          </div>
-        )}
-      </div>
-    </header>
+          )
+        }
+      </div >
+    </header >
   );
 }
