@@ -46,7 +46,6 @@ export class MatchQueueDO {
   matchState: 'IDLE' | 'LOBBY' | 'GAME' = 'IDLE';
   currentLobby: any = null; // Will include: { id, players, captains, teams, readyPlayers, mapBanState, readyPhaseState, serverInfo }
   readyPhaseTimer: any = null; // Timer for ready phase countdown
-  chatMessages: Array<{ userId: string; username: string; message: string; timestamp: number }> = []; // Chat messages for current lobby
 
   async alarm() {
     await this.syncWithNeatQueue(); // Updates this.remoteQueue
@@ -108,27 +107,24 @@ export class MatchQueueDO {
         readyPlayers: [],
         readyPhaseStartTimestamp: undefined,
         readyPhaseTimeout: 60 // 60 seconds (1 minute)
-      },
-      chatMessages: [] // Initialize empty chat for this lobby
+      }
     };
-    
-    // Clear chat messages when starting new match
-    this.chatMessages = [];
 
     // ... (rest of startMatch)
 
-    // Send MATCH_READY first to trigger page navigation
-    const matchReadyMessage = JSON.stringify({
+    this.broadcastLobbyUpdate(); // Send initial state (replaces MATCH_READY? No, keep MATCH_READY for transition)
+    // Actually MATCH_READY is for transition to MapBan.
+    // LOBBY_UPDATE is for sync within pages.
+
+    // We keep sending MATCH_READY to trigger the page switch initially.
+    const message = JSON.stringify({
       type: 'MATCH_READY',
       lobbyId: this.currentLobby.id,
       players: players,
       captains: [captain1, captain2]
     });
 
-    // Send both MATCH_READY and LOBBY_UPDATE immediately
-    // MATCH_READY triggers navigation, LOBBY_UPDATE provides full state
-    this.broadcastToAll(matchReadyMessage);
-    this.broadcastLobbyUpdate(); // Send full state immediately after
+    this.broadcastToAll(message);
 
     // Cleanup Local Queue (Web users enter match)
     players.forEach(p => {
@@ -478,44 +474,6 @@ export class MatchQueueDO {
             }));
 
             console.error('❌ Server creation failed:', data.error);
-          }
-        }
-
-        // CHAT_MESSAGE - Send chat message in lobby
-        if (data.type === 'CHAT_MESSAGE') {
-          if (this.currentLobby && this.matchState === 'LOBBY') {
-            const { message } = data;
-            const userId = data.userId || currentUserId;
-            const username = data.username || (currentUserData ? currentUserData.username : 'Unknown');
-            
-            if (message && userId && message.trim().length > 0) {
-              const chatMessage = {
-                userId: userId,
-                username: username,
-                message: message.trim(),
-                timestamp: Date.now()
-              };
-              
-              // Add to lobby chat messages
-              if (!this.currentLobby.chatMessages) {
-                this.currentLobby.chatMessages = [];
-              }
-              this.currentLobby.chatMessages.push(chatMessage);
-              
-              // Keep only last 100 messages
-              if (this.currentLobby.chatMessages.length > 100) {
-                this.currentLobby.chatMessages.shift();
-              }
-              
-              // Broadcast chat message to all players in lobby
-              this.broadcastToAll(JSON.stringify({
-                type: 'CHAT_MESSAGE',
-                message: chatMessage
-              }));
-              
-              // Also update lobby state
-              this.broadcastLobbyUpdate();
-            }
           }
         }
 

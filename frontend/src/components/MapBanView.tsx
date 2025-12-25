@@ -4,12 +4,10 @@ import TeamLeaderCard from './TeamLeaderCard';
 import MapGrid from './MapGrid';
 import MapBanHeader from './MapBanHeader';
 import MapBanHistory from './MapBanHistory';
-import LobbyChat from './LobbyChat';
 
 interface MapBanViewProps {
   lobbyId: string;
   currentUserId: string;
-  currentUsername?: string;
   mapBanData: {
     availableMaps: string[];
     bannedMaps: string[];
@@ -50,8 +48,6 @@ export default function MapBanView({
   onBanMap,
   isTeamLeader,
   userTeam,
-  currentUserId,
-  currentUsername,
 }: MapBanViewProps) {
   const [isBanning, setIsBanning] = useState<string | null>(null);
 
@@ -139,11 +135,6 @@ export default function MapBanView({
           </p>
         </div>
       )}
-
-      <LobbyChat 
-        currentUserId={currentUserId}
-        currentUsername={currentUsername || 'Player'}
-      />
     </div>
   );
 }

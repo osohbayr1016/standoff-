@@ -25,7 +25,8 @@ export default function MapBanPage({ partyMembers, onCancel: _onCancel, onMapSel
   const [banHistory, setBanHistory] = useState<Array<{ team: string; map: string; timestamp: Date }>>([]);
   const [mapBanPhase, setMapBanPhase] = useState(true);
   const [timeLeft, setTimeLeft] = useState(BAN_TIMEOUT);
-  const [stateInitialized, setStateInitialized] = useState(false);
+  // Initialize as true if we have party members (coming from matchmaking)
+  const [stateInitialized, setStateInitialized] = useState(partyMembers.length > 0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const autoBanInProgressRef = useRef<boolean>(false);
 
@@ -90,7 +91,7 @@ export default function MapBanPage({ partyMembers, onCancel: _onCancel, onMapSel
           setTimeLeft(0);
         }
         
-        // Mark state as initialized
+        // Mark state as initialized (in case it wasn't already)
         setStateInitialized(true);
       }
     }
@@ -304,7 +305,6 @@ export default function MapBanPage({ partyMembers, onCancel: _onCancel, onMapSel
       <MapBanView
         lobbyId="current-lobby"
         currentUserId={currentUserId}
-        currentUsername={currentUsername}
         mapBanData={mapBanData}
         onBanMap={handleBanMap}
         isTeamLeader={isTeamLeader}
