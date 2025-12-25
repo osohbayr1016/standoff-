@@ -430,7 +430,7 @@ export class MatchQueueDO {
         `https://api.neatqueue.com/api/v1/queue/${this.env.DISCORD_CHANNEL_ID}/players`,
         {
           headers: {
-            'Authorization': `Bearer ${apiKey}`
+            'Authorization': `${apiKey}`
           },
           signal: controller.signal
         }
@@ -439,8 +439,8 @@ export class MatchQueueDO {
       clearTimeout(timeoutId);
 
       if (response.ok) {
-        const players = await response.json() as any[];
-        this.remoteQueue = players || [];
+        const data = await response.json() as any;
+        this.remoteQueue = data.players || [];
       } else {
         console.error(`❌ NeatQueue API returned ${response.status}: ${await response.text()}`);
       }
@@ -670,7 +670,28 @@ export class MatchQueueDO {
                 lobbyId: this.currentLobby.id
               }));
 
-              // Trigger server creation (if you have a method for this)
+              // Trigger server creation by notifying Discord Bot
+              const botWs = this.userSockets.get('discord-bot');
+              if (botWs) {
+                botWs.send(JSON.stringify({
+                  type: 'CREATE_MATCH',
+                  lobbyId: this.currentLobby.id,
+                  matchData: {
+                    id: this.currentLobby.id,
+                    lobbyId: this.currentLobby.id,
+                    players: this.currentLobby.players,
+                    teamAlpha: this.currentLobby.teamA,
+                    teamBravo: this.currentLobby.teamB,
+                    captainA: this.currentLobby.captainA,
+                    captainB: this.currentLobby.captainB,
+                    map: this.currentLobby.mapBanState?.selectedMap
+                  }
+                }));
+                console.log('🎮 Sent CREATE_MATCH to Discord bot');
+              } else {
+                console.warn('⚠️ Discord bot not connected, cannot trigger match creation');
+              }
+
               // For now, we'll wait for SERVER_CREATED message from Discord bot
               // When server is ready, we'll send MATCH_START
             } else {
@@ -1095,7 +1116,7 @@ app.get('/api/queue-status', async (c) => {
       `https://api.neatqueue.com/api/v1/queue/${CHANNEL_ID}/players`,
       {
         headers: {
-          'Authorization': `Bearer ${c.env.NEATQUEUE_API_KEY}`
+          'Authorization': `${c.env.NEATQUEUE_API_KEY}`
         }
       }
     );
@@ -1128,7 +1149,7 @@ app.get('/api/player-stats/:playerId', async (c) => {
       `https://api.neatqueue.com/api/v1/playerstats/${SERVER_ID}/${playerId}`,
       {
         headers: {
-          'Authorization': `Bearer ${c.env.NEATQUEUE_API_KEY}`
+          'Authorization': `${c.env.NEATQUEUE_API_KEY}`
         }
       }
     );
