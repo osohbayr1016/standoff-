@@ -446,7 +446,7 @@
   max-width: 80px;
 }
 
-.party-slot-mmr {
+.party-slot-elo {
   color: #fbbf24;
   font-size: 0.65rem;
   font-family: 'Courier New', monospace;
@@ -598,7 +598,7 @@
     max-width: 100px;
   }
 
-  .party-slot-mmr {
+  .party-slot-elo {
     font-size: 0.7rem;
   }
 
@@ -679,7 +679,7 @@
     max-width: 120px;
   }
 
-  .party-slot-mmr {
+  .party-slot-elo {
     font-size: 0.8rem;
   }
 

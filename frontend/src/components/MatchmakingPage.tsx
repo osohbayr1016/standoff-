@@ -1,14 +1,14 @@
-import { useState, useEffect } from 'react';
-import './MatchmakingPage.css';
-import InviteFriendModal from './InviteFriendModal';
-import { useWebSocket } from './WebSocketContext'; // Import Hook
-import DebugConsole from './DebugConsole';
+import { useState, useEffect } from "react";
+import "./MatchmakingPage.css";
+import InviteFriendModal from "./InviteFriendModal";
+import { useWebSocket } from "./WebSocketContext"; // Import Hook
+import DebugConsole from "./DebugConsole";
 
 interface PartyMember {
   id: string;
   username: string;
   avatar?: string;
-  mmr?: number;
+  elo?: number;
 }
 
 interface MatchmakingPageProps {
@@ -16,7 +16,10 @@ interface MatchmakingPageProps {
   onStartLobby?: (partyMembers: PartyMember[]) => void;
 }
 
-export default function MatchmakingPage({ onCancel: _onCancel, onStartLobby }: MatchmakingPageProps) {
+export default function MatchmakingPage({
+  onCancel: _onCancel,
+  onStartLobby,
+}: MatchmakingPageProps) {
   const [partyMembers, setPartyMembers] = useState<PartyMember[]>([]);
   const [showInviteModal, setShowInviteModal] = useState(false);
 
@@ -24,7 +27,7 @@ export default function MatchmakingPage({ onCancel: _onCancel, onStartLobby }: M
 
   useEffect(() => {
     // Load current user into party
-    const savedUser = localStorage.getItem('user');
+    const savedUser = localStorage.getItem("user");
     if (savedUser) {
       try {
         const userData = JSON.parse(savedUser);
@@ -39,16 +42,18 @@ export default function MatchmakingPage({ onCancel: _onCancel, onStartLobby }: M
   useEffect(() => {
     if (!lastMessage) return;
 
-    if (lastMessage.type === 'QUEUE_UPDATE') {
+    if (lastMessage.type === "QUEUE_UPDATE") {
       // Logic for queue updates (count)
       if (lastMessage.players && Array.isArray(lastMessage.players)) {
         // Map NeatQueue players to our UI format
-        const externalPlayers: PartyMember[] = lastMessage.players.map((p: any) => ({
-          id: p.id || p.discord_id || 'unknown',
-          username: p.username || p.name || 'Unknown Player',
-          avatar: p.avatar_url || p.avatar || undefined, // Adjust based on actual API response
-          mmr: p.mmr || 1000
-        }));
+        const externalPlayers: PartyMember[] = lastMessage.players.map(
+          (p: any) => ({
+            id: p.id || p.discord_id || "unknown",
+            username: p.username || p.name || "Unknown Player",
+            avatar: p.avatar_url || p.avatar || undefined, // Adjust based on actual API response
+            elo: p.elo || 1000,
+          })
+        );
 
         // Update local party view with these players
         // We only show them as filling slots
@@ -56,22 +61,29 @@ export default function MatchmakingPage({ onCancel: _onCancel, onStartLobby }: M
       }
     }
 
-    if (lastMessage.type === 'MATCH_READY') {
+    if (lastMessage.type === "MATCH_READY") {
       // Redirect to lobby!
       if (onStartLobby && lastMessage.players) {
         let players: PartyMember[] = [];
 
         // Handle if players are objects (New Backend) or strings (Old Logic)
-        if (lastMessage.players.length > 0 && typeof lastMessage.players[0] === 'object') {
+        if (
+          lastMessage.players.length > 0 &&
+          typeof lastMessage.players[0] === "object"
+        ) {
           players = lastMessage.players.map((p: any) => ({
             id: p.id || p.discord_id,
-            username: p.username || p.name || 'Unknown',
+            username: p.username || p.name || "Unknown",
             avatar: p.avatar || p.avatar_url,
-            mmr: p.mmr || 1000
+            elo: p.elo || 1000,
           }));
         } else {
           // Fallback for string IDs
-          players = lastMessage.players.map((id: string) => ({ id, username: 'Player', mmr: 1000 }));
+          players = lastMessage.players.map((id: string) => ({
+            id,
+            username: "Player",
+            elo: 1000,
+          }));
         }
 
         console.log("Match Ready! Players:", players);
@@ -84,8 +96,8 @@ export default function MatchmakingPage({ onCancel: _onCancel, onStartLobby }: M
   const [isInQueue, setIsInQueue] = useState(false);
 
   useEffect(() => {
-    const user = JSON.parse(localStorage.getItem('user') || '{}');
-    if (user.id && partyMembers.some(p => p.id === user.id)) {
+    const user = JSON.parse(localStorage.getItem("user") || "{}");
+    if (user.id && partyMembers.some((p) => p.id === user.id)) {
       setIsInQueue(true);
     } else {
       setIsInQueue(false);
@@ -93,22 +105,22 @@ export default function MatchmakingPage({ onCancel: _onCancel, onStartLobby }: M
   }, [partyMembers]);
 
   const handleJoinQueue = () => {
-    const user = JSON.parse(localStorage.getItem('user') || '{}');
+    const user = JSON.parse(localStorage.getItem("user") || "{}");
     if (user.id) {
       sendMessage({
-        type: 'JOIN_QUEUE',
+        type: "JOIN_QUEUE",
         userId: user.id,
         username: user.username,
-        avatar: user.avatar
+        avatar: user.avatar,
       });
       setIsInQueue(true);
     }
   };
 
   const handleLeaveQueue = () => {
-    const user = JSON.parse(localStorage.getItem('user') || '{}');
+    const user = JSON.parse(localStorage.getItem("user") || "{}");
     if (user.id) {
-      sendMessage({ type: 'LEAVE_QUEUE', userId: user.id });
+      sendMessage({ type: "LEAVE_QUEUE", userId: user.id });
       setIsInQueue(false);
     }
   };
@@ -119,19 +131,19 @@ export default function MatchmakingPage({ onCancel: _onCancel, onStartLobby }: M
 
   const handleFriendInvited = (friend: any) => {
     // Send invite via WebSocket
-    const user = JSON.parse(localStorage.getItem('user') || '{}');
+    const user = JSON.parse(localStorage.getItem("user") || "{}");
     if (user.id) {
       sendMessage({
-        type: 'SEND_INVITE',
+        type: "SEND_INVITE",
         targetId: friend.id,
         fromUser: {
           id: user.id,
           username: user.username,
-          avatar: user.avatar
+          avatar: user.avatar,
         },
-        lobbyId: 'global' // Or specific lobby ID if we were using rooms
+        lobbyId: "global", // Or specific lobby ID if we were using rooms
       });
-      alert(`Invite sent to ${friend.nickname || friend.username}!`);
+      alert(`${friend.nickname || friend.username} хүнд урилга илгээлээ!`);
       setShowInviteModal(false);
     }
   };
@@ -139,23 +151,28 @@ export default function MatchmakingPage({ onCancel: _onCancel, onStartLobby }: M
   const handleFillBots = () => {
     // Send message to backend to fill with bots and start match
     sendMessage({
-      type: 'FILL_BOTS'
+      type: "FILL_BOTS",
     });
   };
 
   // ... helper methods ...
   const getAvatarUrl = (member: PartyMember) => {
     if (member.avatar) {
-      if (member.avatar.startsWith('http')) return member.avatar;
+      if (member.avatar.startsWith("http")) return member.avatar;
       return `https://cdn.discordapp.com/avatars/${member.id}/${member.avatar}.png`;
     }
     return null;
   };
 
   const renderPartySlot = (index: number) => {
-    const member = index < partyMembers.length ? partyMembers[index] : undefined;
+    const member =
+      index < partyMembers.length ? partyMembers[index] : undefined;
     return (
-      <div key={index} className={`party-slot ${member ? 'filled' : 'empty'}`} onClick={() => !member && handleInviteFriend(index)}>
+      <div
+        key={index}
+        className={`party-slot ${member ? "filled" : "empty"}`}
+        onClick={() => !member && handleInviteFriend(index)}
+      >
         <div className="party-slot-border">
           <div className="slot-corner-tl"></div>
           <div className="slot-corner-tr"></div>
@@ -175,8 +192,8 @@ export default function MatchmakingPage({ onCancel: _onCancel, onStartLobby }: M
             </div>
             <div className="party-slot-info">
               <div className="party-slot-username">{member.username}</div>
-              <div className="party-slot-mmr">{member.mmr || 1000} MMR</div>
-              <div className="party-slot-status">READY</div>
+              <div className="party-slot-elo">{member.elo || 1000} ELO</div>
+              <div className="party-slot-status">БЭЛЭН</div>
             </div>
           </>
         ) : (
@@ -193,7 +210,7 @@ export default function MatchmakingPage({ onCancel: _onCancel, onStartLobby }: M
 
       {showInviteModal && (
         <InviteFriendModal
-          currentPartyIds={partyMembers.map(m => m.id)}
+          currentPartyIds={partyMembers.map((m) => m.id)}
           onInvite={handleFriendInvited}
           onClose={() => setShowInviteModal(false)}
         />
@@ -201,12 +218,14 @@ export default function MatchmakingPage({ onCancel: _onCancel, onStartLobby }: M
 
       <div className="matchmaking-content">
         <>
-          <h1 className="matchmaking-title" data-text="UNIFIED MATCHMAKING">UNIFIED QUEUE</h1>
-          <div className="matchmaking-subtitle">Web + Discord Sync</div>
+          <h1 className="matchmaking-title" data-text="НЭГДСЭН ТОГЛОЛТ ОЛОХ">
+            НЭГДСЭН ДАРААЛАЛ
+          </h1>
+          <div className="matchmaking-subtitle">Веб + Discord Синхрончлол</div>
 
           <div className="live-counter-large">
             <span className="live-count-number">{partyMembers.length}</span>
-            <span className="live-count-text">PLAYERS QUEUING</span>
+            <span className="live-count-text">ДАРААЛАЛД БАЙГАА ТОГЛОГЧИД</span>
           </div>
 
           <div className="radar-container">
@@ -215,15 +234,22 @@ export default function MatchmakingPage({ onCancel: _onCancel, onStartLobby }: M
             <div className="radar-grid-lines"></div>
 
             <div className="map-hologram">
-              <div style={{ color: isInQueue ? '#00ff00' : '#ff6b35', fontSize: '24px', textAlign: 'center', marginTop: '15px' }}>
-                {isInQueue ? 'SEARCHING' : 'IDLE'}
+              <div
+                style={{
+                  color: isInQueue ? "#00ff00" : "#ff6b35",
+                  fontSize: "24px",
+                  textAlign: "center",
+                  marginTop: "15px",
+                }}
+              >
+                {isInQueue ? "ХАЙЖ БАЙНА" : "ХООСОН"}
               </div>
             </div>
           </div>
 
           <div className="timer-section">
             <div className="player-count">
-              <span className="count-label">PLAYERS IN QUEUE</span>
+              <span className="count-label">ДАРААЛАЛД БАЙГАА ТОГЛОГЧИД</span>
               <span className="count-val">{partyMembers.length} / 10</span>
             </div>
           </div>
@@ -231,34 +257,51 @@ export default function MatchmakingPage({ onCancel: _onCancel, onStartLobby }: M
       </div>
 
       <div className="party-slots-container">
-        <div className="party-slots-label">LOBBY STATUS // <span className="highlight">{isInQueue ? 'SEARCHING...' : 'WAITING'}</span></div>
+        <div className="party-slots-label">
+          ЛОББИЙН ТӨЛӨВ //{" "}
+          <span className="highlight">
+            {isInQueue ? "ХАЙЖ БАЙНА..." : "ХУЛЭЭЖ БАЙНА"}
+          </span>
+        </div>
         <div className="party-slots">
           <div className="party-slots-row">
-            {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((index) => renderPartySlot(index))}
+            {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((index) =>
+              renderPartySlot(index)
+            )}
           </div>
         </div>
       </div>
 
       <div className="matchmaking-actions">
         {!isInQueue ? (
-          <button className="find-match-btn-large cyber-button-primary" onClick={handleJoinQueue}>
-            <span className="btn-content">JOIN QUEUE</span>
+          <button
+            className="find-match-btn-large cyber-button-primary"
+            onClick={handleJoinQueue}
+          >
+            <span className="btn-content">ДАРААЛАЛД НЭГДЭХ</span>
             <div className="btn-glitch"></div>
           </button>
         ) : (
-          <button className="cancel-button cyber-button-secondary" onClick={handleLeaveQueue}>
-            <span className="btn-content">LEAVE QUEUE</span>
-          </button>
-        )}
-        {partyMembers.length < 10 && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') && (
           <button
-            className="fill-bots-btn"
-            onClick={handleFillBots}
-            style={{ marginTop: '12px' }}
+            className="cancel-button cyber-button-secondary"
+            onClick={handleLeaveQueue}
           >
-            <span className="btn-content">FILL WITH BOTS ({partyMembers.length}/10)</span>
+            <span className="btn-content">ДАРААЛАЛААС ГАРАХ</span>
           </button>
         )}
+        {partyMembers.length < 10 &&
+          (window.location.hostname === "localhost" ||
+            window.location.hostname === "127.0.0.1") && (
+            <button
+              className="fill-bots-btn"
+              onClick={handleFillBots}
+              style={{ marginTop: "12px" }}
+            >
+              <span className="btn-content">
+                БОТУУДААР ДҮҮРГЭХ ({partyMembers.length}/10)
+              </span>
+            </button>
+          )}
       </div>
     </div>
   );

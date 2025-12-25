@@ -26,11 +26,11 @@ export default function RewardsPage() {
   return (
     <div className="rewards-page">
       <div className="cyber-grid-bg"></div>
-      <h1 className="rewards-page-title">Rewards</h1>
+      <h1 className="rewards-page-title">Урамшуулал</h1>
 
       <div className="rewards-content">
         <div className="daily-login-section">
-          <h2 className="section-title">Daily Login Rewards</h2>
+          <h2 className="section-title">Өдөр тутмын нэвтрэлтийн урамшуулал</h2>
           
           <div className="daily-days-grid">
             {dailyLoginDays.map((item) => (
@@ -40,7 +40,7 @@ export default function RewardsPage() {
                   {item.type === 'gift' && <span className="gift-icon">🎁</span>}
                 </div>
                 <span className="day-label">
-                  {item.day === 5 || item.day === 6 || item.day === 7 ? 'Days' : 'Day'}
+                  {item.day === 5 || item.day === 6 || item.day === 7 ? 'Өдөр' : 'Өдөр'}
                 </span>
                 <span className="day-number">{item.day}</span>
               </div>
@@ -50,7 +50,7 @@ export default function RewardsPage() {
           <div className="daily-progress-section">
             <div className="progress-info">
               <span className="progress-icon">🎁</span>
-              <span className="progress-label">Daily Rewards</span>
+              <span className="progress-label">Өдөр тутмын урамшуулал</span>
             </div>
             <div className="progress-bar-container">
               <div className="progress-bar" style={{ width: '40%' }}></div>
@@ -60,7 +60,7 @@ export default function RewardsPage() {
         </div>
 
         <div className="achievement-rewards-section">
-          <h2 className="section-title">Achievement Rewards</h2>
+          <h2 className="section-title">Амжилтын урамшуулал</h2>
           
           <div className="achievement-grid">
             {achievementBadges.map((badge) => (

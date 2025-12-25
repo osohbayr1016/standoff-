@@ -12,13 +12,13 @@ export default function NotFoundPage({ onGoHome }: NotFoundPageProps) {
       <div className="not-found-content">
         <div className="not-found-left">
           <h1 className="error-code">404</h1>
-          <h2 className="error-title">Page Not Found</h2>
+          <h2 className="error-title">Хуудас олдсонгүй</h2>
           <p className="error-message">
-            Looks like you've gone off-map.<br />
-            This page doesn't exist.
+            Та газрын зурагнаас гадуур явсан бололтой.<br />
+            Энэ хуудас байхгүй байна.
           </p>
           <button className="go-home-btn" onClick={onGoHome}>
-            Go Back Home
+            Нүүр хуудас руу буцах
           </button>
         </div>
 
@@ -37,15 +37,15 @@ export default function NotFoundPage({ onGoHome }: NotFoundPageProps) {
           <span className="logo-highlight">D</span>
           <span className="logo-text">OFF 2</span>
         </div>
-        <p className="header-tagline">COMPETITIVE HUB</p>
+        <p className="header-tagline">ТЭМЦЭЭНИЙ ТӨВ</p>
         
         <nav className="header-nav">
-          <span className="nav-item active">Home</span>
-          <span className="nav-item">About</span>
-          <span className="nav-item">Events</span>
-          <span className="nav-item">Reports</span>
-          <span className="nav-item">Links</span>
-          <span className="nav-item">Contact</span>
+          <span className="nav-item active">Нүүр</span>
+          <span className="nav-item">Бидний тухай</span>
+          <span className="nav-item">Үйл явдал</span>
+          <span className="nav-item">Тайлан</span>
+          <span className="nav-item">Холбоос</span>
+          <span className="nav-item">Холбоо барих</span>
         </nav>
       </div>
     </div>

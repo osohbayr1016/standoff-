@@ -6,7 +6,7 @@ interface Friend {
     username: string;
     nickname?: string;
     avatar?: string;
-    mmr: number;
+    elo: number;
 }
 
 interface InviteFriendModalProps {
@@ -34,11 +34,11 @@ export default function InviteFriendModal({ currentPartyIds, onInvite, onClose }
                     // Filter only accepted friends
                     setFriends(data.friends || []);
                 } else {
-                    setError('Failed to load friends');
+                    setError('Найзуудыг ачаалахад алдаа гарлаа');
                 }
             } catch (err) {
                 console.error('Failed to fetch friends', err);
-                setError('Network error');
+                setError('Сүлжээний алдаа');
             } finally {
                 setLoading(false);
             }
@@ -63,17 +63,17 @@ export default function InviteFriendModal({ currentPartyIds, onInvite, onClose }
         <div className="modal-overlay" onClick={onClose}>
             <div className="invite-modal" onClick={e => e.stopPropagation()}>
                 <div className="modal-header">
-                    <h2 className="modal-title">INVITE OPERATOR</h2>
+                    <h2 className="modal-title">ТОГЛОГЧ УРИХ</h2>
                     <button className="close-btn" onClick={onClose}>×</button>
                 </div>
 
                 <div className="modal-content">
                     {loading ? (
-                        <div className="modal-status">SCANNING NETWORK...</div>
+                        <div className="modal-status">СҮЛЖЭЭГ ШАЛГАЖ БАЙНА...</div>
                     ) : error ? (
                         <div className="modal-error">{error}</div>
                     ) : availableFriends.length === 0 ? (
-                        <div className="modal-status">NO AVAILABLE ALLIES FOUND</div>
+                        <div className="modal-status">БОЛОМЖТОЙ ХАМТРАГЧ ОЛДОХГҮЙ</div>
                     ) : (
                         <div className="friends-list-compact">
                             {availableFriends.map(friend => (
@@ -87,10 +87,10 @@ export default function InviteFriendModal({ currentPartyIds, onInvite, onClose }
                                     </div>
                                     <div className="friend-info-compact">
                                         <span className="friend-name-compact">{friend.nickname || friend.username}</span>
-                                        <span className="friend-mmr-compact">MMR: {friend.mmr}</span>
+                                        <span className="friend-elo-compact">ELO: {friend.elo}</span>
                                     </div>
                                     <button className="invite-btn" onClick={() => onInvite(friend)}>
-                                        INVITE +
+                                        УРИХ +
                                     </button>
                                 </div>
                             ))}
@@ -109,7 +109,7 @@ export default function InviteFriendModal({ currentPartyIds, onInvite, onClose }
                                 }
                             }}
                         >
-                            DEBUG: SEND INVITE TO SELF
+                            АЛДАА ЗАСВАР: ӨӨРИЙГӨӨ УРИХ
                         </button>
                     </div>
                 </div>

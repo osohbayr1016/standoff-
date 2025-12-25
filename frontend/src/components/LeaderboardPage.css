@@ -173,7 +173,7 @@
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
 }
 
-/* Table Header - Mobile: 3 columns (Rank, Player, MMR) */
+/* Table Header - Mobile: 3 columns (Rank, Player, ELO) */
 .leaderboard-table-header {
   display: grid;
   grid-template-columns: 40px 1fr 70px;
@@ -302,7 +302,7 @@
   font-family: monospace;
 }
 
-.mmr-cell {
+.elo-cell {
   text-align: right;
   font-weight: 800;
   font-family: monospace;
@@ -405,7 +405,7 @@
     font-size: 1rem;
   }
 
-  .mmr-cell {
+  .elo-cell {
     font-size: 1.2rem;
   }
 

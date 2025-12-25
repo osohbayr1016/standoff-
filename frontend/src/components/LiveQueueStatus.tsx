@@ -38,13 +38,13 @@ function LiveQueueStatus() {
     return (
         <div className="live-queue-status">
             <div className="queue-header">
-                <h3>🎮 Live Queue Status</h3>
-                <span className="live-indicator">● LIVE</span>
+                <h3>🎮 Шууд дарааллын төлөв</h3>
+                <span className="live-indicator">● ШУУД</span>
             </div>
 
             <div className="queue-count">
                 {loading ? (
-                    <div className="loading">Loading...</div>
+                    <div className="loading">Ачааллаж байна...</div>
                 ) : (
                     <>
                         <div className="count-display">
@@ -52,14 +52,14 @@ function LiveQueueStatus() {
                             <span className="separator">/</span>
                             <span className="max-count">10</span>
                         </div>
-                        <p className="count-label">Players in Queue</p>
+                        <p className="count-label">Дараалалд байгаа тоглогчид</p>
                     </>
                 )}
             </div>
 
             {queueData.queueCount > 0 && (
                 <div className="queue-players">
-                    <p className="players-label">Waiting Players:</p>
+                    <p className="players-label">Хүлээж байгаа тоглогчид:</p>
                     <div className="players-list">
                         {queueData.players.slice(0, 5).map((player: any, index: number) => (
                             <div key={index} className="player-item">
@@ -78,8 +78,8 @@ function LiveQueueStatus() {
 
             {queueData.queueCount === 0 && !loading && (
                 <div className="empty-queue">
-                    <p>No players in queue</p>
-                    <p className="empty-hint">Be the first to join!</p>
+                    <p>Дараалалд тоглогч байхгүй</p>
+                    <p className="empty-hint">Эхнийх нь болж нэгдээрэй!</p>
                 </div>
             )}
         </div>

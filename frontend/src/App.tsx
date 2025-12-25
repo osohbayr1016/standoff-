@@ -24,14 +24,14 @@ interface User {
   username: string;
   avatar: string;
   standoff_nickname?: string;
-  mmr?: number;
+  elo?: number;
 }
 
 interface PartyMember {
   id: string;
   username: string;
   avatar?: string;
-  mmr?: number;
+  elo?: number;
 }
 
 // Inner App component that uses WebSocket context
@@ -130,13 +130,13 @@ function AppContent() {
               id: p.id || p.discord_id,
               username: p.username || p.name || "Unknown",
               avatar: p.avatar || p.avatar_url,
-              mmr: p.mmr || 1000,
+              elo: p.elo || 1000,
             }));
           } else {
             players = lastMessage.players.map((id: string) => ({
               id,
               username: "Player",
-              mmr: 1000,
+              elo: 1000,
             }));
           }
           setLobbyPartyMembers(players);
@@ -176,7 +176,7 @@ function AppContent() {
             id: p.id || p.discord_id,
             username: p.username || p.name || "Unknown",
             avatar: p.avatar || p.avatar_url,
-            mmr: p.mmr || 1000,
+            elo: p.elo || 1000,
           }));
           setLobbyPartyMembers(players);
         }
@@ -224,7 +224,7 @@ function AppContent() {
       let userData: User | null = null;
 
       if (id && username) {
-        userData = { id, username, avatar: avatar || "", mmr: 1000 };
+        userData = { id, username, avatar: avatar || "", elo: 1000 };
         window.history.replaceState({}, document.title, "/");
       } else {
         const savedUser = localStorage.getItem("user");
@@ -256,16 +256,16 @@ function AppContent() {
               setShowNicknameModal(true);
             }
 
-            // Sync latest data including MMR
+            // Sync latest data including ELO
             const updatedUser = {
               ...userData,
               standoff_nickname: profile.standoff_nickname,
-              mmr: profile.mmr || 1000,
+              elo: profile.elo || 1000,
             };
 
             // Only update if changes found
             if (
-              updatedUser.mmr !== userData.mmr ||
+              updatedUser.elo !== userData.elo ||
               updatedUser.standoff_nickname !== userData.standoff_nickname
             ) {
               setUser(updatedUser);
@@ -364,12 +364,12 @@ function AppContent() {
               <span className="invite-name">
                 {inviteNotification.fromUser.username}
               </span>
-              <span className="invite-msg">invited you to play!</span>
+              <span className="invite-msg">таныг тоглох урилга илгээлээ!</span>
             </div>
           </div>
           <div className="invite-actions">
             <button className="invite-btn accept" onClick={handleAcceptInvite}>
-              ACCEPT
+              ЗӨВШӨӨРӨХ
             </button>
             <button
               className="invite-btn decline"

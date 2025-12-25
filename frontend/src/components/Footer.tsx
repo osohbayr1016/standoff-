@@ -12,22 +12,22 @@ export default function Footer() {
               <span className="logo-text">OFF 2</span>
             </h2>
             <p className="footer-tagline">
-              Competitive <span className="tagline-highlight">Hub</span>
+              Тэмцээний <span className="tagline-highlight">Төв</span>
             </p>
           </div>
 
           <nav className="footer-nav">
             <a href="#" className="footer-link">
-              About
+              Бидний тухай
             </a>
             <a href="#" className="footer-link">
-              Terms of Service
+              Үйлчилгээний нөхцөл
             </a>
             <a href="#" className="footer-link">
-              Privacy Policy
+              Нууцлалын бодлого
             </a>
             <a href="#" className="footer-link">
-              Support
+              Дэмжлэг
             </a>
           </nav>
         </div>

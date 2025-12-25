@@ -11,7 +11,7 @@ const rewardProgress = [
 export default function DailyRewards() {
   return (
     <div className="rewards-card">
-      <h3 className="card-title">Daily Rewards Progress</h3>
+      <h3 className="card-title">Өдөр тутмын урамшууллын явц</h3>
       
       <div className="rewards-progress">
         {rewardProgress.map((reward, index) => (
@@ -28,12 +28,12 @@ export default function DailyRewards() {
       <div className="rewards-section">
         <div className="rewards-header">
           <span className="rewards-icon">🎁</span>
-          <span className="rewards-title">Daily Rewards</span>
+          <span className="rewards-title">Өдөр тутмын урамшуулал</span>
         </div>
         <div className="rewards-counter">4 / 10</div>
       </div>
 
-      <button className="find-match-btn-secondary">Find Match</button>
+      <button className="find-match-btn-secondary">Тоглолт олох</button>
     </div>
   );
 }
