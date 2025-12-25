@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import './App.css';
+import './InviteToast.css';
 import Header from './components/Header';
 import Hero from './components/Hero';
 import Leaderboard from './components/Leaderboard';
@@ -8,7 +9,6 @@ import DailyRewards from './components/DailyRewards';
 import ProfilePage from './components/ProfilePage';
 import LeaderboardPage from './components/LeaderboardPage';
 import RewardsPage from './components/RewardsPage';
-import SettingsPage from './components/SettingsPage';
 import FriendsPage from './components/FriendsPage';
 import MatchmakingPage from './components/MatchmakingPage';
 import MatchLobbyPage from './components/MatchLobbyPage';
@@ -16,66 +16,162 @@ import MapBanPage from './components/MapBanPage';
 import AuthPage from './components/AuthPage';
 import NotFoundPage from './components/NotFoundPage';
 import Footer from './components/Footer';
+import NicknameSetupModal from './components/NicknameSetupModal';
+import { WebSocketProvider, useWebSocket } from './components/WebSocketContext';
 
 interface User {
   id: string;
   username: string;
   avatar: string;
+  standoff_nickname?: string;
+  mmr?: number;
 }
 
 interface PartyMember {
   id: string;
   username: string;
   avatar?: string;
+  mmr?: number;
 }
 
-function App() {
+// Inner App component that uses WebSocket context
+function AppContent() {
   const [currentPage, setCurrentPage] = useState('home');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [user, setUser] = useState<User | null>(null);
   const [lobbyPartyMembers, setLobbyPartyMembers] = useState<PartyMember[]>([]);
   const [selectedMap, setSelectedMap] = useState<string | undefined>();
+  const [showNicknameModal, setShowNicknameModal] = useState(false);
+  const [inviteNotification, setInviteNotification] = useState<{ fromUser: any; lobbyId: string } | null>(null);
+  const [activeLobbyId, setActiveLobbyId] = useState<string | undefined>(); // Track active lobby
 
-  // Discord OAuth callback-ыг шалгах
+  const { registerUser, lastMessage } = useWebSocket();
+
+  // Register user on socket when authenticated
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const id = params.get('id');
-    const username = params.get('username');
-    const avatar = params.get('avatar');
+    if (user && user.id) {
+      registerUser(user.id);
+    }
+  }, [user, registerUser]);
 
-    if (id && username) {
-      const userData = { id, username, avatar: avatar || '' };
-      setUser(userData);
-      setIsAuthenticated(true);
-      
-      // Save to localStorage for persistence
-      localStorage.setItem('user', JSON.stringify(userData));
-      
-      // URL-ыг цэвэрлэх (Гоё харагдуулахын тулд)
-      window.history.replaceState({}, document.title, "/");
-    } else {
-      // Check if user is already logged in (from localStorage)
-      const savedUser = localStorage.getItem('user');
-      if (savedUser) {
-        try {
-          const userData = JSON.parse(savedUser);
-          setUser(userData);
-          setIsAuthenticated(true);
-        } catch (e) {
-          // Invalid data, clear it
-          localStorage.removeItem('user');
+  // Handle incoming WebSocket messages (Invites & Match Ready)
+  useEffect(() => {
+    if (!lastMessage) return;
+
+    // 1. Invites
+    if (lastMessage.type === 'INVITE_RECEIVED') {
+      const { fromUser, lobbyId } = lastMessage;
+      setInviteNotification({ fromUser, lobbyId });
+      setTimeout(() => setInviteNotification(null), 10000);
+    }
+
+    // 2. Global Match Ready Listener (Persistence)
+    // Even if user is on Home page, we want to capture this and offer return button
+    if (lastMessage.type === 'MATCH_READY') {
+      console.log("Global Match Ready:", lastMessage);
+      if (lastMessage.lobbyId) {
+        setActiveLobbyId(lastMessage.lobbyId); // Set active lobby logic
+
+        // Also update party members if available
+        if (lastMessage.players && Array.isArray(lastMessage.players)) {
+          // Parse players similar to MatchmakingPage logic
+          let players: PartyMember[] = [];
+          if (lastMessage.players.length > 0 && typeof lastMessage.players[0] === 'object') {
+            players = lastMessage.players.map((p: any) => ({
+              id: p.id || p.discord_id,
+              username: p.username || p.name || 'Unknown',
+              avatar: p.avatar || p.avatar_url,
+              mmr: p.mmr || 1000
+            }));
+          } else {
+            players = lastMessage.players.map((id: string) => ({ id, username: 'Player', mmr: 1000 }));
+          }
+          setLobbyPartyMembers(players);
+
+          // AUTO-NAVIGATE if user is in matchmaking or home (idle)
+          // But if they are deep in profile, maybe just show the button?
+          // For now, let's auto-navigate if on matchmaking page (handled by that page) 
+          // OR if just idle on home.
+          if (currentPage === 'matchmaking' || currentPage === 'home') {
+            setCurrentPage('mapban');
+          }
         }
       }
     }
+  }, [lastMessage, currentPage]);
+
+  // Discord OAuth callback-ыг шалгах
+  useEffect(() => {
+    const initUser = async () => {
+      const params = new URLSearchParams(window.location.search);
+      const id = params.get('id');
+      const username = params.get('username');
+      const avatar = params.get('avatar');
+
+      let userData: User | null = null;
+
+      if (id && username) {
+        userData = { id, username, avatar: avatar || '', mmr: 1000 };
+        window.history.replaceState({}, document.title, "/");
+      } else {
+        const savedUser = localStorage.getItem('user');
+        if (savedUser) {
+          try {
+            userData = JSON.parse(savedUser);
+          } catch (e) {
+            localStorage.removeItem('user');
+          }
+        }
+      }
+
+      if (userData) {
+        // Optimistically set to show header immediately
+        setUser(userData);
+        setIsAuthenticated(true);
+        localStorage.setItem('user', JSON.stringify(userData));
+
+        try {
+          const res = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'http://localhost:8787'}/api/profile/${userData.id}`);
+          if (res.ok) {
+            const profile = await res.json();
+
+            if (!profile.standoff_nickname) {
+              setShowNicknameModal(true);
+            }
+
+            // Sync latest data including MMR
+            const updatedUser = {
+              ...userData,
+              standoff_nickname: profile.standoff_nickname,
+              mmr: profile.mmr || 1000
+            };
+
+            // Only update if changes found
+            if (updatedUser.mmr !== userData.mmr || updatedUser.standoff_nickname !== userData.standoff_nickname) {
+              setUser(updatedUser);
+              localStorage.setItem('user', JSON.stringify(updatedUser));
+            }
+          }
+        } catch (error) {
+          console.error("Failed to fetch profile", error);
+        }
+      }
+    };
+
+    initUser();
   }, []);
+
+  const handleNicknameSaved = (nickname: string) => {
+    if (user) {
+      const updatedUser = { ...user, standoff_nickname: nickname };
+      setUser(updatedUser);
+      localStorage.setItem('user', JSON.stringify(updatedUser));
+    }
+    setShowNicknameModal(false);
+  };
 
   const handleFindMatch = () => {
     setCurrentPage('matchmaking');
-  };
-
-  const handleAuth = (userData: User) => {
-    setUser(userData);
-    setIsAuthenticated(true);
   };
 
   const handleGoHome = () => {
@@ -94,8 +190,19 @@ function App() {
     setCurrentPage('mapban');
   };
 
+  const handleAcceptInvite = () => {
+    // Logic to join lobby (Simulated for now by going to matchmaking or lobby page)
+    console.log("Joined lobby", inviteNotification?.lobbyId);
+    setInviteNotification(null);
+    setCurrentPage('matchmaking'); // Or a specific lobby page
+  };
+
+  const handleDeclineInvite = () => {
+    setInviteNotification(null);
+  };
+
   // Check if current page is valid
-  const validPages = ['home', 'profile', 'leaderboard', 'rewards', 'settings', 'friends', 'matchmaking', 'matchlobby', 'mapban'];
+  const validPages = ['home', 'profile', 'leaderboard', 'rewards', 'friends', 'matchmaking', 'matchlobby', 'mapban'];
   const isValidPage = validPages.includes(currentPage);
 
   if (!isAuthenticated) {
@@ -109,12 +216,36 @@ function App() {
 
   return (
     <div className="app">
-      <Header 
-        currentPage={currentPage} 
-        onNavigate={setCurrentPage} 
+      {inviteNotification && (
+        <div className="invite-notification-toast">
+          <div className="invite-content">
+            <div className="invite-avatar">
+              <img src={inviteNotification.fromUser.avatar ? `https://cdn.discordapp.com/avatars/${inviteNotification.fromUser.id}/${inviteNotification.fromUser.avatar}.png` : 'https://placehold.co/40x40'} alt="avatar" />
+            </div>
+            <div className="invite-text">
+              <span className="invite-name">{inviteNotification.fromUser.username}</span>
+              <span className="invite-msg">invited you to play!</span>
+            </div>
+          </div>
+          <div className="invite-actions">
+            <button className="invite-btn accept" onClick={handleAcceptInvite}>ACCEPT</button>
+            <button className="invite-btn decline" onClick={handleDeclineInvite}>✕</button>
+          </div>
+        </div>
+      )}
+
+      {showNicknameModal && user && (
+        <NicknameSetupModal userId={user.id} onSave={handleNicknameSaved} />
+      )}
+
+      <Header
+        currentPage={currentPage}
+        user={user}
+        onNavigate={setCurrentPage}
         onLogout={handleLogout}
+        activeLobbyId={activeLobbyId}
       />
-      
+
       <main className="main-content">
         {currentPage === 'home' && (
           <>
@@ -127,10 +258,9 @@ function App() {
           </>
         )}
 
-        {currentPage === 'profile' && <ProfilePage onFindMatch={handleFindMatch} />}
+        {currentPage === 'profile' && <ProfilePage user={user} onFindMatch={handleFindMatch} />}
         {currentPage === 'leaderboard' && <LeaderboardPage />}
         {currentPage === 'rewards' && <RewardsPage />}
-        {currentPage === 'settings' && <SettingsPage />}
         {currentPage === 'friends' && <FriendsPage />}
         {currentPage === 'matchmaking' && <MatchmakingPage onCancel={() => setCurrentPage('home')} onStartLobby={handleStartLobby} />}
         {currentPage === 'matchlobby' && <MatchLobbyPage partyMembers={lobbyPartyMembers} selectedMap={selectedMap} onCancel={() => setCurrentPage('home')} />}
@@ -139,6 +269,16 @@ function App() {
 
       <Footer />
     </div>
+  );
+}
+
+function App() {
+  const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8787';
+
+  return (
+    <WebSocketProvider url={backendUrl}>
+      <AppContent />
+    </WebSocketProvider>
   );
 }
 

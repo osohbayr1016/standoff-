@@ -1,10 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
 import './MatchLobbyPage.css';
+import { useWebSocket } from './WebSocketContext'; // Import Hook
 
 interface PartyMember {
   id: string;
   username: string;
   avatar?: string;
+  mmr?: number;
 }
 
 interface MatchLobbyPageProps {
@@ -13,11 +15,13 @@ interface MatchLobbyPageProps {
   onCancel: () => void;
 }
 
-export default function MatchLobbyPage({ partyMembers, selectedMap, onCancel }: MatchLobbyPageProps) {
+export default function MatchLobbyPage({ partyMembers, selectedMap, onCancel: _onCancel }: MatchLobbyPageProps) {
   const [countdown, setCountdown] = useState(5);
   const [allReady, setAllReady] = useState(false);
   const [readyPlayers, setReadyPlayers] = useState<Set<string>>(new Set());
   const [countdownStarted, setCountdownStarted] = useState(false);
+
+  const { sendMessage, lastMessage } = useWebSocket(); // Hook
 
   // Get current user
   const currentUserId = (() => {
@@ -51,8 +55,9 @@ export default function MatchLobbyPage({ partyMembers, selectedMap, onCancel }: 
   }, [partyMembers]);
 
   const handleLaunchGame = useCallback(() => {
-    // TODO: Implement launch game logic
+    // TODO: Implement launch game logic - could connect to Discord or open game client
     console.log('Launching game...');
+    alert('Match Started! This is where you would launch the game.');
   }, []);
 
   // Check if all players are ready and start countdown
@@ -67,7 +72,7 @@ export default function MatchLobbyPage({ partyMembers, selectedMap, onCancel }: 
   // Countdown timer
   useEffect(() => {
     if (!countdownStarted) return;
-    
+
     const timer = setInterval(() => {
       setCountdown((prev) => {
         if (prev <= 1) {
@@ -78,7 +83,7 @@ export default function MatchLobbyPage({ partyMembers, selectedMap, onCancel }: 
         return prev - 1;
       });
     }, 1000);
-    
+
     return () => clearInterval(timer);
   }, [countdownStarted, handleLaunchGame]);
 
@@ -94,30 +99,29 @@ export default function MatchLobbyPage({ partyMembers, selectedMap, onCancel }: 
   const teamAlpha = partyMembers.slice(0, 5);
   const teamBravo = partyMembers.slice(5, 10);
 
-
-  const generateRating = (playerId: string) => {
-    // Generate stable rating based on player ID
-    let hash = 0;
-    for (let i = 0; i < playerId.length; i++) {
-      hash = playerId.charCodeAt(i) + ((hash << 5) - hash);
+  // Helper to construct avatar URL (same logic as MatchmakingPage)
+  const getAvatarUrl = (player: PartyMember) => {
+    if (player.avatar) {
+      if (player.avatar.startsWith('http')) return player.avatar;
+      if (!player.id.startsWith('bot-')) {
+        return `https://cdn.discordapp.com/avatars/${player.id}/${player.avatar}.png`;
+      }
     }
-    const whole = Math.abs(hash % 20) + 10;
-    const decimal = Math.abs(hash % 100);
-    return `${whole}.${String(decimal).padStart(2, '0')}`;
+    return null;
   };
 
   const renderPlayer = (player: PartyMember) => {
-    const rating = generateRating(player.id || player.username);
     const playerId = player.id || player.username;
     const isPlayerReady = readyPlayers.has(playerId);
     const isCurrentUser = playerId === currentUserId;
     const isBot = playerId.startsWith('bot-');
+    const avatarUrl = getAvatarUrl(player);
 
     return (
       <div key={playerId} className="lobby-player">
         <div className="lobby-player-avatar">
-          {player.avatar ? (
-            <img src={player.avatar} alt={player.username} />
+          {avatarUrl ? (
+            <img src={avatarUrl} alt={player.username} />
           ) : (
             <div className="lobby-player-avatar-placeholder">
               {isBot ? 'B' : player.username.charAt(0).toUpperCase()}
@@ -126,7 +130,7 @@ export default function MatchLobbyPage({ partyMembers, selectedMap, onCancel }: 
         </div>
         <div className="lobby-player-info">
           <div className="lobby-player-name">{player.username}</div>
-          <div className="lobby-player-rating">Delo {rating}</div>
+          <div className="lobby-player-rating">{player.mmr || 1000} MMR</div>
         </div>
         <div className="lobby-player-ready">
           {isPlayerReady ? (
@@ -149,14 +153,14 @@ export default function MatchLobbyPage({ partyMembers, selectedMap, onCancel }: 
   return (
     <div className="match-lobby-page">
       <h1 className="lobby-title">Match Lobby</h1>
-      
+
       {selectedMap && (
         <div className="selected-map-display">
           <span className="selected-map-label">Selected Map:</span>
           <span className="selected-map-name">{selectedMap}</span>
         </div>
       )}
-      
+
       <div className="lobby-teams">
         <div className="lobby-team team-alpha">
           <div className="team-header">Team Alpha</div>
@@ -182,10 +186,9 @@ export default function MatchLobbyPage({ partyMembers, selectedMap, onCancel }: 
         </div>
       ) : (
         <div className="lobby-status">
-          <div className="waiting-message">Waiting for players to be ready...</div>
+          <div className="waiting-message">Waiting for players to be ready... ({readyPlayers.size}/10)</div>
         </div>
       )}
     </div>
   );
 }
-

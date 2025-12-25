@@ -1,152 +1,268 @@
-import { useState } from 'react';
+
+import { useState, useEffect } from 'react';
 import './FriendsPage.css';
 
-const activeFriends = [
-  { id: 1, name: 'Marks99', avatar: '👤', status: 'online', elo: '2510' },
-  { id: 2, name: 'Beavind Lare', avatar: '👤', status: 'online', elo: 'SL0 410' },
-  { id: 3, name: 'Mollcaniues', avatar: '👤', status: 'online', elo: 'T 248 110' },
-  { id: 4, name: 'Salnus', avatar: '👤', status: 'offline', elo: 'SL0 110', eloRank: '210 Miod' },
-  { id: 5, name: 'Uasoind', avatar: '🏆', status: 'offline', elo: '5Я0Я 14' },
-  { id: 6, name: 'Shons', avatar: '👤', status: 'offline', elo: 'ELO 84Я', eloValue: '21 БИ0' },
-  { id: 7, name: 'Shory', avatar: '👤', status: 'offline', elo: 'S116я 11', eloRank: 'Gamed' },
-  { id: 8, name: 'Ceenrors', avatar: '👤', status: 'offline', elo: '20 2 11', eloValue: '29 tri0' },
-  { id: 9, name: 'Bieliolita', avatar: '🏆', status: 'offline', elo: 'S60 44' },
-];
+interface User {
+  id: string;
+  username: string; // discord_username
+  avatar: string; // discord_avatar
+}
 
-const searchResults = [
-  { id: 1, name: 'Driun', team: 'Gamed', score: '3 - 4', opponent: 'Beavind', opponentTeam: 'Lanre', avatar: '🎮' },
-  { id: 2, name: 'Momajn', team: 'Gamed', score: '0 - 5', opponent: 'Atlok', opponentTeam: 'Gamed', avatar: '👤' },
-  { id: 3, name: 'Noosstlnnd', elo: '1 8Sή 10', avatar: '👤' },
-];
+interface Friend {
+  friendship_id: number;
+  id: string;
+  username: string;
+  nickname?: string;
+  avatar?: string;
+  mmr: number;
+  status: string; // 'online' | 'offline' - currently mocked or could be from WS
+}
 
-const pendingRequests = [
-  { id: 1, name: 'Uincharielo', status: 'onllira', elo: 'ELO', additional: 'Emd Playe', avatar: '👤' },
-  { id: 2, name: 'Seffr Ceck', elo: '311 Л 118', avatar: '👤' },
-];
+interface SearchResult {
+  id: string;
+  username: string;
+  nickname?: string;
+  avatar?: string;
+  mmr: number;
+}
 
 export default function FriendsPage() {
+  const [activeFriends, setActiveFriends] = useState<Friend[]>([]);
+  const [pendingRequests, setPendingRequests] = useState<Friend[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const savedUser = localStorage.getItem('user');
+    if (savedUser) {
+      const user = JSON.parse(savedUser);
+      setCurrentUser(user);
+      fetchFriends(user.id);
+    }
+  }, []);
+
+  const fetchFriends = async (userId: string) => {
+    setLoading(true);
+    try {
+      const res = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'http://localhost:8787'}/api/friends/${userId}`);
+      if (res.ok) {
+        const data = await res.json();
+        setActiveFriends(data.friends || []);
+        setPendingRequests(data.pendingIncoming || []);
+        setPendingRequests(data.pendingIncoming || []);
+      }
+    } catch (err) {
+      console.error('Failed to fetch friends', err);
+      setError('Failed to load friends');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSearch = async () => {
+    if (!searchQuery.trim() || !currentUser) return;
+
+    setSearchLoading(true);
+    try {
+      const res = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'http://localhost:8787'}/api/users/search?q=${searchQuery}&userId=${currentUser.id}`);
+      if (res.ok) {
+        const data = await res.json();
+        setSearchResults(data);
+      }
+    } catch (err) {
+      console.error('Search failed', err);
+    } finally {
+      setSearchLoading(false);
+    }
+  };
+
+  const sendFriendRequest = async (targetId: string) => {
+    if (!currentUser) return;
+
+    try {
+      const res = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'http://localhost:8787'}/api/friends/request`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: currentUser.id, targetId })
+      });
+
+      if (res.ok) {
+        // Optimistic update or refresh? Refresh is safer.
+        // Also remove from search results to indicate sent?
+        setSearchResults(prev => prev.filter(r => r.id !== targetId));
+        alert('Request sent!');
+        fetchFriends(currentUser.id);
+      } else {
+        const data = await res.json();
+        alert(data.error || 'Failed to send request');
+      }
+    } catch (err) {
+      alert('Network error');
+    }
+  };
+
+  const acceptRequest = async (requestId: number) => {
+    if (!currentUser) return;
+    try {
+      const res = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'http://localhost:8787'}/api/friends/accept`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ requestId })
+      });
+
+      if (res.ok) {
+        fetchFriends(currentUser.id);
+      }
+    } catch (err) {
+      console.error('Accept failed', err);
+    }
+  };
+
+  const declineRequest = async (requestId: number) => {
+    if (!currentUser) return;
+    try {
+      const res = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'http://localhost:8787'}/api/friends/${requestId}`, {
+        method: 'DELETE'
+      });
+
+      if (res.ok) {
+        fetchFriends(currentUser.id);
+      }
+    } catch (err) {
+      console.error('Decline failed', err);
+    }
+  };
+
+  const getAvatarUrl = (discordId: string, avatarHash?: string) => {
+    if (!avatarHash) return null;
+    return `https://cdn.discordapp.com/avatars/${discordId}/${avatarHash}.png`;
+  };
 
   return (
     <div className="friends-page">
-      <h1 className="friends-page-title">Friends</h1>
+      <h1 className="friends-page-title">OPERATOR NETWORK</h1>
+      {error && <div className="error-message">{error}</div>}
 
       <div className="friends-content">
+        {/* LEFT COLUMN: ACTIVE FRIENDS */}
         <div className="active-friends-section">
-          <h2 className="section-title">Active Friends</h2>
-          
-          <div className="friends-list">
-            {activeFriends.map((friend) => (
-              <div key={friend.id} className="friend-item">
-                <div className="friend-info">
-                  <div className="friend-avatar">{friend.avatar}</div>
-                  <div className="friend-details">
-                    <div className="friend-name-status">
-                      <span className="friend-name">{friend.name}</span>
-                      {friend.status === 'online' && (
-                        <span className="status-indicator online">● online</span>
+          <h2 className="section-title">ALLIES ({activeFriends.length})</h2>
+
+          {loading ? (
+            <div className="loading-state">SCANNING NETWORK...</div>
+          ) : activeFriends.length === 0 ? (
+            <div className="empty-state">NO ALLIES LINKED</div>
+          ) : (
+            <div className="friends-list">
+              {activeFriends.map((friend) => (
+                <div key={friend.id} className="friend-item">
+                  <div className="friend-info">
+                    <div className="friend-avatar">
+                      {friend.avatar ? (
+                        <img src={getAvatarUrl(friend.id, friend.avatar) || ''} alt="avatar" />
+                      ) : (
+                        <div className="avatar-placeholder">{friend.username[0]}</div>
                       )}
                     </div>
-                    {friend.status === 'online' && (
-                      <span className="status-text">● online</span>
-                    )}
-                    <span className="friend-elo">{friend.elo}</span>
+                    <div className="friend-details">
+                      <div className="friend-name-status">
+                        <span className="friend-name">{friend.nickname || friend.username}</span>
+                      </div>
+                      <span className="status-text online">● ONLINE</span>
+                      <span className="friend-elo">MMR: {friend.mmr}</span>
+                    </div>
+                  </div>
+                  <div className="friend-actions">
+                    <button className="message-btn">MESSAGE</button>
                   </div>
                 </div>
-                <div className="friend-actions">
-                  {friend.eloRank && <span className="elo-rank">{friend.eloRank}</span>}
-                  {friend.eloValue && <span className="elo-value">{friend.eloValue}</span>}
-                  {friend.status === 'online' && (
-                    <button className="message-btn">Message</button>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
 
+        {/* RIGHT COLUMN: SEARCH & REQUESTS */}
         <div className="right-column">
+
+          {/* SEARCH SECTION */}
           <div className="add-friend-section">
-            <h2 className="section-title">Add New Friend</h2>
-            
+            <h2 className="section-title">RECRUIT OPERATOR</h2>
+
             <div className="search-bar">
               <input
                 type="text"
-                placeholder="Search by Stanfoff 2 ID"
+                placeholder="SEARCH BY NAME..."
                 className="search-input"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
               />
-              <button className="search-btn">🔍</button>
+              <button className="search-btn" onClick={handleSearch} disabled={searchLoading}>
+                {searchLoading ? '...' : '🔍'}
+              </button>
             </div>
-
-            <button className="find-player-btn">Find Player</button>
 
             <div className="search-results">
               {searchResults.map((result) => (
                 <div key={result.id} className="result-item">
                   <div className="result-left">
-                    <span className="result-avatar">{result.avatar}</span>
+                    <div className="result-avatar-small">
+                      {result.avatar ? <img src={getAvatarUrl(result.id, result.avatar)!} /> : result.username[0]}
+                    </div>
                     <div className="result-info">
-                      <span className="result-name">{result.name}</span>
-                      <span className="result-team">{result.team || result.elo}</span>
+                      <span className="result-name">{result.nickname || result.username}</span>
+                      <span className="result-team">MMR: {result.mmr}</span>
                     </div>
                   </div>
                   <div className="result-right">
-                    {result.score ? (
-                      <>
-                        <span className="match-score">{result.score}</span>
-                        <div className="opponent-info">
-                          <span className="opponent-name">{result.opponent}</span>
-                          <span className="opponent-team">{result.opponentTeam}</span>
-                        </div>
-                      </>
-                    ) : (
-                      <button className="send-request-btn">Send Request</button>
-                    )}
+                    <button className="send-request-btn" onClick={() => sendFriendRequest(result.id)}>
+                      ADD +
+                    </button>
                   </div>
                 </div>
               ))}
+              {searchResults.length === 0 && searchQuery && !searchLoading && (
+                <div className="no-results">NO SIGNALS FOUND</div>
+              )}
             </div>
           </div>
 
+          {/* REQESTS SECTION */}
           <div className="pending-requests-section">
-            <h2 className="section-title">Pending Requests</h2>
-            
-            <div className="requests-list">
-              {pendingRequests.map((request) => (
-                <div key={request.id} className="request-item">
-                  <div className="request-left">
-                    <span className="request-avatar">{request.avatar}</span>
-                    <div className="request-info">
-                      <span className="request-name">{request.name}</span>
-                      {request.status && (
-                        <span className="request-status">● {request.status}</span>
-                      )}
-                    </div>
-                  </div>
-                  <div className="request-right">
-                    <div className="request-elo">
-                      <span className="elo-label">{request.elo}</span>
-                      {request.additional && (
-                        <span className="elo-additional">{request.additional}</span>
-                      )}
-                      {!request.additional && (
-                        <span className="elo-value-req">{request.elo}</span>
-                      )}
+            <h2 className="section-title">INCOMING TRANSMISSIONS ({pendingRequests.length})</h2>
+
+            {pendingRequests.length === 0 ? (
+              <div className="empty-state-small">NO PENDING REQUESTS</div>
+            ) : (
+              <div className="requests-list">
+                {pendingRequests.map((request) => (
+                  <div key={request.id} className="request-item">
+                    <div className="request-left">
+                      <div className="request-avatar">
+                        {request.avatar ? <img src={getAvatarUrl(request.id, request.avatar)!} /> : request.username[0]}
+                      </div>
+                      <div className="request-info">
+                        <span className="request-name">{request.nickname || request.username}</span>
+                        <div className="request-elo">
+                          <span className="elo-label">MMR: {request.mmr}</span>
+                        </div>
+                      </div>
                     </div>
                     <div className="request-actions">
-                      <button className="accept-btn">Accept</button>
-                      <button className="decline-btn">Decline</button>
+                      <button className="accept-btn" onClick={() => acceptRequest(request.friendship_id)}>ACCEPT</button>
+                      <button className="decline-btn" onClick={() => declineRequest(request.friendship_id)}>DECLINE</button>
                     </div>
                   </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </div>
     </div>
   );
 }
-

@@ -1,4 +1,3 @@
-import { useState, useEffect } from 'react';
 import './MapGrid.css';
 
 interface MapGridProps {
@@ -31,15 +30,14 @@ export default function MapGrid({
         return (
           <div
             key={mapName}
-            className={`map-grid-item ${
-              isBanned || isBanningNow
-                ? 'banned'
-                : isSelected
+            className={`map-grid-item ${isBanned || isBanningNow
+              ? 'banned'
+              : isSelected
                 ? 'selected'
                 : canBan && isAvailable
-                ? 'available'
-                : 'disabled'
-            }`}
+                  ? 'available'
+                  : 'disabled'
+              }`}
             onClick={() => onMapClick(mapName)}
             style={{
               backgroundImage: mapImages[mapName]
@@ -48,20 +46,18 @@ export default function MapGrid({
             }}
           >
             <div
-              className={`map-overlay ${
-                isBanned || isBanningNow
-                  ? 'overlay-banned'
-                  : isSelected
+              className={`map-overlay ${isBanned || isBanningNow
+                ? 'overlay-banned'
+                : isSelected
                   ? 'overlay-selected'
                   : 'overlay-default'
-              }`}
+                }`}
             />
 
             <div className="map-name-container">
               <p
-                className={`map-name ${
-                  isBanned || isBanningNow ? 'name-banned' : 'name-normal'
-                }`}
+                className={`map-name ${isBanned || isBanningNow ? 'name-banned' : 'name-normal'
+                  }`}
               >
                 {mapName}
               </p>

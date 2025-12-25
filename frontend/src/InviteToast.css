@@ -1,0 +1,95 @@
+/* Invite Notification Toast */
+.invite-notification-toast {
+    position: fixed;
+    top: 90px;
+    /* Below fixed header */
+    right: 20px;
+    background: rgba(15, 23, 42, 0.95);
+    border: 1px solid rgba(255, 107, 53, 0.3);
+    backdrop-filter: blur(10px);
+    padding: 1rem;
+    border-radius: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+    z-index: 2000;
+    animation: slideInRight 0.3s ease-out;
+    max-width: 320px;
+}
+
+@keyframes slideInRight {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+.invite-content {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.invite-avatar img {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    border: 2px solid #ff6b35;
+}
+
+.invite-text {
+    display: flex;
+    flex-direction: column;
+}
+
+.invite-name {
+    color: #fff;
+    font-weight: 700;
+    font-size: 1rem;
+}
+
+.invite-msg {
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 0.85rem;
+}
+
+.invite-actions {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.invite-btn {
+    flex: 1;
+    padding: 0.5rem;
+    border: none;
+    border-radius: 6px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-size: 0.85rem;
+}
+
+.invite-btn.accept {
+    background: #ff6b35;
+    color: #fff;
+}
+
+.invite-btn.accept:hover {
+    background: #ff8c61;
+}
+
+.invite-btn.decline {
+    background: rgba(255, 255, 255, 0.1);
+    color: rgba(255, 255, 255, 0.7);
+}
+
+.invite-btn.decline:hover {
+    background: rgba(255, 255, 255, 0.2);
+    color: #fff;
+}

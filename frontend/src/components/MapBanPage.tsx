@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import './MapBanPage.css';
 import MapBanView from './MapBanView';
+import { useWebSocket } from './WebSocketContext'; // Import Hook
 
 interface PartyMember {
   id: string;
@@ -17,14 +18,16 @@ interface MapBanPageProps {
 const ALL_MAPS = ['Hanami', 'Rust', 'Zone 7', 'Dune', 'Breeze', 'Province', 'Sandstone'];
 const BAN_TIMEOUT = 15; // seconds
 
-export default function MapBanPage({ partyMembers, onCancel, onMapSelected }: MapBanPageProps) {
+export default function MapBanPage({ partyMembers, onCancel: _onCancel, onMapSelected }: MapBanPageProps) {
   const [bannedMaps, setBannedMaps] = useState<string[]>([]);
   const [selectedMap, setSelectedMap] = useState<string | undefined>();
   const [currentBanTeam, setCurrentBanTeam] = useState<'alpha' | 'bravo'>('alpha');
   const [banHistory, setBanHistory] = useState<Array<{ team: string; map: string; timestamp: Date }>>([]);
   const [mapBanPhase, setMapBanPhase] = useState(true);
   const [timeLeft, setTimeLeft] = useState(BAN_TIMEOUT);
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const { sendMessage, lastMessage } = useWebSocket(); // Hook
 
   // Get current user
   const currentUserId = (() => {
@@ -48,25 +51,25 @@ export default function MapBanPage({ partyMembers, onCancel, onMapSelected }: Ma
 
   // Check if current user is a team leader
   const isTeamLeader = teamAlphaLeader?.id === currentUserId || teamBravoLeader?.id === currentUserId;
-  const userTeam: 'alpha' | 'bravo' | null = 
+  const userTeam: 'alpha' | 'bravo' | null =
     teamAlpha.some(p => p.id === currentUserId) ? 'alpha' :
-    teamBravo.some(p => p.id === currentUserId) ? 'bravo' : null;
+      teamBravo.some(p => p.id === currentUserId) ? 'bravo' : null;
 
-  const banMapRef = useRef<(mapName: string, team: 'alpha' | 'bravo') => void>();
+  const banMapRef = useRef<((mapName: string, team: 'alpha' | 'bravo') => void) | null>(null);
 
   banMapRef.current = (mapName: string, team: 'alpha' | 'bravo') => {
     setBannedMaps((prevBanned) => {
       // Prevent duplicate bans
       if (prevBanned.includes(mapName)) return prevBanned;
-      
+
       const newBanned = [...prevBanned, mapName];
-      
+
       // Update ban history separately
       setBanHistory((prevHistory) => {
         // Check if this map was already added to history (prevent duplicates)
         const alreadyInHistory = prevHistory.some(entry => entry.map === mapName);
         if (alreadyInHistory) return prevHistory;
-        
+
         return [
           ...prevHistory,
           { team: team, map: mapName, timestamp: new Date() },
@@ -131,23 +134,23 @@ export default function MapBanPage({ partyMembers, onCancel, onMapSelected }: Ma
     timerRef.current = setInterval(() => {
       setTimeLeft((prev) => {
         const newTime = prev - 1;
-        
+
         if (newTime <= 0) {
           // Clear timer immediately to prevent multiple executions
           if (timerRef.current) {
             clearInterval(timerRef.current);
             timerRef.current = null;
           }
-          
+
           // Time's up - auto ban random map for current team
           // Capture currentBanTeam value before state update
           const teamToBan = currentBanTeam;
-          
+
           setBannedMaps((currentBanned) => {
             if (currentBanned.length >= 6) {
               return currentBanned; // Don't ban if already at 6
             }
-            
+
             const availableMaps = ALL_MAPS.filter(map => !currentBanned.includes(map));
             // Only auto-ban if more than 1 map remains
             if (availableMaps.length > 1 && banMapRef.current) {
