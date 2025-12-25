@@ -272,6 +272,50 @@
     background: rgba(255, 255, 255, 0.1);
   }
 
+  .user-text-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .user-top-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .user-header-name {
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: #fff;
+    max-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .mod-badge {
+    background: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%);
+    color: white;
+    font-size: 0.65rem;
+    font-weight: 900;
+    padding: 1px 6px;
+    border-radius: 4px;
+    letter-spacing: 0.5px;
+    box-shadow: 0 0 10px rgba(6, 182, 212, 0.4);
+  }
+
+  .admin-badge {
+    background: linear-gradient(135deg, #f43f5e 0%, #e11d48 100%);
+    color: white;
+    font-size: 0.65rem;
+    font-weight: 900;
+    padding: 1px 6px;
+    border-radius: 4px;
+    letter-spacing: 0.5px;
+    box-shadow: 0 0 10px rgba(244, 63, 94, 0.4);
+  }
+
   /* Re-add dropdown logic styles from previous Header.css if needed, 
      but for now simplistic desktop view */
   .header-container {

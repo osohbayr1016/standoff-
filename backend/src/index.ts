@@ -27,13 +27,54 @@ export class MatchQueueDO {
       return this.handleServerInfo(request);
     }
 
+    if (url.pathname.endsWith('/broadcast') && request.method === 'POST') {
+      const body = await request.json() as { type: string; data: any };
+      console.log('📢 DO Internal Broadcast:', body.type);
+
+      // Handle NeatQueue webhook events relayed from Worker
+      if (body.type === 'NEATQUEUE_MATCH_STARTED') {
+        this.matchState = 'GAME'; // Transition to game state
+
+        // Broadcast globally so all clients (even on home page) know
+        this.broadcastToAll(JSON.stringify({
+          type: 'NEATQUEUE_MATCH_STARTED',
+          data: body.data
+        }));
+
+        // Also trigger a lobby update
+        await this.broadcastLobbyUpdate();
+      } else if (body.type === 'NEATQUEUE_TEAMS_CREATED') {
+        this.broadcastToAll(JSON.stringify({
+          type: 'NEATQUEUE_TEAMS_CREATED',
+          data: body.data
+        }));
+      } else if (body.type === 'NEATQUEUE_MATCH_COMPLETED') {
+        // Reset state
+        this.matchState = 'IDLE';
+        this.currentLobby = null;
+        await this.saveMatchState();
+
+        this.broadcastToAll(JSON.stringify({
+          type: 'NEATQUEUE_MATCH_COMPLETED',
+          data: body.data
+        }));
+      }
+
+      return new Response(JSON.stringify({ success: true }), {
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
     if (url.pathname.endsWith('/debug')) {
       return new Response(JSON.stringify({
         localQueueSize: this.localQueue.size,
         sessionsCount: this.sessions.size,
         remoteQueueCount: this.remoteQueue.length,
         localPlayers: Array.from(this.localQueue.values()),
-        remotePlayers: this.remoteQueue
+        remotePlayers: this.remoteQueue,
+        matchState: this.matchState,
+        lobbyId: this.currentLobby?.id,
+        registeredUsers: Array.from(this.userSockets.keys())
       }), { headers: { 'Content-Type': 'application/json' } });
     }
 
@@ -532,6 +573,11 @@ export class MatchQueueDO {
           if (userId) {
             this.localQueue.set(userId, user);
             // console.log("User joined local queue:", userId);
+
+            // Immediate sync with NeatQueue to show current Discord state
+            // Use waitUntil if available, but in DO we just don't await the sync
+            this.syncWithNeatQueue();
+
             this.broadcastMergedQueue();
           }
         }
@@ -1074,7 +1120,8 @@ app.get('/api/auth/callback', async (c) => {
 
     const userData = await userResponse.json() as any;
 
-    // 3. Хэрэглэгчийг Database-д хадгалах
+    // 3. Хэрэглэгчийг Database-д хадгалах bolon info avah
+    let player: any = null;
     try {
       await c.env.DB.prepare(
         `INSERT INTO players (id, discord_id, discord_username, discord_avatar) 
@@ -1088,14 +1135,25 @@ app.get('/api/auth/callback', async (c) => {
         userData.username,
         userData.avatar
       ).run();
+
+      const { results } = await c.env.DB.prepare(
+        `SELECT role, elo FROM players WHERE id = ?`
+      ).bind(userData.id).all();
+
+      if (results && results.length > 0) {
+        player = results[0];
+      }
     } catch (dbError) {
       console.error('Database error:', dbError);
     }
 
     // 4. Хэрэглэгчийг Frontend рүү нь буцаах
     const frontendUrl = c.env.FRONTEND_URL || 'http://localhost:5173';
+    const role = player?.role || 'user';
+    const elo = player?.elo || 1000;
+
     return c.redirect(
-      `${frontendUrl}?id=${userData.id}&username=${userData.username}&avatar=${userData.avatar || ''}`
+      `${frontendUrl}?id=${userData.id}&username=${userData.username}&avatar=${userData.avatar || ''}&role=${role}&elo=${elo}`
     );
   } catch (error) {
     console.error('Auth error:', error);

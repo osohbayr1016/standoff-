@@ -10,7 +10,8 @@ export const players = sqliteTable('players', {
     wins: integer('wins').default(0).notNull(),
     losses: integer('losses').default(0).notNull(),
     created_at: text('created_at').default('CURRENT_TIMESTAMP'),
-    nickname_updated_at: text('nickname_updated_at')
+    nickname_updated_at: text('nickname_updated_at'),
+    role: text('role').default('user').notNull() // 'user', 'moderator', 'admin'
 });
 
 export const friendships = sqliteTable('friendships', {

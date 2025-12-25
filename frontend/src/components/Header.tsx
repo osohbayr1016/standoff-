@@ -7,6 +7,7 @@ interface User {
   avatar: string;
   standoff_nickname?: string;
   elo?: number;
+  role?: string;
 }
 
 interface HeaderProps {
@@ -247,7 +248,14 @@ export default function Header({
                   <div className="avatar-fallback-header">{user.username[0]}</div>
                 )}
               </div>
-              <span className="user-elo">ELO: {user.elo || 1000}</span>
+              <div className="user-text-info">
+                <div className="user-top-row">
+                  <span className="user-header-name">{user.standoff_nickname || user.username}</span>
+                  {user.role === 'moderator' && <span className="mod-badge">MOD</span>}
+                  {user.role === 'admin' && <span className="admin-badge">ADMIN</span>}
+                </div>
+                <span className="user-elo">ELO: {user.elo || 1000}</span>
+              </div>
             </div>
           )
         }

@@ -653,7 +653,6 @@ function AppContent() {
             serverInfo={
               matchData?.matchData?.serverInfo || matchData?.serverInfo
             }
-            onMatchStart={() => { }}
           />
         )}
       </main>
