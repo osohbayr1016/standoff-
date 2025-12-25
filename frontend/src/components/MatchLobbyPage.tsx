@@ -25,7 +25,7 @@ const mapImages: Record<string, string> = {
   Sandstone: '/1200px-Sandstone_Map.jpg',
 };
 
-export default function MatchLobbyPage({ partyMembers, selectedMap, onCancel: _onCancel }: MatchLobbyPageProps) {
+export default function MatchLobbyPage({ partyMembers, selectedMap, onCancel }: MatchLobbyPageProps) {
   const [countdown, setCountdown] = useState(5);
   const [allReady, setAllReady] = useState(false);
   const [readyPlayers, setReadyPlayers] = useState<Set<string>>(new Set());
@@ -53,12 +53,12 @@ export default function MatchLobbyPage({ partyMembers, selectedMap, onCancel: _o
   useEffect(() => {
     if (lastMessage && lastMessage.type === 'LOBBY_UPDATE') {
       const lobby = lastMessage.lobby;
-      
+
       // Sync ready players from readyPhaseState
       if (lobby && lobby.readyPhaseState) {
         const readyState = lobby.readyPhaseState;
         setReadyPlayers(new Set(readyState.readyPlayers || []));
-        
+
         // Calculate ready phase timer
         if (readyState.phaseActive && readyState.readyPhaseStartTimestamp) {
           const elapsed = Date.now() - readyState.readyPhaseStartTimestamp;
@@ -70,7 +70,7 @@ export default function MatchLobbyPage({ partyMembers, selectedMap, onCancel: _o
         setReadyPlayers(new Set(lobby.readyPlayers));
       }
     }
-    
+
     // Handle MATCH_CANCELLED
     if (lastMessage && lastMessage.type === 'MATCH_CANCELLED') {
       alert('Match cancelled: ' + (lastMessage.reason || 'Not all players ready in time'));
@@ -132,7 +132,7 @@ export default function MatchLobbyPage({ partyMembers, selectedMap, onCancel: _o
     sendMessage({ type: 'PLAYER_READY', userId: playerId });
     // Don't update local state - wait for server confirmation via LOBBY_UPDATE
   };
-  
+
   // Ready phase timer countdown
   useEffect(() => {
     if (readyPhaseTimeLeft > 0) {
@@ -206,7 +206,7 @@ export default function MatchLobbyPage({ partyMembers, selectedMap, onCancel: _o
       {selectedMap && (
         <div className="selected-map-display">
           {mapImages[selectedMap] && (
-            <div 
+            <div
               className="selected-map-image"
               style={{
                 backgroundImage: `url(${mapImages[selectedMap]})`

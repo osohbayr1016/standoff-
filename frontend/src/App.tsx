@@ -103,7 +103,7 @@ function AppContent() {
     if (lastMessage.type === 'MATCH_CANCELLED') {
       console.log("Match Cancelled:", lastMessage);
       // Clear lobby state
-      setActiveLobbyId(null);
+      setActiveLobbyId(undefined);
       setLobbyPartyMembers([]);
       setSelectedMap(undefined);
       // Navigate back to matchmaking or home
