@@ -171,11 +171,18 @@ export default function MapBanPage({ partyMembers, onCancel: _onCancel, onMapSel
       return;
     }
 
+    // Strict permission check: Only the current team leader can ban
+    if (userTeam !== currentBanTeam) {
+      console.warn("Not your turn to ban!");
+      return;
+    }
+
     // Send ban message to server
     sendMessage({
       type: 'BAN_MAP',
+      lobbyId: lobbyId,
       map: mapName,
-      team: currentBanTeam
+      team: userTeam
     });
 
     // Don't update local state - wait for server confirmation via LOBBY_UPDATE

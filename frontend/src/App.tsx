@@ -12,6 +12,7 @@ import RewardsPage from "./components/RewardsPage";
 import FriendsPage from "./components/FriendsPage";
 import MatchmakingPage from "./components/MatchmakingPage";
 import MapBanPage from "./components/MapBanPage";
+import MatchPage from "./components/MatchPage";
 import AuthPage from "./components/AuthPage";
 import NotFoundPage from "./components/NotFoundPage";
 import Footer from "./components/Footer";
@@ -46,6 +47,7 @@ function AppContent() {
       "friends",
       "matchmaking",
       "mapban",
+      "matchgame",
     ];
     if (savedPage && validPages.includes(savedPage)) {
       return savedPage;
@@ -61,6 +63,7 @@ function AppContent() {
     lobbyId: string;
   } | null>(null);
   const [activeLobbyId, setActiveLobbyId] = useState<string | undefined>(); // Track active lobby
+  const [matchData, setMatchData] = useState<any>(null); // Store match server info
 
   const { registerUser, lastMessage } = useWebSocket();
 
@@ -132,6 +135,13 @@ function AppContent() {
     if (lastMessage.type === "LOBBY_UPDATE" || lastMessage.type === "MATCH_START") {
       console.log("Persistence Update:", lastMessage.type);
       const lobby = lastMessage.lobby || lastMessage.matchData;
+
+      if (lastMessage.type === "MATCH_START") {
+        console.log("MATCH STARTED! Switching to Match View", lastMessage);
+        setMatchData(lastMessage);
+        setCurrentPage("matchgame");
+        return;
+      }
 
       if (lobby && lobby.id) {
         setActiveLobbyId(lobby.id);
@@ -285,6 +295,7 @@ function AppContent() {
     "matchmaking",
     "matchlobby",
     "mapban",
+    "matchgame",
   ];
   const isValidPage = validPages.includes(currentPage);
 
@@ -377,6 +388,13 @@ function AppContent() {
           <MapBanPage
             partyMembers={lobbyPartyMembers}
             onCancel={() => setCurrentPage("home")}
+          />
+        )}
+        {currentPage === "matchgame" && (
+          <MatchPage
+            serverInfo={matchData?.matchData?.serverInfo || matchData?.serverInfo}
+            mapName={matchData?.selectedMap}
+            onGoHome={() => setCurrentPage("home")}
           />
         )}
       </main>
