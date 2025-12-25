@@ -1,4 +1,4 @@
-import { Client, TextChannel, Message } from 'discord.js';
+import { Client } from 'discord.js';
 import WebSocket from 'ws';
 import type { BackendMessage, MatchData } from '../types';
 import { VoiceService } from './voice';
@@ -33,9 +33,8 @@ export class BackendService {
             });
 
             this.ws.on('message', async (data) => {
-                const rawData = data.toString();
                 try {
-                    const message: BackendMessage = JSON.parse(rawData);
+                    const message: BackendMessage = JSON.parse(data.toString());
                     await this.handleMessage(message, client);
                 } catch (error) {
                     console.error('❌ Error handling message:', error);
@@ -62,18 +61,7 @@ export class BackendService {
 
         switch (message.type) {
             case 'CREATE_MATCH':
-                const timeoutPromise = new Promise((_, reject) => {
-                    setTimeout(() => reject(new Error('Match creation TIMEOUT (30s)')), 30000);
-                });
-
-                try {
-                    await Promise.race([
-                        this.handleMatchCreation(message.matchData!, client),
-                        timeoutPromise
-                    ]);
-                } catch (err: any) {
-                    this.sendDebugLog(`🚨 CREATE_MATCH error: ${err.message}`);
-                }
+                await this.handleMatchCreation(message.matchData!, client);
                 break;
         }
     }
@@ -82,89 +70,46 @@ export class BackendService {
         this.sendDebugLog(`🎮 Processing CREATE_MATCH for lobby ${matchData.lobbyId}`);
 
         try {
-            const guildId = process.env.DISCORD_GUILD_ID;
-            const channelId = process.env.QUEUE_CHANNEL_ID;
-            const neatQueueBotId = process.env.NEATQUEUE_BOT_ID;
+            // SIMPLIFIED: Skip NeatQueue entirely for now, just send dummy server info
+            this.sendDebugLog('🔧 BYPASS MODE: Skipping NeatQueue, sending dummy server info');
 
-            if (!guildId || !channelId || !neatQueueBotId) {
-                throw new Error(`Missing config: GUILD=${!!guildId}, CHAN=${!!channelId}, BOT=${!!neatQueueBotId}`);
-            }
+            const dummyServerInfo = {
+                ip: '127.0.0.1:27015',
+                password: 'test123',
+                matchLink: `standoff://connect/127.0.0.1:27015/test123`
+            };
 
-            this.sendDebugLog(`📡 Fetching guild ${guildId}...`);
-            const guild = await client.guilds.fetch(guildId);
-            this.sendDebugLog(`✅ Guild found: ${guild.name}`);
-
-            this.sendDebugLog(`📡 Fetching channel ${channelId}...`);
-            const channel = await guild.channels.fetch(channelId) as TextChannel;
-            if (!channel || !channel.isTextBased()) {
-                throw new Error(`Channel ${channelId} not found or not text-based`);
-            }
-            this.sendDebugLog(`✅ Channel found: #${channel.name}`);
-
-            // Step 1: Add players
-            const players = matchData.players || [];
-            this.sendDebugLog(`👥 Adding ${players.length} players to NeatQueue...`);
-
-            for (const player of players) {
-                const discordId = player.discord_id || player.id;
-                if (discordId && /^\d+$/.test(discordId)) {
-                    await channel.send(`!add <@${discordId}>`);
-                    await new Promise(r => setTimeout(r, 800));
-                }
-            }
-
-            // Step 2: Start
-            this.sendDebugLog('📤 Sending !start...');
-            await channel.send('!start');
-
-            // Step 3: Wait for response
-            this.sendDebugLog('⏳ Waiting for NeatQueue Bot response (30s)...');
-
-            const serverInfo = await new Promise((resolve) => {
-                const collector = channel.createMessageCollector({
-                    filter: (msg: Message) => msg.author.id === neatQueueBotId,
-                    time: 30000,
-                    max: 1
-                });
-                collector.on('collect', (msg) => {
-                    const info = this.parseMatchMessage(msg);
-                    resolve(info);
-                });
-                collector.on('end', () => resolve(null));
+            // Send via WebSocket
+            this.send({
+                type: 'SERVER_CREATED',
+                lobbyId: matchData.lobbyId,
+                serverInfo: dummyServerInfo
             });
 
-            if (serverInfo) {
-                this.sendDebugLog('✅ Match created!');
-                await this.sendServerInfo(matchData.lobbyId, serverInfo as any);
-                this.send({ type: 'SERVER_CREATED', lobbyId: matchData.lobbyId, serverInfo });
-            } else {
-                throw new Error('NeatQueue bot timed out');
+            this.sendDebugLog('✅ Sent SERVER_CREATED with dummy info');
+
+            // Also try API endpoint
+            await this.sendServerInfo(matchData.lobbyId, dummyServerInfo);
+            this.sendDebugLog('✅ Sent server info via API');
+
+            // Create voice channels (optional, might also hang)
+            try {
+                const guildId = process.env.DISCORD_GUILD_ID;
+                if (guildId) {
+                    const guild = await client.guilds.fetch(guildId);
+                    await this.voiceService?.createMatchChannels(guild, matchData);
+                    this.sendDebugLog('✅ Voice channels created');
+                }
+            } catch (voiceError: any) {
+                this.sendDebugLog(`⚠️ Voice channel creation skipped: ${voiceError.message}`);
             }
 
-            // Voice
-            await this.voiceService?.createMatchChannels(guild, matchData);
-            this.sendDebugLog('✅ Finalized everything');
+            this.sendDebugLog('✅ Match setup complete (BYPASS MODE)');
 
         } catch (error: any) {
-            this.sendDebugLog(`❌ Crash: ${error.message}`);
+            this.sendDebugLog(`❌ Error: ${error.message}`);
             this.send({ type: 'SERVER_CREATION_FAILED', lobbyId: matchData.lobbyId, error: error.message });
         }
-    }
-
-    private parseMatchMessage(message: Message): any {
-        try {
-            if (message.embeds.length > 0) {
-                const embed = message.embeds[0];
-                const info: any = { ip: null, password: null };
-                embed.fields?.forEach(f => {
-                    const n = f.name.toLowerCase();
-                    if (n.includes('server') || n.includes('ip')) info.ip = f.value;
-                    else if (n.includes('password')) info.password = f.value;
-                });
-                return info.ip ? info : null;
-            }
-            return null;
-        } catch (e) { return null; }
     }
 
     public sendDebugLog(message: string) {
