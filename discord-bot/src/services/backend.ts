@@ -204,10 +204,10 @@ export class BackendService {
     async sendServerInfo(lobbyId: string, serverInfo: { ip: string; password: string; matchLink?: string }): Promise<boolean> {
         try {
             const normalizedUrl = this.backendUrl.endsWith('/') ? this.backendUrl.slice(0, -1) : this.backendUrl;
-            
+
             // Generate match link if not provided
             const matchLink = serverInfo.matchLink || `standoff://connect/${serverInfo.ip}/${serverInfo.password}`;
-            
+
             const response = await fetch(`${normalizedUrl}/api/match/server-info`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -221,7 +221,7 @@ export class BackendService {
             });
 
             if (response.ok) {
-                const result = await response.json();
+                const result = await response.json() as any;
                 console.log('✅ Server info sent via API:', result);
                 return result.success === true;
             } else {
