@@ -19,20 +19,19 @@ export default function DailyRewards() {
       try {
         const savedUser = localStorage.getItem('user');
         if (savedUser) {
-          const userData = JSON.parse(savedUser);
-          const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8787';
-          
+
+
           // TODO: Create /api/rewards endpoint in backend
           // For now, show placeholder with 0 completed days
           const completed = 0;
           const totalDays = 10;
-          
+
           const progress: RewardDay[] = Array.from({ length: totalDays }, (_, index) => ({
             icon: index < completed ? '✓' : '🎁',
             label: `Day ${index + 1}`,
             completed: index < completed
           }));
-          
+
           setRewardProgress(progress);
           setCompletedDays(completed);
         }
@@ -62,7 +61,7 @@ export default function DailyRewards() {
   return (
     <div className="rewards-card">
       <h3 className="card-title">Өдөр тутмын урамшууллын явц</h3>
-      
+
       <div className="rewards-progress">
         {rewardProgress.length > 0 ? (
           rewardProgress.map((reward, index) => (

@@ -102,37 +102,35 @@ function AppContent() {
   }, [matchData]);
 
   // Register user on socket when authenticated and request match state if needed
+  // 1. Register user on socket when authenticated (and when user changes)
   useEffect(() => {
     if (user && user.id) {
+      console.log('App: Registering user effect triggered', { userId: user.id });
       registerUser(user.id);
-
-      // If we have an activeLobbyId, request match state after a short delay to ensure socket is ready
-      // Always request fresh state when on matchgame page to ensure we have latest data (fixes refresh bug)
-      if (activeLobbyId) {
-        const timeout = setTimeout(() => {
-          // Always request fresh state if on matchgame page (handles refresh)
-          // Also request if matchData is missing
-          if (currentPage === "matchgame" || !matchData) {
-            console.log(
-              "Requesting match state for lobby:",
-              activeLobbyId,
-              "currentPage:",
-              currentPage
-            );
-            requestMatchState(activeLobbyId);
-          }
-        }, 500); // Small delay to ensure socket is connected
-        return () => clearTimeout(timeout);
-      }
+    } else {
+      console.log('App: Skipping registration - no user', { user });
     }
-  }, [
-    user,
-    registerUser,
-    activeLobbyId,
-    requestMatchState,
-    currentPage,
-    matchData,
-  ]);
+  }, [user, registerUser]);
+
+  // 2. Request match state logic
+  useEffect(() => {
+    if (user && user.id && activeLobbyId) {
+      const timeout = setTimeout(() => {
+        // Always request fresh state if on matchgame page (handles refresh)
+        // Also request if matchData is missing
+        if (currentPage === "matchgame" || !matchData) {
+          console.log(
+            "Requesting match state for lobby:",
+            activeLobbyId,
+            "currentPage:",
+            currentPage
+          );
+          requestMatchState(activeLobbyId);
+        }
+      }, 500); // Small delay to ensure socket is connected
+      return () => clearTimeout(timeout);
+    }
+  }, [activeLobbyId, requestMatchState, currentPage, matchData, user]);
 
   // Handle incoming WebSocket messages (Invites & Match Ready)
   useEffect(() => {
@@ -195,6 +193,13 @@ function AppContent() {
       const lobby = lastMessage.lobby || lastMessage.matchData;
 
       if (lastMessage.type === "MATCH_START") {
+        // Prevent processing the same MATCH_START event multiple times
+        const eventId = lastMessage.lobbyId || lastMessage.matchData?.id;
+        if (eventId && matchData?.lobby?.id === eventId) {
+          console.log("MATCH_START already processed for lobby:", eventId);
+          return;
+        }
+
         console.log("MATCH STARTED! Switching to Match View", lastMessage);
         setMatchData(lastMessage);
         // Only redirect to matchgame if:
@@ -215,6 +220,83 @@ function AppContent() {
         return;
       }
 
+      // Handle NeatQueue webhook events
+      if (lastMessage.type === "NEATQUEUE_MATCH_STARTED") {
+        console.log("🔍 NeatQueue Match Started - Full Data:", lastMessage.data);
+        console.log("🔍 Teams Array:", lastMessage.data?.teams);
+
+        // Set match data with NeatQueue info
+        const neatqueueTeams = lastMessage.data?.teams || [];
+        console.log(`🔍 Number of teams received: ${neatqueueTeams.length}`);
+
+        const teamA =
+          neatqueueTeams[0]?.players.map((p: any) => ({
+            id: p.id,
+            username: p.name,
+            avatar: null,
+            elo: p.rating || 1000,
+          })) || [];
+        const teamB =
+          neatqueueTeams[1]?.players.map((p: any) => ({
+            id: p.id,
+            username: p.name,
+            avatar: null,
+            elo: p.rating || 1000,
+          })) || [];
+
+        console.log(`🔍 Team A Players: ${teamA.length}`, teamA);
+        console.log(`🔍 Team B Players: ${teamB.length}`, teamB);
+
+        const neatqueueMatchData = {
+          lobby: {
+            id: lastMessage.data?.game_number || "unknown",
+            teamA,
+            teamB,
+            mapBanState: {
+              selectedMap: lastMessage.data?.map || "Unknown",
+            },
+          },
+          matchData: {
+            serverInfo: lastMessage.data?.serverInfo,
+          },
+        };
+
+        setMatchData(neatqueueMatchData);
+        setActiveLobbyId(String(lastMessage.data?.game_number || "unknown"));
+
+        // Auto-navigate to match lobby
+        if (!userNavigatedAway) {
+          setCurrentPage("matchgame");
+        }
+      }
+
+      // Handle match completion - clean up state
+      if (
+        lastMessage.type === "NEATQUEUE_MATCH_COMPLETED" ||
+        lastMessage.type === "MATCH_COMPLETED"
+      ) {
+        console.log("Match completed, cleaning up state:", lastMessage);
+
+        // Clear match-related state
+        setActiveLobbyId(undefined);
+        setMatchData(null);
+        setLobbyPartyMembers([]);
+        setSelectedMap(undefined);
+        setUserNavigatedAway(false);
+
+        // Navigate to home page
+        setCurrentPage("home");
+
+        // Show match results if available
+        if (lastMessage.winner || lastMessage.tie) {
+          console.log("Match results:", {
+            winner: lastMessage.winner,
+            tie: lastMessage.tie,
+            teams: lastMessage.teams || lastMessage.data?.teams,
+          });
+          // TODO: Show match results modal/page
+        }
+      }
       if (lobby && lobby.id) {
         // Only update if this is the current active lobby to prevent wrong lobby bug
         if (activeLobbyId && lobby.id !== activeLobbyId) {
@@ -348,8 +430,7 @@ function AppContent() {
 
         try {
           const res = await fetch(
-            `${
-              import.meta.env.VITE_BACKEND_URL || "http://localhost:8787"
+            `${import.meta.env.VITE_BACKEND_URL || "http://localhost:8787"
             }/api/profile/${userData.id}`
           );
           if (res.ok) {
@@ -420,14 +501,6 @@ function AppContent() {
     localStorage.removeItem("user");
     localStorage.removeItem("currentPage");
     setCurrentPage("home");
-  };
-
-  const handleStartLobby = (partyMembers: PartyMember[]) => {
-    // This function is no longer used since we don't auto-navigate from matchmaking
-    // Keep it for backward compatibility but don't navigate
-    setLobbyPartyMembers(partyMembers);
-    // Don't auto-navigate - user should use "RETURN TO MATCH" button
-    // setCurrentPage("mapban"); // Removed to prevent auto-navigation
   };
 
   const handleAcceptInvite = () => {
@@ -544,9 +617,14 @@ function AppContent() {
         {currentPage === "friends" && <FriendsPage />}
         {currentPage === "matchmaking" && (
           <MatchmakingPage
-            onCancel={() => setCurrentPage("home")}
-            onStartLobby={handleStartLobby}
+            onCancel={() => {
+              // Handle cancel (e.g., leave queue)
+            }}
+            onStartLobby={() => {
+              // Handle starting lobby/queue
+            }}
             activeLobbyId={activeLobbyId}
+            lobbyState={matchData?.lobby || matchData?.matchData || matchData}
           />
         )}
         {currentPage === "mapban" && (
@@ -571,11 +649,11 @@ function AppContent() {
         )}
         {currentPage === "matchgame" && (
           <MatchLobbyPage
-            lobby={matchData?.matchData || matchData?.lobby || matchData}
+            lobby={matchData?.lobby || matchData?.matchData || matchData}
             serverInfo={
               matchData?.matchData?.serverInfo || matchData?.serverInfo
             }
-            onMatchStart={() => {}}
+            onMatchStart={() => { }}
           />
         )}
       </main>

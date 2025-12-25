@@ -8,6 +8,7 @@ import { setupProfileRoutes } from './routes/profile';
 import { setupLeaderboardRoutes } from './routes/leaderboard';
 import { setupAdminRoutes } from './routes/admin';
 import { setupFriendsRoutes } from './routes/friends';
+import neatqueueWebhook from './webhooks/neatqueue';
 
 // 1. Durable Object - Real-time системд хэрэгтэй
 export class MatchQueueDO {
@@ -20,12 +21,12 @@ export class MatchQueueDO {
 
   async fetch(request: Request) {
     const url = new URL(request.url);
-    
+
     // Handle API endpoints
     if (url.pathname.endsWith('/server-info') && request.method === 'POST') {
       return this.handleServerInfo(request);
     }
-    
+
     if (url.pathname.endsWith('/debug')) {
       return new Response(JSON.stringify({
         localQueueSize: this.localQueue.size,
@@ -52,7 +53,7 @@ export class MatchQueueDO {
   async handleServerInfo(request: Request) {
     try {
       const body = await request.json() as { lobbyId: string; serverInfo: { ip: string; password: string; matchLink?: string } };
-      
+
       // Load match state if not initialized
       if (!this.initialized || !this.currentLobby) {
         await this.loadMatchState();
@@ -60,10 +61,10 @@ export class MatchQueueDO {
 
       // Validate lobbyId
       if (!this.currentLobby || this.currentLobby.id !== body.lobbyId) {
-        return new Response(JSON.stringify({ 
-          success: false, 
-          error: 'Lobby not found or invalid lobbyId' 
-        }), { 
+        return new Response(JSON.stringify({
+          success: false,
+          error: 'Lobby not found or invalid lobbyId'
+        }), {
           status: 404,
           headers: { 'Content-Type': 'application/json' }
         });
@@ -110,19 +111,19 @@ export class MatchQueueDO {
 
       console.log('✅ Server info received via API:', this.currentLobby.serverInfo);
 
-      return new Response(JSON.stringify({ 
+      return new Response(JSON.stringify({
         success: true,
         message: 'Server info updated successfully'
-      }), { 
+      }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' }
       });
     } catch (error: any) {
       console.error('❌ Error handling server info:', error);
-      return new Response(JSON.stringify({ 
+      return new Response(JSON.stringify({
         success: false,
         error: error.message || 'Internal server error'
-      }), { 
+      }), {
         status: 500,
         headers: { 'Content-Type': 'application/json' }
       });
@@ -165,12 +166,12 @@ export class MatchQueueDO {
   async alarm() {
     try {
       console.log('⏰ Alarm firing...');
-      
+
       // Load state from storage if not initialized
       if (!this.initialized) {
         await this.loadMatchState();
       }
-      
+
       await this.syncWithNeatQueue(); // Updates this.remoteQueue
       const merged = this.getMergedQueue();
 
@@ -249,9 +250,9 @@ export class MatchQueueDO {
             if (timeRemaining <= 0 && !allPlayersReady) {
               // Timeout - cancel match and re-enter players to queue
               console.log("⏰ Ready phase timeout, cancelling match...");
-              
+
               const lobbyId = this.currentLobby.id;
-              
+
               // Re-enter players to queue
               players.forEach((p: any) => {
                 const playerId = p.id || p.discord_id;
@@ -318,18 +319,31 @@ export class MatchQueueDO {
     console.log("Starting Match with:", players.length, "players");
     this.matchState = 'LOBBY';
 
-    // Select Captains (Random for now, or highest ELO)
-    // For test with 2 players, both are captains
+    // Select Captains (first 2 players, or random/highest ELO)
     const captain1 = players[0];
     const captain2 = players[1] || players[0]; // Fallback
+
+    // Distribute all 10 players into 5v5 teams
+    // Simple distribution: alternate players (captain1, captain2, p3, p4, ...)
+    // Or use snake draft, or random, or ELO-balanced
+    const teamA = [];
+    const teamB = [];
+
+    for (let i = 0; i < players.length; i++) {
+      if (i % 2 === 0) {
+        teamA.push(players[i]);
+      } else {
+        teamB.push(players[i]);
+      }
+    }
 
     this.currentLobby = {
       id: crypto.randomUUID(),
       players: players,
       captainA: captain1,
       captainB: captain2,
-      teamA: [captain1],
-      teamB: [captain2],
+      teamA: teamA, // Now contains 5 players
+      teamB: teamB, // Now contains 5 players
       readyPlayers: [], // Initialize ready list
       mapBanState: {
         bannedMaps: [],
@@ -402,11 +416,21 @@ export class MatchQueueDO {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 4000); // 4s timeout
 
+      const apiKey = this.env.NEATQUEUE_API_KEY;
+      if (!apiKey) {
+        console.error("❌ NEATQUEUE_API_KEY is missing in env!");
+        return;
+      }
+
+      // Log masked key to verify it's loaded correctly
+      const maskedKey = apiKey.substring(0, 4) + '...' + apiKey.substring(apiKey.length - 4);
+      console.log(`🔍 Syncing with NeatQueue using key: ${maskedKey}`);
+
       const response = await fetch(
         `https://api.neatqueue.com/api/v1/queue/${this.env.DISCORD_CHANNEL_ID}/players`,
         {
           headers: {
-            'Authorization': `Bearer ${this.env.NEATQUEUE_API_KEY}`
+            'Authorization': `Bearer ${apiKey}`
           },
           signal: controller.signal
         }
@@ -608,7 +632,7 @@ export class MatchQueueDO {
           // Validate player is in the match
           const players = this.currentLobby.players || [];
           const player = players.find((p: any) => p.id === userId || p.discord_id === userId);
-          
+
           if (!player) {
             ws.send(JSON.stringify({
               type: 'ERROR',
@@ -630,22 +654,22 @@ export class MatchQueueDO {
           // Add player to ready list if not already present
           if (!readyPhaseState.readyPlayers.includes(userId)) {
             readyPhaseState.readyPlayers.push(userId);
-            
+
             // Check if all players are ready
             const allPlayersReady = readyPhaseState.readyPlayers.length >= players.length;
-            
+
             if (allPlayersReady) {
               // All players ready - trigger server creation
               readyPhaseState.phaseActive = false;
               this.matchState = 'GAME';
-              
+
               // Broadcast ALL_PLAYERS_READY message
               await this.saveMatchState();
               this.broadcastToAll(JSON.stringify({
                 type: 'ALL_PLAYERS_READY',
                 lobbyId: this.currentLobby.id
               }));
-              
+
               // Trigger server creation (if you have a method for this)
               // For now, we'll wait for SERVER_CREATED message from Discord bot
               // When server is ready, we'll send MATCH_START
@@ -849,6 +873,25 @@ export class MatchQueueDO {
             matchState: this.matchState,
             timestamp: Date.now()
           }));
+        }
+
+        // RESET_MATCH: Force clear match state (Admin/Debug only)
+        if (data.type === 'RESET_MATCH') {
+          console.log('⚠️ RESET_MATCH requested! Clearing lobby state...');
+
+          this.matchState = 'IDLE';
+          this.currentLobby = null;
+          this.state.storage.delete('matchState');
+          this.state.storage.delete('currentLobby');
+
+          // Broadcast update to all connected clients
+          this.broadcastToAll(JSON.stringify({
+            type: 'MATCH_RESET',
+            timestamp: Date.now()
+          }));
+
+          // Force update queue status
+          this.broadcastMergedQueue();
         }
 
       } catch (err) {
@@ -1126,7 +1169,7 @@ app.post('/api/match/server-info', async (c) => {
   try {
     const id = c.env.MATCH_QUEUE.idFromName('global-matchmaking-v2');
     const obj = c.env.MATCH_QUEUE.get(id);
-    
+
     // Create a new request to the Durable Object's server-info endpoint
     const doUrl = new URL(c.req.raw.url);
     doUrl.pathname = '/server-info';
@@ -1135,16 +1178,19 @@ app.post('/api/match/server-info', async (c) => {
       headers: c.req.raw.headers,
       body: c.req.raw.body
     });
-    
+
     return obj.fetch(doRequest);
   } catch (error: any) {
     console.error('Error forwarding server info to Durable Object:', error);
-    return c.json({ 
+    return c.json({
       success: false,
       error: error.message || 'Internal server error'
     }, 500);
   }
 });
+
+// NeatQueue Webhook Handler
+app.route('/api/neatqueue', neatqueueWebhook);
 
 export default {
   fetch: app.fetch,

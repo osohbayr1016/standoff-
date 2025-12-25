@@ -116,9 +116,9 @@ export default function MatchLobbyPage({ lobby, serverInfo: initialServerInfo }:
                   transition={{ delay: i * 0.1 }}
                   className="player-card"
                 >
-                  <div className="level-badge" style={{ borderColor: getLevelColor(getLevel(player.elo)) }}>
-                    <Hexagon size={28} fill="#1e293b" stroke={getLevelColor(getLevel(player.elo))} strokeWidth={2} />
-                    <span className="level-num">{getLevel(player.elo)}</span>
+                  <div className="level-badge" style={{ borderColor: getLevelColor(getLevel(player.elo || 1000)) }}>
+                    <Hexagon size={28} fill="#1e293b" stroke={getLevelColor(getLevel(player.elo || 1000))} strokeWidth={2} />
+                    <span className="level-num">{getLevel(player.elo || 1000)}</span>
                   </div>
                   <div className="player-info">
 
@@ -183,6 +183,26 @@ export default function MatchLobbyPage({ lobby, serverInfo: initialServerInfo }:
                     <span>ALLOCATING GAME SERVER...</span>
                   </div>
                 )}
+
+                {/* Emergency Leave Match Button */}
+                <button
+                  className="copy-btn"
+                  style={{
+                    background: '#ef4444',
+                    borderColor: '#ef4444',
+                    marginTop: '1rem',
+                    width: '100%'
+                  }}
+                  onClick={() => {
+                    if (confirm('Are you sure you want to leave this match? This will clear your match state.')) {
+                      localStorage.removeItem('activeLobbyId');
+                      localStorage.removeItem('matchData');
+                      window.location.href = '/';
+                    }
+                  }}
+                >
+                  LEAVE MATCH
+                </button>
               </div>
             </div>
             {/* Mobile: Show divider line */}
@@ -216,9 +236,9 @@ export default function MatchLobbyPage({ lobby, serverInfo: initialServerInfo }:
                     <div className="player-name">{player.username}</div>
                     <div className="player-status ready">READY</div>
                   </div>
-                  <div className="level-badge" style={{ borderColor: getLevelColor(getLevel(player.elo)) }}>
-                    <Hexagon size={28} fill="#1e293b" stroke={getLevelColor(getLevel(player.elo))} strokeWidth={2} />
-                    <span className="level-num">{getLevel(player.elo)}</span>
+                  <div className="level-badge" style={{ borderColor: getLevelColor(getLevel(player.elo || 1000)) }}>
+                    <Hexagon size={28} fill="#1e293b" stroke={getLevelColor(getLevel(player.elo || 1000))} strokeWidth={2} />
+                    <span className="level-num">{getLevel(player.elo || 1000)}</span>
                   </div>
                 </motion.div>
               ))}

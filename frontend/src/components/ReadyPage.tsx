@@ -4,12 +4,7 @@ import { Hexagon, CheckCircle2, Clock } from 'lucide-react';
 import './ReadyPage.css';
 import { useWebSocket } from './WebSocketContext';
 
-interface Player {
-  id: string;
-  username: string;
-  avatar?: string;
-  elo: number;
-}
+
 
 interface PartyMember {
   id: string;
@@ -43,12 +38,12 @@ const getLevelColor = (level: number) => {
   return '#a855f7';
 };
 
-export default function ReadyPage({ partyMembers, activeLobbyId, selectedMap: initialSelectedMap, onMatchStart }: ReadyPageProps) {
+export default function ReadyPage({ partyMembers, selectedMap: initialSelectedMap, onMatchStart }: ReadyPageProps) {
   const [selectedMap, setSelectedMap] = useState<string>(initialSelectedMap || 'Unknown');
   const [readyPlayers, setReadyPlayers] = useState<string[]>([]);
   const [timeRemaining, setTimeRemaining] = useState<number>(30);
   const [allReady, setAllReady] = useState<boolean>(false);
-  const [serverInfo, setServerInfo] = useState<{ ip?: string; password?: string } | undefined>();
+  const [serverInfo, setServerInfo] = useState<{ ip?: string; password?: string; matchLink?: string } | undefined>();
   const [readyPhaseStartTime, setReadyPhaseStartTime] = useState<number | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -71,7 +66,6 @@ export default function ReadyPage({ partyMembers, activeLobbyId, selectedMap: in
   // Split into teams
   const teamAlpha = partyMembers.slice(0, 5);
   const teamBravo = partyMembers.slice(5, 10);
-  const allPlayers = [...teamAlpha, ...teamBravo];
 
   // Check if current user is ready
   const isCurrentUserReady = readyPlayers.includes(currentUserId);
@@ -100,7 +94,7 @@ export default function ReadyPage({ partyMembers, activeLobbyId, selectedMap: in
           const readyState = lobby.readyPhaseState;
           if (readyState.phaseActive) {
             setReadyPlayers(readyState.readyPlayers || []);
-            
+
             // Calculate time remaining
             if (readyState.readyPhaseStartTimestamp) {
               const elapsed = (Date.now() - readyState.readyPhaseStartTimestamp) / 1000;
@@ -344,8 +338,8 @@ export default function ReadyPage({ partyMembers, activeLobbyId, selectedMap: in
           <div className="ready-actions">
             {allReady && serverInfo?.ip && serverInfo?.password ? (
               <div className="match-ready-actions">
-                <a 
-                  href={serverInfo.matchLink || `standoff://connect/${serverInfo.ip}/${serverInfo.password}`} 
+                <a
+                  href={serverInfo.matchLink || `standoff://connect/${serverInfo.ip}/${serverInfo.password}`}
                   className="launch-game-btn"
                 >
                   LAUNCH GAME

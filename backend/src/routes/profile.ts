@@ -1,7 +1,5 @@
+
 import { Hono } from 'hono';
-import { drizzle } from 'drizzle-orm/d1';
-import { eq } from 'drizzle-orm';
-import { players } from '../db/schema';
 import { nicknameSchema, updateProfileSchema } from '../schemas/profile';
 
 export function setupProfileRoutes(app: Hono<any>) {
@@ -9,15 +7,26 @@ export function setupProfileRoutes(app: Hono<any>) {
     app.get('/api/profile/:userId', async (c) => {
         try {
             const userId = c.req.param('userId');
-            const db = drizzle(c.env.DB);
 
-            const user = await db.select().from(players).where(eq(players.discord_id, userId)).get();
+            // Use raw SQL for simplicity and robustness
+            const user = await c.env.DB.prepare(
+                'SELECT * FROM players WHERE discord_id = ?'
+            ).bind(userId).first();
 
             if (!user) {
                 return c.json({ error: 'User not found' }, 404);
             }
 
-            return c.json(user);
+            // Standardize response
+            return c.json({
+                id: user.discord_id,
+                username: user.discord_username,
+                avatar: user.discord_avatar, // Map to avatar
+                standoff_nickname: user.standoff_nickname,
+                elo: user.mmr || 1000, // Map mmr to elo
+                wins: user.wins || 0,
+                losses: user.losses || 0
+            });
         } catch (error) {
             console.error('❌ Profile fetch error:', error);
             if (error instanceof Error) {
@@ -45,26 +54,22 @@ export function setupProfileRoutes(app: Hono<any>) {
             }
 
             const { userId, nickname } = validation.data;
-            const db = drizzle(c.env.DB);
 
-            // Check if nickname is already taken
-            const existing = await db.select().from(players)
-                .where(eq(players.standoff_nickname, nickname)).get();
+            // Check if nickname is already taken via raw SQL
+            const existing = await c.env.DB.prepare(
+                'SELECT * FROM players WHERE standoff_nickname = ?'
+            ).bind(nickname).first();
 
             if (existing && existing.discord_id !== userId) {
                 return c.json({ error: 'Nickname already taken' }, 409);
             }
 
-            // Update database
-            const result = await db.update(players)
-                .set({
-                    standoff_nickname: nickname,
-                    nickname_updated_at: new Date().toISOString()
-                })
-                .where(eq(players.discord_id, userId))
-                .run();
+            // Update database via raw SQL
+            const result = await c.env.DB.prepare(
+                'UPDATE players SET standoff_nickname = ?, nickname_updated_at = ? WHERE discord_id = ?'
+            ).bind(nickname, new Date().toISOString(), userId).run();
 
-            if (result.meta.changes === 0) {
+            if (result.meta?.changes === 0) {
                 return c.json({ error: 'User not found in database. Please logout and login again.' }, 404);
             }
 
@@ -114,9 +119,9 @@ export function setupProfileRoutes(app: Hono<any>) {
                 });
             }
 
-            const db = drizzle(c.env.DB);
-            const existing = await db.select().from(players)
-                .where(eq(players.standoff_nickname, nickname)).get();
+            const existing = await c.env.DB.prepare(
+                'SELECT * FROM players WHERE standoff_nickname = ?'
+            ).bind(nickname).first();
 
             return c.json({ available: !existing });
         } catch (error) {

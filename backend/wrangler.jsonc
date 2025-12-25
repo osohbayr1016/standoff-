@@ -31,7 +31,8 @@
     "DISCORD_REDIRECT_URI": "https://backend.anandoctane4.workers.dev/api/auth/callback",
     "DISCORD_SERVER_ID": "1452635831901753357",
     "DISCORD_CHANNEL_ID": "1453526990798983394",
-    "FRONTEND_URL": "https://main.standoff-frontend.pages.dev"
+    "FRONTEND_URL": "https://main.standoff-frontend.pages.dev",
+    "NEATQUEUE_WEBHOOK_SECRET": "CMMvOiC5EiecsaKPldUf11N4HsyIZsE0"
   },
   "observability": {
     "logs": {
