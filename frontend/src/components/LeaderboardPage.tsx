@@ -13,11 +13,7 @@ interface LeaderboardEntry {
   losses: number;
 }
 
-<<<<<<< HEAD
 type FilterType = "elo" | "winrate" | "matches";
-=======
-type FilterType = 'elo' | 'winrate' | 'matches';
->>>>>>> b37cefacd5935a9f26aa22491f4429ab5b1ef73e
 
 export default function LeaderboardPage() {
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
@@ -25,11 +21,7 @@ export default function LeaderboardPage() {
     LeaderboardEntry[]
   >([]);
   const [loading, setLoading] = useState(true);
-<<<<<<< HEAD
   const [activeFilter, setActiveFilter] = useState<FilterType>("elo");
-=======
-  const [activeFilter, setActiveFilter] = useState<FilterType>('elo');
->>>>>>> b37cefacd5935a9f26aa22491f4429ab5b1ef73e
 
   useEffect(() => {
     fetchLeaderboard();
@@ -38,8 +30,7 @@ export default function LeaderboardPage() {
   const fetchLeaderboard = async () => {
     try {
       const res = await fetch(
-        `${
-          import.meta.env.VITE_BACKEND_URL || "http://localhost:8787"
+        `${import.meta.env.VITE_BACKEND_URL || "http://localhost:8787"
         }/api/leaderboard`
       );
       if (res.ok) {
@@ -58,11 +49,7 @@ export default function LeaderboardPage() {
     let sorted = [...data];
 
     switch (filter) {
-<<<<<<< HEAD
       case "elo":
-=======
-      case 'elo':
->>>>>>> b37cefacd5935a9f26aa22491f4429ab5b1ef73e
         sorted.sort((a, b) => b.elo - a.elo);
         break;
       case "winrate":
@@ -121,19 +108,11 @@ export default function LeaderboardPage() {
 
       <div className="leaderboard-filters">
         <button
-<<<<<<< HEAD
           className={`filter-btn ${activeFilter === "elo" ? "active" : ""}`}
           onClick={() => setActiveFilter("elo")}
         >
           <span className="filter-icon">⚡</span>
           <span className="filter-text">ХАМГИЙН ӨНДӨР ELO</span>
-=======
-          className={`filter-btn ${activeFilter === 'elo' ? 'active' : ''}`}
-          onClick={() => setActiveFilter('elo')}
-        >
-          <span className="filter-icon">⚡</span>
-          <span className="filter-text">HIGHEST ELO</span>
->>>>>>> b37cefacd5935a9f26aa22491f4429ab5b1ef73e
         </button>
         <button
           className={`filter-btn ${activeFilter === "winrate" ? "active" : ""}`}
@@ -153,36 +132,27 @@ export default function LeaderboardPage() {
 
       <div className="leaderboard-container">
         <div className="leaderboard-table-header">
-<<<<<<< HEAD
           <div className="header-rank">БАЙР</div>
           <div className="header-player">ТОГЛОГЧ</div>
           <div className="header-elo">ELO</div>
           <div className="header-stats mobile-hide">Х / Х</div>
           <div className="header-winrate mobile-hide">ХОЖЛЫН ХУВЬ</div>
-=======
-          <div className="header-rank">RANK</div>
-          <div className="header-player">OPERATOR</div>
-          <div className="header-mmr">ELO</div>
-          <div className="header-stats mobile-hide">W / L</div>
-          <div className="header-winrate mobile-hide">WIN RATE</div>
->>>>>>> b37cefacd5935a9f26aa22491f4429ab5b1ef73e
-        </div>
+        </div >
 
         <div className="leaderboard-list">
           {filteredLeaderboard.map((player) => {
             const winRate =
               player.wins + player.losses > 0
                 ? ((player.wins / (player.wins + player.losses)) * 100).toFixed(
-                    1
-                  )
+                  1
+                )
                 : "0.0";
 
             return (
               <div
                 key={player.id}
-                className={`leaderboard-row rank-${
-                  player.rank <= 3 ? player.rank : "other"
-                }`}
+                className={`leaderboard-row rank-${player.rank <= 3 ? player.rank : "other"
+                  }`}
               >
                 <div className="rank-cell">
                   {player.rank === 1 && (
@@ -220,19 +190,6 @@ export default function LeaderboardPage() {
                   </div>
                 </div>
 
-<<<<<<< HEAD
-                <div className="elo-cell">
-                  <span className="elo-value">{player.elo}</span>
-=======
-                <div className="mmr-cell">
-                  <span className="mmr-value">{player.elo}</span>
->>>>>>> b37cefacd5935a9f26aa22491f4429ab5b1ef73e
-                </div>
-
-                <div className="stats-cell mobile-hide">
-                  <span className="wins">{player.wins}</span> /{" "}
-                  <span className="losses">{player.losses}</span>
-                </div>
 
                 <div className="winrate-cell mobile-hide">
                   <div className="winrate-bar-bg">
@@ -247,11 +204,13 @@ export default function LeaderboardPage() {
             );
           })}
 
-          {filteredLeaderboard.length === 0 && (
-            <div className="no-data">ЧАНСААНЫ МЭДЭЭЛЭЛ БАЙХГҮЙ</div>
-          )}
-        </div>
-      </div>
-    </div>
+          {
+            filteredLeaderboard.length === 0 && (
+              <div className="no-data">ЧАНСААНЫ МЭДЭЭЛЭЛ БАЙХГҮЙ</div>
+            )
+          }
+        </div >
+      </div >
+    </div >
   );
 }

@@ -17,14 +17,11 @@ interface MatchmakingPageProps {
   activeLobbyId?: string; // Add prop to check if user is in a lobby
 }
 
-<<<<<<< HEAD
 export default function MatchmakingPage({
   onCancel: _onCancel,
   onStartLobby,
+  activeLobbyId,
 }: MatchmakingPageProps) {
-=======
-export default function MatchmakingPage({ onCancel: _onCancel, onStartLobby, activeLobbyId }: MatchmakingPageProps) {
->>>>>>> b37cefacd5935a9f26aa22491f4429ab5b1ef73e
   const [partyMembers, setPartyMembers] = useState<PartyMember[]>([]);
   const [showInviteModal, setShowInviteModal] = useState(false);
 
@@ -41,11 +38,11 @@ export default function MatchmakingPage({ onCancel: _onCancel, onStartLobby, act
         // Invalid data
       }
     }
-    
+
     // Reset queue state when component mounts - user must explicitly join
     // This prevents automatic queue joining when visiting the page
     setIsInQueue(false);
-    
+
     // If user was in queue from elsewhere (Discord bot, previous session), leave it
     const user = JSON.parse(localStorage.getItem('user') || '{}');
     if (user.id) {
@@ -82,7 +79,7 @@ export default function MatchmakingPage({ onCancel: _onCancel, onStartLobby, act
         // Update local party view with these players
         // We only show them as filling slots
         setPartyMembers(externalPlayers);
-        
+
         // Don't automatically sync isInQueue state from QUEUE_UPDATE
         // User must explicitly click JOIN QUEUE to join
         // This prevents automatic queue joining when visiting the page
@@ -247,145 +244,146 @@ export default function MatchmakingPage({ onCancel: _onCancel, onStartLobby, act
               <div className="party-slot-mmr">{member.elo || 1000} ELO</div>
               <div className="party-slot-status">READY</div>
 >>>>>>> b37cefacd5935a9f26aa22491f4429ab5b1ef73e
-            </div>
+            </div >
           </>
         ) : (
-          <div className="party-slot-add-icon"></div>
-        )}
-      </div>
+    <div className="party-slot-add-icon"></div>
+  )
+}
+      </div >
     );
   };
 
-  // If user is in a lobby, show active match info instead of queue
-  if (activeLobbyId) {
-    return (
-      <div className="matchmaking-page">
-        <div className="cyber-grid-bg"></div>
-        <DebugConsole />
-
-        <div className="matchmaking-content">
-          <h1 className="matchmaking-title" data-text="ACTIVE MATCH">ACTIVE MATCH</h1>
-          <div className="matchmaking-subtitle">You are currently in a match lobby</div>
-
-          <div className="live-counter-large">
-            <span className="live-count-number">#</span>
-            <span className="live-count-text">LOBBY ACTIVE</span>
-          </div>
-
-          <div className="radar-container">
-            <div className="radar-outer-ring"></div>
-            <div className="radar-sweep"></div>
-            <div className="radar-grid-lines"></div>
-
-            <div className="map-hologram">
-              <div style={{ color: '#00ff00', fontSize: '24px', textAlign: 'center', marginTop: '15px' }}>
-                IN LOBBY
-              </div>
-            </div>
-          </div>
-
-          <div className="timer-section">
-            <div className="player-count">
-              <span className="count-label">LOBBY ID</span>
-              <span className="count-val">{activeLobbyId.slice(0, 8).toUpperCase()}</span>
-            </div>
-          </div>
-
-          <div style={{ marginTop: '2rem', textAlign: 'center' }}>
-            <p style={{ color: '#94a3b8', fontSize: '14px' }}>
-              Use the "RETURN TO MATCH" button in the header to view your lobby
-            </p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
+// If user is in a lobby, show active match info instead of queue
+if (activeLobbyId) {
   return (
     <div className="matchmaking-page">
       <div className="cyber-grid-bg"></div>
       <DebugConsole />
 
-      {showInviteModal && (
-        <InviteFriendModal
-          currentPartyIds={partyMembers.map((m) => m.id)}
-          onInvite={handleFriendInvited}
-          onClose={() => setShowInviteModal(false)}
-        />
-      )}
-
       <div className="matchmaking-content">
-        <>
-          <h1 className="matchmaking-title" data-text="НЭГДСЭН ТОГЛОЛТ ОЛОХ">
-            НЭГДСЭН ДАРААЛАЛ
-          </h1>
-          <div className="matchmaking-subtitle">Веб + Discord Синхрончлол</div>
+        <h1 className="matchmaking-title" data-text="ACTIVE MATCH">ACTIVE MATCH</h1>
+        <div className="matchmaking-subtitle">You are currently in a match lobby</div>
 
-          <div className="live-counter-large">
-            <span className="live-count-number">{partyMembers.length}</span>
-            <span className="live-count-text">ДАРААЛАЛД БАЙГАА ТОГЛОГЧИД</span>
-          </div>
+        <div className="live-counter-large">
+          <span className="live-count-number">#</span>
+          <span className="live-count-text">LOBBY ACTIVE</span>
+        </div>
 
-          <div className="radar-container">
-            <div className="radar-outer-ring"></div>
-            <div className="radar-sweep"></div>
-            <div className="radar-grid-lines"></div>
+        <div className="radar-container">
+          <div className="radar-outer-ring"></div>
+          <div className="radar-sweep"></div>
+          <div className="radar-grid-lines"></div>
 
-            <div className="map-hologram">
-              <div
-                style={{
-                  color: isInQueue ? "#00ff00" : "#ff6b35",
-                  fontSize: "24px",
-                  textAlign: "center",
-                  marginTop: "15px",
-                }}
-              >
-                {isInQueue ? "ХАЙЖ БАЙНА" : "ХООСОН"}
-              </div>
+          <div className="map-hologram">
+            <div style={{ color: '#00ff00', fontSize: '24px', textAlign: 'center', marginTop: '15px' }}>
+              IN LOBBY
             </div>
           </div>
+        </div>
 
-          <div className="timer-section">
-            <div className="player-count">
-              <span className="count-label">ДАРААЛАЛД БАЙГАА ТОГЛОГЧИД</span>
-              <span className="count-val">{partyMembers.length} / 10</span>
+        <div className="timer-section">
+          <div className="player-count">
+            <span className="count-label">LOBBY ID</span>
+            <span className="count-val">{activeLobbyId.slice(0, 8).toUpperCase()}</span>
+          </div>
+        </div>
+
+        <div style={{ marginTop: '2rem', textAlign: 'center' }}>
+          <p style={{ color: '#94a3b8', fontSize: '14px' }}>
+            Use the "RETURN TO MATCH" button in the header to view your lobby
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+return (
+  <div className="matchmaking-page">
+    <div className="cyber-grid-bg"></div>
+    <DebugConsole />
+
+    {showInviteModal && (
+      <InviteFriendModal
+        currentPartyIds={partyMembers.map((m) => m.id)}
+        onInvite={handleFriendInvited}
+        onClose={() => setShowInviteModal(false)}
+      />
+    )}
+
+    <div className="matchmaking-content">
+      <>
+        <h1 className="matchmaking-title" data-text="НЭГДСЭН ТОГЛОЛТ ОЛОХ">
+          НЭГДСЭН ДАРААЛАЛ
+        </h1>
+        <div className="matchmaking-subtitle">Веб + Discord Синхрончлол</div>
+
+        <div className="live-counter-large">
+          <span className="live-count-number">{partyMembers.length}</span>
+          <span className="live-count-text">ДАРААЛАЛД БАЙГАА ТОГЛОГЧИД</span>
+        </div>
+
+        <div className="radar-container">
+          <div className="radar-outer-ring"></div>
+          <div className="radar-sweep"></div>
+          <div className="radar-grid-lines"></div>
+
+          <div className="map-hologram">
+            <div
+              style={{
+                color: isInQueue ? "#00ff00" : "#ff6b35",
+                fontSize: "24px",
+                textAlign: "center",
+                marginTop: "15px",
+              }}
+            >
+              {isInQueue ? "ХАЙЖ БАЙНА" : "ХООСОН"}
             </div>
           </div>
-        </>
-      </div>
-
-      <div className="party-slots-container">
-        <div className="party-slots-label">
-          ЛОББИЙН ТӨЛӨВ //{" "}
-          <span className="highlight">
-            {isInQueue ? "ХАЙЖ БАЙНА..." : "ХУЛЭЭЖ БАЙНА"}
-          </span>
         </div>
-        <div className="party-slots">
-          <div className="party-slots-row">
-            {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((index) =>
-              renderPartySlot(index)
-            )}
+
+        <div className="timer-section">
+          <div className="player-count">
+            <span className="count-label">ДАРААЛАЛД БАЙГАА ТОГЛОГЧИД</span>
+            <span className="count-val">{partyMembers.length} / 10</span>
           </div>
         </div>
-      </div>
+      </>
+    </div>
 
-      <div className="matchmaking-actions">
-        {!isInQueue ? (
+    <div className="party-slots-container">
+      <div className="party-slots-label">
+        ЛОББИЙН ТӨЛӨВ //{" "}
+        <span className="highlight">
+          {isInQueue ? "ХАЙЖ БАЙНА..." : "ХУЛЭЭЖ БАЙНА"}
+        </span>
+      </div>
+      <div className="party-slots">
+        <div className="party-slots-row">
+          {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((index) =>
+            renderPartySlot(index)
+          )}
+        </div>
+      </div>
+    </div>
+
+    <div className="matchmaking-actions">
+      {!isInQueue ? (
 <<<<<<< HEAD
+        <button
+          className="find-match-btn-large cyber-button-primary"
+          onClick={handleJoinQueue}
+        >
+          <span className="btn-content">ДАРААЛАЛД НЭГДЭХ</span>
+=======
           <button
             className="find-match-btn-large cyber-button-primary"
             onClick={handleJoinQueue}
-          >
-            <span className="btn-content">ДАРААЛАЛД НЭГДЭХ</span>
-=======
-          <button 
-            className="find-match-btn-large cyber-button-primary" 
-            onClick={handleJoinQueue}
             disabled={!!activeLobbyId}
-            style={{ 
-              opacity: activeLobbyId ? 0.5 : 1, 
-              cursor: activeLobbyId ? 'not-allowed' : 'pointer' 
+            style={{
+              opacity: activeLobbyId ? 0.5 : 1,
+              cursor: activeLobbyId ? 'not-allowed' : 'pointer'
             }}
             title={activeLobbyId ? 'You are already in a match lobby' : ''}
           >
@@ -393,7 +391,7 @@ export default function MatchmakingPage({ onCancel: _onCancel, onStartLobby, act
 >>>>>>> b37cefacd5935a9f26aa22491f4429ab5b1ef73e
             <div className="btn-glitch"></div>
           </button>
-        ) : (
+          ) : (
           <button
             className="cancel-button cyber-button-secondary"
             onClick={handleLeaveQueue}
@@ -401,20 +399,20 @@ export default function MatchmakingPage({ onCancel: _onCancel, onStartLobby, act
             <span className="btn-content">ДАРААЛАЛААС ГАРАХ</span>
           </button>
         )}
-        {partyMembers.length < 10 &&
-          (window.location.hostname === "localhost" ||
-            window.location.hostname === "127.0.0.1") && (
-            <button
-              className="fill-bots-btn"
-              onClick={handleFillBots}
-              style={{ marginTop: "12px" }}
-            >
-              <span className="btn-content">
-                БОТУУДААР ДҮҮРГЭХ ({partyMembers.length}/10)
-              </span>
-            </button>
-          )}
-      </div>
+          {partyMembers.length < 10 &&
+            (window.location.hostname === "localhost" ||
+              window.location.hostname === "127.0.0.1") && (
+              <button
+                className="fill-bots-btn"
+                onClick={handleFillBots}
+                style={{ marginTop: "12px" }}
+              >
+                <span className="btn-content">
+                  БОТУУДААР ДҮҮРГЭХ ({partyMembers.length}/10)
+                </span>
+              </button>
+            )}
+        </div>
     </div>
-  );
+    );
 }
