@@ -1,0 +1,135 @@
+import { Client } from 'discord.js';
+import WebSocket from 'ws';
+import type { BackendMessage, MatchData } from '../types';
+import { VoiceService } from './voice';
+
+export class BackendService {
+    private ws: WebSocket | null = null;
+    private reconnectTimeout: NodeJS.Timeout | null = null;
+    private voiceService: VoiceService | null = null;
+
+    constructor(
+        private backendUrl: string,
+        private webhookSecret?: string
+    ) { }
+
+    async connect(client: Client) {
+        this.voiceService = new VoiceService(client);
+
+        const wsUrl = this.backendUrl.replace('https://', 'wss://').replace('http://', 'ws://');
+
+        try {
+            console.log(`🔄 Connecting to backend: ${wsUrl}/ws`);
+
+            this.ws = new WebSocket(`${wsUrl}/ws`);
+
+            this.ws.on('open', () => {
+                console.log('✅ Connected to backend WebSocket');
+
+                // Register as bot
+                this.send({
+                    type: 'REGISTER',
+                    userId: 'discord-bot',
+                    username: 'Discord Bot'
+                });
+            });
+
+            this.ws.on('message', async (data) => {
+                try {
+                    const message: BackendMessage = JSON.parse(data.toString());
+                    await this.handleMessage(message, client);
+                } catch (error) {
+                    console.error('❌ Error parsing backend message:', error);
+                }
+            });
+
+            this.ws.on('close', () => {
+                console.log('⚠️ Backend WebSocket closed, reconnecting in 5s...');
+                this.reconnectTimeout = setTimeout(() => this.connect(client), 5000);
+            });
+
+            this.ws.on('error', (error) => {
+                console.error('❌ Backend WebSocket error:', error);
+            });
+
+        } catch (error) {
+            console.error('❌ Failed to connect to backend:', error);
+            this.reconnectTimeout = setTimeout(() => this.connect(client), 5000);
+        }
+    }
+
+    private async handleMessage(message: BackendMessage, client: Client) {
+        console.log('📨 Backend message:', message.type);
+
+        switch (message.type) {
+            case 'CREATE_MATCH':
+            case 'MATCH_READY':
+                if (message.matchData) {
+                    await this.handleMatchCreation(message.matchData, client);
+                }
+                break;
+
+            case 'QUEUE_UPDATE':
+                // Handle queue updates if needed
+                break;
+        }
+    }
+
+    private async handleMatchCreation(matchData: MatchData, client: Client) {
+        console.log(`🎮 Creating match: ${matchData.lobbyId}`);
+
+        try {
+            const guild = await client.guilds.fetch(process.env.DISCORD_GUILD_ID!);
+
+            // Create voice channels
+            await this.voiceService?.createMatchChannels(guild, matchData);
+
+            console.log('✅ Match channels created successfully');
+        } catch (error) {
+            console.error('❌ Error creating match:', error);
+        }
+    }
+
+    send(data: any) {
+        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+            this.ws.send(JSON.stringify(data));
+        } else {
+            console.warn('⚠️ WebSocket not connected, message not sent');
+        }
+    }
+
+    disconnect() {
+        if (this.reconnectTimeout) {
+            clearTimeout(this.reconnectTimeout);
+        }
+        if (this.ws) {
+            this.ws.close();
+        }
+    }
+
+    async fetchMatchStatus(): Promise<any> {
+        try {
+            const response = await fetch(`${this.backendUrl}/api/match/status`);
+            if (response.ok) {
+                return await response.json();
+            }
+        } catch (error) {
+            console.error('❌ Error fetching match status:', error);
+        }
+        return null;
+    }
+
+    async updateNickname(userId: string, nickname: string): Promise<boolean> {
+        try {
+            const response = await fetch(`${this.backendUrl}/api/profile/${userId}/nickname`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ standoff_nickname: nickname })
+            });
+            return response.ok;
+        } catch (error) {
+            console.error('❌ Error updating nickname:', error);
+            return false;
+        }
+    }
+}
