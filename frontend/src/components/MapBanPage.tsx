@@ -14,12 +14,13 @@ interface MapBanPageProps {
   partyMembers: PartyMember[];
   onCancel: () => void;
   onMapSelected?: (selectedMap: string) => void;
+  activeLobbyId?: string; // Add prop to know when we should request state
 }
 
 const ALL_MAPS = ['Hanami', 'Rust', 'Zone 7', 'Dune', 'Breeze', 'Province', 'Sandstone'];
 const BAN_TIMEOUT = 15; // seconds
 
-export default function MapBanPage({ partyMembers, onCancel: _onCancel, onMapSelected }: MapBanPageProps) {
+export default function MapBanPage({ partyMembers, onCancel: _onCancel, onMapSelected, activeLobbyId }: MapBanPageProps) {
   const [bannedMaps, setBannedMaps] = useState<string[]>([]);
   const [selectedMap, setSelectedMap] = useState<string | undefined>();
   const [currentBanTeam, setCurrentBanTeam] = useState<'alpha' | 'bravo'>('alpha');
@@ -32,20 +33,52 @@ export default function MapBanPage({ partyMembers, onCancel: _onCancel, onMapSel
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const autoBanInProgressRef = useRef<boolean>(false);
 
-  const { lastMessage, sendMessage } = useWebSocket(); // Hook
+  const { lastMessage, sendMessage, requestMatchState } = useWebSocket(); // Hook
+
+  // Track if we've requested state to avoid showing default state
+  const [hasRequestedState, setHasRequestedState] = useState(false);
+
+  // Request match state on mount or when activeLobbyId changes
+  useEffect(() => {
+    const savedLobbyId = activeLobbyId || localStorage.getItem('activeLobbyId');
+    if (savedLobbyId && !stateInitialized && !hasRequestedState) {
+      // Request match state from server
+      setHasRequestedState(true);
+      requestMatchState(savedLobbyId);
+      
+      // Fallback: if we don't receive LOBBY_UPDATE within 3 seconds, initialize with defaults
+      const timeout = setTimeout(() => {
+        setStateInitialized((prev) => {
+          if (!prev) {
+            console.warn('Timeout waiting for LOBBY_UPDATE, initializing with defaults');
+            setHasRequestedState(false);
+            return true;
+          }
+          return prev;
+        });
+      }, 3000);
+      
+      return () => clearTimeout(timeout);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeLobbyId]); // Run when activeLobbyId changes or on mount
 
   // Listen for both MATCH_READY and LOBBY_UPDATE to sync state
   useEffect(() => {
     if (!lastMessage) return;
 
-    // Handle MATCH_READY - indicates we're in a lobby, show UI immediately
+    // Handle MATCH_READY - indicates we're in a lobby
     if (lastMessage.type === 'MATCH_READY') {
-      // Initialize with default state and show UI immediately
-      // State will be updated when LOBBY_UPDATE arrives
-      setStateInitialized(true);
-      setMapBanPhase(true);
-      setCurrentBanTeam('alpha');
-      setTimeLeft(BAN_TIMEOUT);
+      // If we've requested state, wait for LOBBY_UPDATE
+      // Otherwise, this is a new match, initialize with defaults
+      if (!hasRequestedState) {
+        // New match - initialize with default state
+        setStateInitialized(true);
+        setMapBanPhase(true);
+        setCurrentBanTeam('alpha');
+        setTimeLeft(BAN_TIMEOUT);
+      }
+      // If hasRequestedState is true, we'll wait for LOBBY_UPDATE
       return;
     }
 
@@ -98,8 +131,9 @@ export default function MapBanPage({ partyMembers, onCancel: _onCancel, onMapSel
           setTimeLeft(0);
         }
 
-        // Mark state as initialized (in case it wasn't already)
+        // Mark state as initialized - this is the real state from server
         setStateInitialized(true);
+        setHasRequestedState(false); // Reset flag after receiving state
       }
     }
 
@@ -115,6 +149,7 @@ export default function MapBanPage({ partyMembers, onCancel: _onCancel, onMapSel
       if (lastMessage.selectedMap) {
         setSelectedMap(lastMessage.selectedMap);
         setMapBanPhase(false);
+        setStateInitialized(true);
       }
     }
   }, [lastMessage]);

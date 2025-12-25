@@ -8,6 +8,7 @@ interface WebSocketContextType {
     messageLog: any[];
     isConnected: boolean;
     registerUser: (userId: string) => void;
+    requestMatchState: (lobbyId: string) => void;
 }
 
 const WebSocketContext = createContext<WebSocketContextType | undefined>(undefined);
@@ -112,8 +113,23 @@ export const WebSocketProvider = ({ children, url }: { children: ReactNode; url:
         }
     }, []);
 
+    // Request match state from server
+    const requestMatchState = useCallback((lobbyId: string) => {
+        if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+            const user = JSON.parse(localStorage.getItem('user') || '{}');
+            console.log("Requesting match state for lobby:", lobbyId);
+            socketRef.current.send(JSON.stringify({
+                type: 'REQUEST_MATCH_STATE',
+                lobbyId: lobbyId,
+                userId: user.id
+            }));
+        } else {
+            console.warn('WebSocket not connected, cannot request match state');
+        }
+    }, []);
+
     return (
-        <WebSocketContext.Provider value={{ socket, sendMessage, lastMessage, messageLog, isConnected, registerUser }}>
+        <WebSocketContext.Provider value={{ socket, sendMessage, lastMessage, messageLog, isConnected, registerUser, requestMatchState }}>
             {children}
         </WebSocketContext.Provider>
     );
