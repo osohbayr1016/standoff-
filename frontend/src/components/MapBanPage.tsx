@@ -29,7 +29,7 @@ export default function MapBanPage({ partyMembers, onCancel: _onCancel, onMapSel
   const autoBanInProgressRef = useRef<boolean>(false);
   const pendingTeamSwitchRef = useRef<boolean>(false);
 
-  const { sendMessage, lastMessage } = useWebSocket(); // Hook
+  const { lastMessage } = useWebSocket(); // Hook
 
   // Listen for LOBBY_UPDATE from server
   useEffect(() => {
