@@ -37,7 +37,8 @@ export class BackendService {
             });
         }
 
-        const wsUrl = this.backendUrl.replace('https://', 'wss://').replace('http://', 'ws://');
+        const normalizedUrl = this.backendUrl.endsWith('/') ? this.backendUrl.slice(0, -1) : this.backendUrl;
+        const wsUrl = normalizedUrl.replace('https://', 'wss://').replace('http://', 'ws://');
 
         try {
             console.log(`🔄 Connecting to backend: ${wsUrl}/ws`);
@@ -157,7 +158,8 @@ export class BackendService {
 
     async fetchMatchStatus(): Promise<any> {
         try {
-            const response = await fetch(`${this.backendUrl}/api/match/status`);
+            const normalizedUrl = this.backendUrl.endsWith('/') ? this.backendUrl.slice(0, -1) : this.backendUrl;
+            const response = await fetch(`${normalizedUrl}/api/match/status`);
             if (response.ok) {
                 return await response.json();
             }
@@ -169,7 +171,8 @@ export class BackendService {
 
     async updateNickname(userId: string, nickname: string): Promise<boolean> {
         try {
-            const response = await fetch(`${this.backendUrl}/api/profile/${userId}/nickname`, {
+            const normalizedUrl = this.backendUrl.endsWith('/') ? this.backendUrl.slice(0, -1) : this.backendUrl;
+            const response = await fetch(`${normalizedUrl}/api/profile/${userId}/nickname`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ standoff_nickname: nickname })
