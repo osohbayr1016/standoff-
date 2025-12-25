@@ -70,12 +70,6 @@ export default function MapGrid({
               </div>
             )}
 
-            {isSelected && (
-              <div className="map-selected-overlay">
-                <p className="selected-text">SELECTED</p>
-              </div>
-            )}
-
             {canBan && isAvailable && (
               <div className="click-to-ban-indicator">Click to Ban</div>
             )}

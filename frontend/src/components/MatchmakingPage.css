@@ -509,6 +509,30 @@
   background: rgba(255, 107, 53, 0.1);
 }
 
+.fill-bots-btn {
+  position: relative;
+  padding: 1rem 1.5rem;
+  border: none;
+  cursor: pointer;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  font-size: 0.85rem;
+  transition: all 0.3s;
+  clip-path: polygon(10% 0, 100% 0, 100% 75%, 90% 100%, 0 100%, 0 25%);
+  width: 100%;
+  background: #8b5cf6;
+  color: #fff;
+  border: 2px solid #8b5cf6;
+}
+
+.fill-bots-btn:hover {
+  background: #a78bfa;
+  border-color: #a78bfa;
+  transform: translateY(-2px);
+  box-shadow: 0 0 20px rgba(139, 92, 246, 0.4);
+}
+
 .cancel-button {
   margin-top: 1rem;
 }
@@ -586,7 +610,8 @@
   }
 
   .cyber-button-primary,
-  .cyber-button-secondary {
+  .cyber-button-secondary,
+  .fill-bots-btn {
     width: auto;
     padding: 1rem 2rem;
     font-size: 0.9rem;
@@ -667,7 +692,8 @@
   }
 
   .cyber-button-primary,
-  .cyber-button-secondary {
+  .cyber-button-secondary,
+  .fill-bots-btn {
     padding: 1.2rem 3rem;
     letter-spacing: 2px;
     clip-path: polygon(15% 0, 100% 0, 100% 70%, 85% 100%, 0 100%, 0 30%);

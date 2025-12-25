@@ -135,6 +135,13 @@ export default function MatchmakingPage({ onCancel: _onCancel, onStartLobby }: M
     }
   };
 
+  const handleFillBots = () => {
+    // Send message to backend to fill with bots and start match
+    sendMessage({
+      type: 'FILL_BOTS'
+    });
+  };
+
   // ... helper methods ...
   const getAvatarUrl = (member: PartyMember) => {
     if (member.avatar) {
@@ -239,6 +246,15 @@ export default function MatchmakingPage({ onCancel: _onCancel, onStartLobby }: M
         ) : (
           <button className="cancel-button cyber-button-secondary" onClick={handleLeaveQueue}>
             <span className="btn-content">LEAVE QUEUE</span>
+          </button>
+        )}
+        {partyMembers.length < 10 && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') && (
+          <button 
+            className="fill-bots-btn" 
+            onClick={handleFillBots}
+            style={{ marginTop: '12px' }}
+          >
+            <span className="btn-content">FILL WITH BOTS ({partyMembers.length}/10)</span>
           </button>
         )}
       </div>
