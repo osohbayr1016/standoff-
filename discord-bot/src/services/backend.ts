@@ -84,22 +84,31 @@ export class BackendService {
     }
 
     private async handleMessage(message: BackendMessage, client: Client) {
-        console.log('📨 Backend message:', message.type);
+        console.log(`� Incoming message type: ${message.type}`);
+
+        // Always try to send a heart-beat back to confirm we're alive
+        this.sendDebugLog(`💓 Heartbeat: Received ${message.type}`);
 
         switch (message.type) {
-            case 'CREATE_MATCH':
-            case 'MATCH_START':
-                if (message.matchData) {
-                    await this.handleMatchCreation(message.matchData, client);
-                }
-                break;
-
             case 'REGISTER_ACK':
-                console.log(`✅ Registration confirmed by backend for user: ${message.userId}`);
+                console.log(`✅ Registration confirmed for: ${message.userId}`);
                 break;
 
-            case 'QUEUE_UPDATE':
-                // Handle queue updates if needed
+            case 'CREATE_MATCH':
+                // Use a timeout to ensure we don't hang the bot forever
+                const timeoutPromise = new Promise((_, reject) => {
+                    setTimeout(() => reject(new Error('Match creation TIMEOUT (30s)')), 30000);
+                });
+
+                try {
+                    await Promise.race([
+                        this.handleMatchCreation(message.matchData!, client),
+                        timeoutPromise
+                    ]);
+                } catch (err: any) {
+                    this.sendDebugLog(`🚨 CREATE_MATCH error: ${err.message}`);
+                    console.error('❌ Match creation failed:', err);
+                }
                 break;
         }
     }
