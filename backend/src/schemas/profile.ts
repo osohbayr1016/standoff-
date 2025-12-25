@@ -20,7 +20,7 @@ export const profileSchema = z.object({
     discord_username: z.string().optional(),
     discord_avatar: z.string().optional(),
     standoff_nickname: z.string().optional(),
-    mmr: z.number().default(1000),
+    elo: z.number().default(1000),
     wins: z.number().default(0),
     losses: z.number().default(0),
     created_at: z.string().optional(),

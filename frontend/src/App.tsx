@@ -13,6 +13,7 @@ import FriendsPage from "./components/FriendsPage";
 import MatchmakingPage from "./components/MatchmakingPage";
 import MapBanPage from "./components/MapBanPage";
 import MatchLobbyPage from "./components/MatchLobbyPage";
+import ReadyPage from "./components/ReadyPage";
 import AuthPage from "./components/AuthPage";
 import NotFoundPage from "./components/NotFoundPage";
 import Footer from "./components/Footer";
@@ -24,14 +25,14 @@ interface User {
   username: string;
   avatar: string;
   standoff_nickname?: string;
-  mmr?: number;
+  elo?: number;
 }
 
 interface PartyMember {
   id: string;
   username: string;
   avatar?: string;
-  mmr?: number;
+  elo?: number;
 }
 
 // Inner App component that uses WebSocket context
@@ -67,7 +68,13 @@ function AppContent() {
     const saved = localStorage.getItem("activeLobbyId");
     return saved || undefined;
   }); // Track active lobby
-  const [matchData, setMatchData] = useState<any>(null); // Store match server info
+  const [matchData, setMatchData] = useState<any>(() => {
+    // Restore matchData from localStorage on mount
+    const saved = localStorage.getItem("matchData");
+    return saved ? JSON.parse(saved) : null;
+  }); // Store match server info
+  const [selectedMap, setSelectedMap] = useState<string | undefined>(); // Store selected map for ready page
+  const [userNavigatedAway, setUserNavigatedAway] = useState(false); // Track if user explicitly navigated away from match
 
   const { registerUser, lastMessage, requestMatchState } = useWebSocket();
 
@@ -85,20 +92,47 @@ function AppContent() {
     }
   }, [activeLobbyId]);
 
+  // Save matchData to localStorage whenever it changes
+  useEffect(() => {
+    if (matchData) {
+      localStorage.setItem("matchData", JSON.stringify(matchData));
+    } else {
+      localStorage.removeItem("matchData");
+    }
+  }, [matchData]);
+
   // Register user on socket when authenticated and request match state if needed
   useEffect(() => {
     if (user && user.id) {
       registerUser(user.id);
 
       // If we have an activeLobbyId, request match state after a short delay to ensure socket is ready
+      // Always request fresh state when on matchgame page to ensure we have latest data (fixes refresh bug)
       if (activeLobbyId) {
         const timeout = setTimeout(() => {
-          requestMatchState(activeLobbyId);
+          // Always request fresh state if on matchgame page (handles refresh)
+          // Also request if matchData is missing
+          if (currentPage === "matchgame" || !matchData) {
+            console.log(
+              "Requesting match state for lobby:",
+              activeLobbyId,
+              "currentPage:",
+              currentPage
+            );
+            requestMatchState(activeLobbyId);
+          }
         }, 500); // Small delay to ensure socket is connected
         return () => clearTimeout(timeout);
       }
     }
-  }, [user, registerUser, activeLobbyId, requestMatchState]);
+  }, [
+    user,
+    registerUser,
+    activeLobbyId,
+    requestMatchState,
+    currentPage,
+    matchData,
+  ]);
 
   // Handle incoming WebSocket messages (Invites & Match Ready)
   useEffect(() => {
@@ -130,29 +164,29 @@ function AppContent() {
               id: p.id || p.discord_id,
               username: p.username || p.name || "Unknown",
               avatar: p.avatar || p.avatar_url,
-              mmr: p.mmr || 1000,
+              elo: p.elo || 1000,
             }));
           } else {
             players = lastMessage.players.map((id: string) => ({
               id,
               username: "Player",
-              mmr: 1000,
+              elo: 1000,
             }));
           }
           setLobbyPartyMembers(players);
-
-          // AUTO-NAVIGATE if user is in matchmaking or home (idle)
-          // But if they are deep in profile, maybe just show the button?
-          // For now, let's auto-navigate if on matchmaking page (handled by that page)
-          // OR if just idle on home.
-          if (currentPage === "matchmaking" || currentPage === "home") {
-            setCurrentPage("mapban");
-          }
         }
       }
     }
 
-    // 3. Lobby Update / Match Start Catch-up (Persistence)
+    // 3. Ready Phase Started - transition from map ban to ready page
+    if (lastMessage.type === "READY_PHASE_STARTED") {
+      console.log("Ready phase started:", lastMessage);
+      if (lastMessage.selectedMap) {
+        setSelectedMap(lastMessage.selectedMap);
+      }
+    }
+
+    // 4. Lobby Update / Match Start Catch-up (Persistence)
     if (
       lastMessage.type === "LOBBY_UPDATE" ||
       lastMessage.type === "MATCH_START"
@@ -163,12 +197,46 @@ function AppContent() {
       if (lastMessage.type === "MATCH_START") {
         console.log("MATCH STARTED! Switching to Match View", lastMessage);
         setMatchData(lastMessage);
-        setCurrentPage("matchgame");
+        // Only redirect to matchgame if:
+        // 1. User hasn't explicitly navigated away from matchgame, AND
+        // 2. User is currently on a match-related page (mapban, ready, or already on matchgame)
+        // Never force redirect if user is on home/matchmaking/leaderboard/etc
+        if (!userNavigatedAway) {
+          const matchRelatedPages = ["mapban", "ready", "matchgame"];
+          if (matchRelatedPages.includes(currentPage)) {
+            // User is in match flow or already on matchgame, ensure they're on matchgame
+            if (currentPage !== "matchgame") {
+              setCurrentPage("matchgame");
+            }
+          }
+          // If user is on other pages (home, matchmaking, leaderboard, etc), don't redirect
+        }
+        // If userNavigatedAway is true, just update matchData but don't force navigation
         return;
       }
 
       if (lobby && lobby.id) {
+        // Only update if this is the current active lobby to prevent wrong lobby bug
+        if (activeLobbyId && lobby.id !== activeLobbyId) {
+          console.warn(
+            "Received LOBBY_UPDATE for different lobby, ignoring:",
+            lobby.id,
+            "current:",
+            activeLobbyId
+          );
+          return;
+        }
+
         setActiveLobbyId(lobby.id);
+
+        // Update matchData for matchgame page - store the full lobby object
+        if (lastMessage.type === "LOBBY_UPDATE") {
+          setMatchData({
+            type: "LOBBY_UPDATE",
+            lobby: lobby,
+            matchData: lobby,
+          });
+        }
 
         // Update party members
         if (lobby.players && Array.isArray(lobby.players)) {
@@ -176,55 +244,73 @@ function AppContent() {
             id: p.id || p.discord_id,
             username: p.username || p.name || "Unknown",
             avatar: p.avatar || p.avatar_url,
-            mmr: p.mmr || 1000,
+            elo: p.elo || 1000,
           }));
           setLobbyPartyMembers(players);
         }
 
-        // AUTO-NAVIGATE if idle
-        if (currentPage === "matchmaking" || currentPage === "home") {
-          setCurrentPage("mapban");
+        // Check if ready phase is active
+        if (lobby.readyPhaseState?.phaseActive) {
+          if (lobby.mapBanState?.selectedMap) {
+            setSelectedMap(lobby.mapBanState.selectedMap);
+          }
         }
       }
     }
 
-    // 4. Handle Match Cancelled
+    // 5. Handle Match Cancelled
     if (lastMessage.type === "MATCH_CANCELLED") {
       console.log("Match Cancelled:", lastMessage);
       // Clear lobby state
       setActiveLobbyId(undefined);
       setLobbyPartyMembers([]);
+      setSelectedMap(undefined);
+      setMatchData(null); // Clear match data
       // Navigate back to matchmaking or home
-      if (currentPage === "mapban" || currentPage === "matchgame") {
+      if (
+        currentPage === "mapban" ||
+        currentPage === "ready" ||
+        currentPage === "matchgame"
+      ) {
         setCurrentPage("matchmaking");
       }
     }
 
-    // 5. Handle SERVER_READY (Async Server Allocation)
+    // 6. Handle SERVER_READY (Async Server Allocation)
     if (lastMessage.type === "SERVER_READY") {
       console.log("Server Ready Update:", lastMessage);
-      if (matchData) {
-        // Merge server info into existing match data
-        const updatedMatchData = {
-          ...matchData,
-          matchData: {
-            ...matchData.matchData,
-            serverInfo: lastMessage.serverInfo
-          },
-          serverInfo: lastMessage.serverInfo
-        };
-        setMatchData(updatedMatchData);
+      if (lastMessage.serverInfo) {
+        // Update matchData with server info
+        if (matchData) {
+          const updatedMatchData = {
+            ...matchData,
+            matchData: {
+              ...matchData.matchData,
+              serverInfo: lastMessage.serverInfo,
+            },
+            serverInfo: lastMessage.serverInfo,
+          };
+          setMatchData(updatedMatchData);
+        }
+        // Also update current lobby if we're in a match
+        if (activeLobbyId && lastMessage.lobbyId === activeLobbyId) {
+          // Server info will be included in next LOBBY_UPDATE
+        }
       }
     }
 
-    // 6. Handle Match State Error (match not found or user not in match)
+    // 7. Handle Match State Error (match not found or user not in match)
     if (lastMessage.type === "MATCH_STATE_ERROR") {
       console.log("Match State Error:", lastMessage);
       // Clear invalid lobby state
       setActiveLobbyId(undefined);
       setLobbyPartyMembers([]);
       // Navigate back to matchmaking or home if on match pages
-      if (currentPage === "mapban" || currentPage === "matchgame") {
+      if (
+        currentPage === "mapban" ||
+        currentPage === "ready" ||
+        currentPage === "matchgame"
+      ) {
         setCurrentPage("matchmaking");
       }
     }
@@ -241,7 +327,7 @@ function AppContent() {
       let userData: User | null = null;
 
       if (id && username) {
-        userData = { id, username, avatar: avatar || "", mmr: 1000 };
+        userData = { id, username, avatar: avatar || "", elo: 1000 };
         window.history.replaceState({}, document.title, "/");
       } else {
         const savedUser = localStorage.getItem("user");
@@ -262,7 +348,8 @@ function AppContent() {
 
         try {
           const res = await fetch(
-            `${import.meta.env.VITE_BACKEND_URL || "http://localhost:8787"
+            `${
+              import.meta.env.VITE_BACKEND_URL || "http://localhost:8787"
             }/api/profile/${userData.id}`
           );
           if (res.ok) {
@@ -272,16 +359,16 @@ function AppContent() {
               setShowNicknameModal(true);
             }
 
-            // Sync latest data including MMR
+            // Sync latest data including ELO
             const updatedUser = {
               ...userData,
               standoff_nickname: profile.standoff_nickname,
-              mmr: profile.mmr || 1000,
+              elo: profile.elo || 1000,
             };
 
             // Only update if changes found
             if (
-              updatedUser.mmr !== userData.mmr ||
+              updatedUser.elo !== userData.elo ||
               updatedUser.standoff_nickname !== userData.standoff_nickname
             ) {
               setUser(updatedUser);
@@ -314,6 +401,19 @@ function AppContent() {
     setCurrentPage("home");
   };
 
+  // Navigation handler that always works, regardless of current page
+  const handleNavigate = (page: string) => {
+    // If user navigates away from matchgame, mark that they explicitly left
+    if (currentPage === "matchgame" && page !== "matchgame") {
+      setUserNavigatedAway(true);
+    }
+    // If user navigates back to matchgame, reset the flag
+    if (page === "matchgame") {
+      setUserNavigatedAway(false);
+    }
+    setCurrentPage(page);
+  };
+
   const handleLogout = () => {
     setUser(null);
     setIsAuthenticated(false);
@@ -323,8 +423,11 @@ function AppContent() {
   };
 
   const handleStartLobby = (partyMembers: PartyMember[]) => {
+    // This function is no longer used since we don't auto-navigate from matchmaking
+    // Keep it for backward compatibility but don't navigate
     setLobbyPartyMembers(partyMembers);
-    setCurrentPage("mapban");
+    // Don't auto-navigate - user should use "RETURN TO MATCH" button
+    // setCurrentPage("mapban"); // Removed to prevent auto-navigation
   };
 
   const handleAcceptInvite = () => {
@@ -348,6 +451,7 @@ function AppContent() {
     "matchmaking",
     "matchlobby",
     "mapban",
+    "ready",
     "matchgame",
   ];
   const isValidPage = validPages.includes(currentPage);
@@ -404,11 +508,13 @@ function AppContent() {
       <Header
         currentPage={currentPage}
         user={user}
-        onNavigate={setCurrentPage}
+        onNavigate={handleNavigate}
         onLogout={handleLogout}
         activeLobbyId={activeLobbyId}
         onReturnToMatch={() => {
           if (activeLobbyId) {
+            // Reset the flag when user explicitly returns to match
+            setUserNavigatedAway(false);
             requestMatchState(activeLobbyId);
           }
         }}
@@ -440,6 +546,7 @@ function AppContent() {
           <MatchmakingPage
             onCancel={() => setCurrentPage("home")}
             onStartLobby={handleStartLobby}
+            activeLobbyId={activeLobbyId}
           />
         )}
         {currentPage === "mapban" && (
@@ -447,6 +554,19 @@ function AppContent() {
             partyMembers={lobbyPartyMembers}
             onCancel={() => setCurrentPage("home")}
             activeLobbyId={activeLobbyId}
+            onReadyPhaseStart={() => setCurrentPage("ready")}
+          />
+        )}
+        {currentPage === "ready" && (
+          <ReadyPage
+            partyMembers={lobbyPartyMembers}
+            activeLobbyId={activeLobbyId}
+            selectedMap={selectedMap}
+            onMatchStart={() => {
+              // Match started, navigate to matchgame
+              // The matchData will be set by the MATCH_START handler
+              setCurrentPage("matchgame");
+            }}
           />
         )}
         {currentPage === "matchgame" && (
@@ -455,7 +575,7 @@ function AppContent() {
             serverInfo={
               matchData?.matchData?.serverInfo || matchData?.serverInfo
             }
-            onMatchStart={() => { }}
+            onMatchStart={() => {}}
           />
         )}
       </main>

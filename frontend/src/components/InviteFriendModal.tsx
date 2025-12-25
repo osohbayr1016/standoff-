@@ -6,7 +6,7 @@ interface Friend {
     username: string;
     nickname?: string;
     avatar?: string;
-    mmr: number;
+    elo: number;
 }
 
 interface InviteFriendModalProps {
@@ -87,7 +87,7 @@ export default function InviteFriendModal({ currentPartyIds, onInvite, onClose }
                                     </div>
                                     <div className="friend-info-compact">
                                         <span className="friend-name-compact">{friend.nickname || friend.username}</span>
-                                        <span className="friend-mmr-compact">MMR: {friend.mmr}</span>
+                                        <span className="friend-mmr-compact">ELO: {friend.elo}</span>
                                     </div>
                                     <button className="invite-btn" onClick={() => onInvite(friend)}>
                                         INVITE +

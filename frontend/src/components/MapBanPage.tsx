@@ -15,12 +15,13 @@ interface MapBanPageProps {
   onCancel: () => void;
   onMapSelected?: (selectedMap: string) => void;
   activeLobbyId?: string; // Add prop to know when we should request state
+  onReadyPhaseStart?: () => void; // Callback when ready phase should start
 }
 
 const ALL_MAPS = ['Hanami', 'Rust', 'Zone 7', 'Dune', 'Breeze', 'Province', 'Sandstone'];
 const BAN_TIMEOUT = 15; // seconds
 
-export default function MapBanPage({ partyMembers, onCancel: _onCancel, onMapSelected, activeLobbyId }: MapBanPageProps) {
+export default function MapBanPage({ partyMembers, onCancel: _onCancel, onMapSelected, activeLobbyId, onReadyPhaseStart }: MapBanPageProps) {
   const [bannedMaps, setBannedMaps] = useState<string[]>([]);
   const [selectedMap, setSelectedMap] = useState<string | undefined>();
   const [currentBanTeam, setCurrentBanTeam] = useState<'alpha' | 'bravo'>('alpha');
@@ -144,7 +145,20 @@ export default function MapBanPage({ partyMembers, onCancel: _onCancel, onMapSel
       }
     }
 
-    // Handle direct MATCH_START message
+    // Handle READY_PHASE_STARTED - map ban complete, transition to ready phase
+    if (lastMessage.type === 'READY_PHASE_STARTED') {
+      if (lastMessage.selectedMap) {
+        setSelectedMap(lastMessage.selectedMap);
+        setMapBanPhase(false);
+        setStateInitialized(true);
+        // Trigger navigation to ready page
+        if (onReadyPhaseStart) {
+          onReadyPhaseStart();
+        }
+      }
+    }
+
+    // Handle direct MATCH_START message (legacy, should not happen with ready phase)
     if (lastMessage.type === 'MATCH_START') {
       if (lastMessage.selectedMap) {
         setSelectedMap(lastMessage.selectedMap);
@@ -310,13 +324,17 @@ export default function MapBanPage({ partyMembers, onCancel: _onCancel, onMapSel
     };
   }, [currentBanTeam, mapBanPhase, bannedMaps.length, sendMessage, stateInitialized]);
 
-  // No auto-navigation - user stays on this page to see the result
+  // Check if map ban phase completed and trigger ready phase
   useEffect(() => {
+    if (selectedMap && !mapBanPhase && onReadyPhaseStart) {
+      // Map ban completed, trigger ready phase navigation
+      onReadyPhaseStart();
+    }
     if (selectedMap && !mapBanPhase && onMapSelected) {
       // We could call a callback if parent wants to know
       onMapSelected(selectedMap);
     }
-  }, [selectedMap, mapBanPhase, onMapSelected]);
+  }, [selectedMap, mapBanPhase, onMapSelected, onReadyPhaseStart]);
 
   const mapBanData = {
     availableMaps: ALL_MAPS,

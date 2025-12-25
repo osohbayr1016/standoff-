@@ -1,6 +1,6 @@
 .match-lobby-container {
-  width: 100vw;
-  height: 100vh;
+  width: 100%;
+  min-height: calc(100vh - 60px);
   position: relative;
   overflow: hidden;
   color: white;
@@ -98,18 +98,34 @@
 
 .teams-arena {
   display: flex;
-  justify-content: space-between;
+  justify-content: center;
   align-items: flex-start;
   flex: 1;
   max-width: 1400px;
   margin: 0 auto;
   width: 100%;
   position: relative;
+  min-height: 0;
+  padding-bottom: 1rem;
+  gap: 1.5rem;
 }
 
 .team-column {
-  flex: 1;
-  max-width: 45%;
+  flex: 0 0 auto;
+  width: 28%;
+  max-width: 320px;
+  min-width: 250px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.team-column.team-alpha {
+  align-items: flex-start;
+}
+
+.team-column.team-bravo {
+  align-items: flex-end;
 }
 
 .team-title {
@@ -130,14 +146,73 @@
 }
 
 .vs-divider {
-  position: absolute;
-  left: 50%;
-  top: 50px;
-  bottom: 100px;
-  transform: translateX(-50%);
+  position: relative;
+  flex: 0 0 auto;
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: flex-start;
+  gap: 0.75rem;
+  width: 320px;
+  margin: 0 1rem;
+  align-self: stretch;
+  padding-top: 0;
+}
+
+/* Hide desktop control panel on mobile */
+@media (max-width: 768px) {
+  .teams-arena {
+    flex-direction: column;
+    gap: 1.5rem;
+    align-items: stretch;
+  }
+
+  .team-column {
+    width: 100%;
+    max-width: 100%;
+    min-width: auto;
+  }
+
+  .vs-divider {
+    position: relative;
+    width: 100%;
+    margin: 1rem 0;
+    height: auto;
+  }
+
+  .match-control-panel-desktop {
+    display: none;
+  }
+  
+  .divider-line {
+    display: block;
+    width: 100%;
+    height: 2px;
+    background: linear-gradient(to right, transparent, #ff8c00, transparent);
+  }
+}
+
+/* Hide mobile control panel on desktop */
+@media (min-width: 769px) {
+  .match-control-panel-mobile {
+    display: none !important;
+  }
+  
+  .divider-line {
+    display: none;
+  }
+
+  .vs-circle {
+    margin-bottom: 0;
+  }
+
+  .teams-arena {
+    align-items: flex-start;
+  }
+
+  .vs-divider {
+    align-items: center;
+  }
 }
 
 .vs-circle {
@@ -155,7 +230,9 @@
   font-size: 1.25rem;
   box-shadow: 0 0 20px rgba(255, 140, 0, 0.4);
   z-index: 2;
-  margin-bottom: 1rem;
+  flex-shrink: 0;
+  margin: 0;
+  order: -1;
 }
 
 .divider-line {
@@ -169,6 +246,7 @@
   display: flex;
   flex-direction: column;
   gap: 1rem;
+  flex: 1;
 }
 
 .player-card {
@@ -257,21 +335,112 @@
   color: #94a3b8;
 }
 
-.match-control-panel {
+/* Desktop: Control panel in center between teams */
+.match-control-panel-desktop {
+  background: rgba(15, 23, 42, 0.9);
+  border: 2px solid #ff8c00;
+  border-radius: 12px;
+  padding: 1.5rem;
+  width: 320px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+  margin: 0;
+  min-height: 0;
+  justify-content: flex-start;
+  order: 1;
+}
+
+.match-control-panel-desktop .map-info {
+  text-align: center;
+}
+
+.match-control-panel-desktop .map-name-label {
+  font-size: 0.75rem;
+  color: #94a3b8;
+  letter-spacing: 0.1em;
+}
+
+.match-control-panel-desktop .map-name-value {
+  font-size: 1.5rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  color: white;
+  margin-top: 0.25rem;
+}
+
+.match-control-panel-desktop .server-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+}
+
+.match-control-panel-desktop .live-actions {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.match-control-panel-desktop .server-details-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  width: 100%;
+}
+
+.match-control-panel-desktop .detail-box {
+  width: 100%;
+  justify-content: space-between;
+}
+
+.match-control-panel-desktop .button-group {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.match-control-panel-desktop .play-btn,
+.match-control-panel-desktop .copy-btn {
+  width: 100%;
+  justify-content: center;
+  font-size: 0.9rem;
+  padding: 0.625rem 1rem;
+}
+
+.match-control-panel-desktop .waiting-state {
+  width: 100%;
+  justify-content: center;
+  font-size: 0.875rem;
+}
+
+/* Mobile: Control panel at bottom - Hidden by default on desktop */
+.match-control-panel-mobile {
   background: rgba(15, 23, 42, 0.9);
   border-top: 2px solid #ff8c00;
   border-radius: 12px 12px 0 0;
   padding: 2rem;
-  position: absolute;
-  bottom: 0;
-  left: 50%;
-  transform: translateX(-50%);
+  position: relative;
+  margin: 2rem auto 0;
   width: 80%;
   max-width: 1000px;
-  display: flex;
+  display: none;
   justify-content: space-between;
   align-items: center;
   box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.5);
+}
+
+/* Show mobile panel only on mobile */
+@media (max-width: 768px) {
+  .match-control-panel-mobile {
+    display: flex;
+  }
 }
 
 .map-info {

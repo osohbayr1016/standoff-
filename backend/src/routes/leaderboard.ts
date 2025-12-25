@@ -8,19 +8,19 @@ export function setupLeaderboardRoutes(app: Hono<any>) {
     app.get('/api/leaderboard', async (c) => {
         try {
             const db = drizzle(c.env.DB);
-            // Fetch top 500 players sorted by MMR descending
+            // Fetch top 500 players sorted by ELO descending
             const topPlayers = await db.select({
                 id: players.id,
                 discord_id: players.discord_id,
                 username: players.discord_username,
                 avatar: players.discord_avatar,
                 nickname: players.standoff_nickname,
-                mmr: players.mmr,
+                elo: players.elo,
                 wins: players.wins,
                 losses: players.losses,
             })
                 .from(players)
-                .orderBy(desc(players.mmr))
+                .orderBy(desc(players.elo))
                 .limit(500)
                 .all();
 

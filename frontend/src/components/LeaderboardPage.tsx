@@ -9,18 +9,18 @@ interface LeaderboardEntry {
   username: string;
   avatar?: string;
   nickname?: string;
-  mmr: number;
+  elo: number;
   wins: number;
   losses: number;
 }
 
-type FilterType = 'mmr' | 'winrate' | 'matches';
+type FilterType = 'elo' | 'winrate' | 'matches';
 
 export default function LeaderboardPage() {
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
   const [filteredLeaderboard, setFilteredLeaderboard] = useState<LeaderboardEntry[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeFilter, setActiveFilter] = useState<FilterType>('mmr');
+  const [activeFilter, setActiveFilter] = useState<FilterType>('elo');
 
   useEffect(() => {
     fetchLeaderboard();
@@ -45,8 +45,8 @@ export default function LeaderboardPage() {
     let sorted = [...data];
 
     switch (filter) {
-      case 'mmr':
-        sorted.sort((a, b) => b.mmr - a.mmr);
+      case 'elo':
+        sorted.sort((a, b) => b.elo - a.elo);
         break;
       case 'winrate':
         sorted.sort((a, b) => {
@@ -100,11 +100,11 @@ export default function LeaderboardPage() {
 
       <div className="leaderboard-filters">
         <button
-          className={`filter-btn ${activeFilter === 'mmr' ? 'active' : ''}`}
-          onClick={() => setActiveFilter('mmr')}
+          className={`filter-btn ${activeFilter === 'elo' ? 'active' : ''}`}
+          onClick={() => setActiveFilter('elo')}
         >
           <span className="filter-icon">⚡</span>
-          <span className="filter-text">HIGHEST MMR</span>
+          <span className="filter-text">HIGHEST ELO</span>
         </button>
         <button
           className={`filter-btn ${activeFilter === 'winrate' ? 'active' : ''}`}
@@ -126,7 +126,7 @@ export default function LeaderboardPage() {
         <div className="leaderboard-table-header">
           <div className="header-rank">RANK</div>
           <div className="header-player">OPERATOR</div>
-          <div className="header-mmr">MMR</div>
+          <div className="header-mmr">ELO</div>
           <div className="header-stats mobile-hide">W / L</div>
           <div className="header-winrate mobile-hide">WIN RATE</div>
         </div>
@@ -160,7 +160,7 @@ export default function LeaderboardPage() {
                 </div>
 
                 <div className="mmr-cell">
-                  <span className="mmr-value">{player.mmr}</span>
+                  <span className="mmr-value">{player.elo}</span>
                 </div>
 
                 <div className="stats-cell mobile-hide">

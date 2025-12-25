@@ -13,7 +13,7 @@ interface ProfileData {
   discord_username: string;
   discord_avatar?: string;
   standoff_nickname?: string;
-  mmr: number;
+  elo: number;
   wins: number;
   losses: number;
 }
@@ -106,11 +106,11 @@ export default function ProfilePage({ user, onFindMatch, onLogout }: ProfilePage
   const totalMatches = profile ? profile.wins + profile.losses : 0;
 
   // Calculate Rank Progress (Example: Gold to Platinum)
-  // Assuming 1000 MMR base, 100 MMR per rank level for visualization
-  const currentMMR = profile?.mmr || 1000;
-  const nextRankMMR = Math.ceil((currentMMR + 1) / 100) * 100;
-  const prevRankMMR = nextRankMMR - 100;
-  const progressPercent = Math.min(100, Math.max(0, ((currentMMR - prevRankMMR) / (nextRankMMR - prevRankMMR)) * 100));
+  // Assuming 1000 ELO base, 100 ELO per rank level for visualization
+  const currentELO = profile?.elo || 1000;
+  const nextRankELO = Math.ceil((currentELO + 1) / 100) * 100;
+  const prevRankELO = nextRankELO - 100;
+  const progressPercent = Math.min(100, Math.max(0, ((currentELO - prevRankELO) / (nextRankELO - prevRankELO)) * 100));
 
   return (
     <div className="profile-page">
@@ -179,8 +179,8 @@ export default function ProfilePage({ user, onFindMatch, onLogout }: ProfilePage
 
         <div className="header-stats-group">
           <div className="current-elo-box">
-            <div className="elo-label">COMPETITIVE MMR</div>
-            <div className="elo-value">{profile?.mmr || 1000}</div>
+            <div className="elo-label">COMPETITIVE ELO</div>
+            <div className="elo-value">{profile?.elo || 1000}</div>
           </div>
           <div className="header-buttons-group">
             <button className="find-match-btn" onClick={onFindMatch}>
@@ -203,7 +203,7 @@ export default function ProfilePage({ user, onFindMatch, onLogout }: ProfilePage
             <div className="progress-glow"></div>
           </div>
         </div>
-        <div className="rank-xp-text">{currentMMR} / {nextRankMMR} MMR</div>
+        <div className="rank-xp-text">{currentELO} / {nextRankELO} ELO</div>
       </div>
 
       <div className="stats-grid">

@@ -111,12 +111,29 @@ export class BackendService {
                 if (result.success && result.serverInfo) {
                     console.log('✅ Game server created:', result.serverInfo);
 
-                    // Send server info back to backend
+                    // Generate match link
+                    const matchLink = `standoff://connect/${result.serverInfo.ip}/${result.serverInfo.password}`;
+
+                    // Send server info via API (primary method)
+                    const apiSuccess = await this.sendServerInfo(matchData.lobbyId, {
+                        ip: result.serverInfo.ip,
+                        password: result.serverInfo.password,
+                        matchLink
+                    });
+
+                    // Also send via WebSocket for backward compatibility
                     this.send({
                         type: 'SERVER_CREATED',
                         lobbyId: matchData.lobbyId,
-                        serverInfo: result.serverInfo
+                        serverInfo: {
+                            ...result.serverInfo,
+                            matchLink
+                        }
                     });
+
+                    if (!apiSuccess) {
+                        console.warn('⚠️ API call failed, but WebSocket message sent');
+                    }
                 } else {
                     console.error('❌ Failed to create game server:', result.error);
 
@@ -180,6 +197,40 @@ export class BackendService {
             return response.ok;
         } catch (error) {
             console.error('❌ Error updating nickname:', error);
+            return false;
+        }
+    }
+
+    async sendServerInfo(lobbyId: string, serverInfo: { ip: string; password: string; matchLink?: string }): Promise<boolean> {
+        try {
+            const normalizedUrl = this.backendUrl.endsWith('/') ? this.backendUrl.slice(0, -1) : this.backendUrl;
+            
+            // Generate match link if not provided
+            const matchLink = serverInfo.matchLink || `standoff://connect/${serverInfo.ip}/${serverInfo.password}`;
+            
+            const response = await fetch(`${normalizedUrl}/api/match/server-info`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    lobbyId,
+                    serverInfo: {
+                        ...serverInfo,
+                        matchLink
+                    }
+                })
+            });
+
+            if (response.ok) {
+                const result = await response.json();
+                console.log('✅ Server info sent via API:', result);
+                return result.success === true;
+            } else {
+                const error = await response.text();
+                console.error('❌ Failed to send server info:', error);
+                return false;
+            }
+        } catch (error) {
+            console.error('❌ Error sending server info:', error);
             return false;
         }
     }

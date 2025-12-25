@@ -14,7 +14,7 @@ interface Friend {
   username: string;
   nickname?: string;
   avatar?: string;
-  mmr: number;
+  elo: number;
   status: string; // 'online' | 'offline' - currently mocked or could be from WS
 }
 
@@ -23,7 +23,7 @@ interface SearchResult {
   username: string;
   nickname?: string;
   avatar?: string;
-  mmr: number;
+  elo: number;
 }
 
 export default function FriendsPage() {
@@ -173,7 +173,7 @@ export default function FriendsPage() {
                         <span className="friend-name">{friend.nickname || friend.username}</span>
                       </div>
                       <span className="status-text online">● ONLINE</span>
-                      <span className="friend-elo">MMR: {friend.mmr}</span>
+                      <span className="friend-elo">ELO: {friend.elo}</span>
                     </div>
                   </div>
                   <div className="friend-actions">
@@ -215,7 +215,7 @@ export default function FriendsPage() {
                     </div>
                     <div className="result-info">
                       <span className="result-name">{result.nickname || result.username}</span>
-                      <span className="result-team">MMR: {result.mmr}</span>
+                      <span className="result-team">ELO: {result.elo}</span>
                     </div>
                   </div>
                   <div className="result-right">
@@ -248,7 +248,7 @@ export default function FriendsPage() {
                       <div className="request-info">
                         <span className="request-name">{request.nickname || request.username}</span>
                         <div className="request-elo">
-                          <span className="elo-label">MMR: {request.mmr}</span>
+                          <span className="elo-label">ELO: {request.elo}</span>
                         </div>
                       </div>
                     </div>

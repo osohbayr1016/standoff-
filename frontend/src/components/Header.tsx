@@ -7,7 +7,7 @@ interface User {
   username: string;
   avatar: string;
   standoff_nickname?: string;
-  mmr?: number;
+  elo?: number;
 }
 
 interface HeaderProps {
@@ -50,12 +50,12 @@ export default function Header({ currentPage, user, onNavigate, onLogout, active
 
         {/* Desktop Nav */}
         <nav className="nav desktop-nav">
-          {activeLobbyId && !['mapban', 'matchlobby'].includes(currentPage) && (
+          {activeLobbyId && !['mapban', 'matchlobby', 'matchgame'].includes(currentPage) && (
             <button className="nav-link return-match-btn" onClick={() => {
               if (onReturnToMatch) {
                 onReturnToMatch();
               }
-              onNavigate('mapban');
+              onNavigate('matchgame');
             }}>
               <span className="pulse-dot"></span> RETURN TO MATCH
             </button>
@@ -76,12 +76,12 @@ export default function Header({ currentPage, user, onNavigate, onLogout, active
           </div>
 
           <div className="mobile-nav-links">
-            {activeLobbyId && !['mapban', 'matchlobby'].includes(currentPage) && (
+            {activeLobbyId && !['mapban', 'matchlobby', 'matchgame'].includes(currentPage) && (
               <button className="mobile-nav-link return-match-btn-mobile" onClick={() => {
                 if (onReturnToMatch) {
                   onReturnToMatch();
                 }
-                onNavigate('mapban');
+                onNavigate('matchgame');
                 setShowDropdown(false);
               }}>
                 <span className="pulse-dot"></span> RETURN TO MATCH
@@ -106,7 +106,7 @@ export default function Header({ currentPage, user, onNavigate, onLogout, active
                 </div>
                 <div className="mobile-user-details">
                   <span className="mobile-username">{user.standoff_nickname || user.username}</span>
-                  <span className="mobile-elo">ELO: {user.mmr || 1000}</span>
+                  <span className="mobile-elo">ELO: {user.elo || 1000}</span>
                 </div>
               </div>
               <button className="mobile-logout-btn" onClick={() => { onLogout(); setShowDropdown(false); }}>Logout</button>
@@ -124,7 +124,7 @@ export default function Header({ currentPage, user, onNavigate, onLogout, active
                 <div className="avatar-fallback-header">{user.username[0]}</div>
               )}
             </div>
-            <span className="user-elo">ELO: {user.mmr || 1000}</span>
+            <span className="user-elo">ELO: {user.elo || 1000}</span>
           </div>
         )}
       </div>

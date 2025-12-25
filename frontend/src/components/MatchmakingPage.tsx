@@ -8,15 +8,16 @@ interface PartyMember {
   id: string;
   username: string;
   avatar?: string;
-  mmr?: number;
+  elo?: number;
 }
 
 interface MatchmakingPageProps {
   onCancel: () => void;
   onStartLobby?: (partyMembers: PartyMember[]) => void;
+  activeLobbyId?: string; // Add prop to check if user is in a lobby
 }
 
-export default function MatchmakingPage({ onCancel: _onCancel, onStartLobby }: MatchmakingPageProps) {
+export default function MatchmakingPage({ onCancel: _onCancel, onStartLobby, activeLobbyId }: MatchmakingPageProps) {
   const [partyMembers, setPartyMembers] = useState<PartyMember[]>([]);
   const [showInviteModal, setShowInviteModal] = useState(false);
 
@@ -33,7 +34,17 @@ export default function MatchmakingPage({ onCancel: _onCancel, onStartLobby }: M
         // Invalid data
       }
     }
-  }, []);
+    
+    // Reset queue state when component mounts - user must explicitly join
+    // This prevents automatic queue joining when visiting the page
+    setIsInQueue(false);
+    
+    // If user was in queue from elsewhere (Discord bot, previous session), leave it
+    const user = JSON.parse(localStorage.getItem('user') || '{}');
+    if (user.id) {
+      sendMessage({ type: 'LEAVE_QUEUE', userId: user.id });
+    }
+  }, [sendMessage]);
 
   // Listen for WS Updates
   useEffect(() => {
@@ -47,52 +58,38 @@ export default function MatchmakingPage({ onCancel: _onCancel, onStartLobby }: M
           id: p.id || p.discord_id || 'unknown',
           username: p.username || p.name || 'Unknown Player',
           avatar: p.avatar_url || p.avatar || undefined, // Adjust based on actual API response
-          mmr: p.mmr || 1000
+          elo: p.elo || 1000
         }));
 
         // Update local party view with these players
         // We only show them as filling slots
         setPartyMembers(externalPlayers);
+        
+        // Don't automatically sync isInQueue state from QUEUE_UPDATE
+        // User must explicitly click JOIN QUEUE to join
+        // This prevents automatic queue joining when visiting the page
       }
     }
 
+    // Don't auto-navigate to lobby from matchmaking page
+    // User should use "RETURN TO MATCH" button to go to lobby
+    // This prevents wrong lobby bug and allows free navigation
     if (lastMessage.type === 'MATCH_READY') {
-      // Redirect to lobby!
-      if (onStartLobby && lastMessage.players) {
-        let players: PartyMember[] = [];
-
-        // Handle if players are objects (New Backend) or strings (Old Logic)
-        if (lastMessage.players.length > 0 && typeof lastMessage.players[0] === 'object') {
-          players = lastMessage.players.map((p: any) => ({
-            id: p.id || p.discord_id,
-            username: p.username || p.name || 'Unknown',
-            avatar: p.avatar || p.avatar_url,
-            mmr: p.mmr || 1000
-          }));
-        } else {
-          // Fallback for string IDs
-          players = lastMessage.players.map((id: string) => ({ id, username: 'Player', mmr: 1000 }));
-        }
-
-        console.log("Match Ready! Players:", players);
-        onStartLobby(players);
-      }
+      // Just log that match is ready, but don't navigate
+      // The global handler in App.tsx will set activeLobbyId
+      // and show "RETURN TO MATCH" button
+      console.log("Match Ready received on matchmaking page - staying on page");
     }
   }, [lastMessage, onStartLobby]);
 
-  // Check if current user is in queue
+  // Check if current user is in queue (only set when explicitly joining, not from QUEUE_UPDATE)
   const [isInQueue, setIsInQueue] = useState(false);
 
-  useEffect(() => {
-    const user = JSON.parse(localStorage.getItem('user') || '{}');
-    if (user.id && partyMembers.some(p => p.id === user.id)) {
-      setIsInQueue(true);
-    } else {
-      setIsInQueue(false);
-    }
-  }, [partyMembers]);
-
   const handleJoinQueue = () => {
+    // Don't allow joining queue if user is already in a lobby
+    if (activeLobbyId) {
+      return;
+    }
     const user = JSON.parse(localStorage.getItem('user') || '{}');
     if (user.id) {
       sendMessage({
@@ -175,7 +172,7 @@ export default function MatchmakingPage({ onCancel: _onCancel, onStartLobby }: M
             </div>
             <div className="party-slot-info">
               <div className="party-slot-username">{member.username}</div>
-              <div className="party-slot-mmr">{member.mmr || 1000} MMR</div>
+              <div className="party-slot-mmr">{member.elo || 1000} ELO</div>
               <div className="party-slot-status">READY</div>
             </div>
           </>
@@ -185,6 +182,51 @@ export default function MatchmakingPage({ onCancel: _onCancel, onStartLobby }: M
       </div>
     );
   };
+
+  // If user is in a lobby, show active match info instead of queue
+  if (activeLobbyId) {
+    return (
+      <div className="matchmaking-page">
+        <div className="cyber-grid-bg"></div>
+        <DebugConsole />
+
+        <div className="matchmaking-content">
+          <h1 className="matchmaking-title" data-text="ACTIVE MATCH">ACTIVE MATCH</h1>
+          <div className="matchmaking-subtitle">You are currently in a match lobby</div>
+
+          <div className="live-counter-large">
+            <span className="live-count-number">#</span>
+            <span className="live-count-text">LOBBY ACTIVE</span>
+          </div>
+
+          <div className="radar-container">
+            <div className="radar-outer-ring"></div>
+            <div className="radar-sweep"></div>
+            <div className="radar-grid-lines"></div>
+
+            <div className="map-hologram">
+              <div style={{ color: '#00ff00', fontSize: '24px', textAlign: 'center', marginTop: '15px' }}>
+                IN LOBBY
+              </div>
+            </div>
+          </div>
+
+          <div className="timer-section">
+            <div className="player-count">
+              <span className="count-label">LOBBY ID</span>
+              <span className="count-val">{activeLobbyId.slice(0, 8).toUpperCase()}</span>
+            </div>
+          </div>
+
+          <div style={{ marginTop: '2rem', textAlign: 'center' }}>
+            <p style={{ color: '#94a3b8', fontSize: '14px' }}>
+              Use the "RETURN TO MATCH" button in the header to view your lobby
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="matchmaking-page">
@@ -241,8 +283,17 @@ export default function MatchmakingPage({ onCancel: _onCancel, onStartLobby }: M
 
       <div className="matchmaking-actions">
         {!isInQueue ? (
-          <button className="find-match-btn-large cyber-button-primary" onClick={handleJoinQueue}>
-            <span className="btn-content">JOIN QUEUE</span>
+          <button 
+            className="find-match-btn-large cyber-button-primary" 
+            onClick={handleJoinQueue}
+            disabled={!!activeLobbyId}
+            style={{ 
+              opacity: activeLobbyId ? 0.5 : 1, 
+              cursor: activeLobbyId ? 'not-allowed' : 'pointer' 
+            }}
+            title={activeLobbyId ? 'You are already in a match lobby' : ''}
+          >
+            <span className="btn-content">{activeLobbyId ? 'IN LOBBY' : 'JOIN QUEUE'}</span>
             <div className="btn-glitch"></div>
           </button>
         ) : (
