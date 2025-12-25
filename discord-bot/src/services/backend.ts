@@ -33,11 +33,18 @@ export class BackendService {
             });
 
             this.ws.on('message', async (data) => {
+                const raw = data.toString();
+                console.log('📥 RAW MESSAGE:', raw.slice(0, 100));
+                this.send({ type: 'DEBUG_BOT_LOG', message: `📥 Raw: ${raw.slice(0, 50)}` });
+
                 try {
-                    const message: BackendMessage = JSON.parse(data.toString());
+                    const message: BackendMessage = JSON.parse(raw);
+                    console.log('📨 PARSED:', message.type);
+                    this.send({ type: 'DEBUG_BOT_LOG', message: `📨 Parsed type: ${message.type}` });
                     await this.handleMessage(message, client);
-                } catch (error) {
-                    console.error('❌ Error handling message:', error);
+                } catch (error: any) {
+                    console.error('❌ Parse error:', error);
+                    this.send({ type: 'DEBUG_BOT_LOG', message: `❌ Parse error: ${error.message}` });
                 }
             });
 
