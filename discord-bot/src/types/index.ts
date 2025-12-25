@@ -22,8 +22,7 @@ export interface MatchData {
 }
 
 export interface BackendMessage {
-    type: 'CREATE_MATCH' | 'MATCH_READY' | 'QUEUE_UPDATE';
-    players?: Player[];
+    type: 'MATCH_READY' | 'MATCH_CANCELLED' | 'LOBBY_UPDATE' | 'QUEUE_UPDATE' | 'SERVER_CREATED' | 'SERVER_CREATION_FAILED' | 'MATCH_START' | 'CREATE_MATCH';
     lobbyId?: string;
     matchData?: MatchData;
 }

@@ -5,6 +5,7 @@ interface MapBanHeaderProps {
   currentTeamName: string;
   selectedMap?: string;
   timeLeft?: number;
+  serverInfo?: { ip?: string; password?: string };
 }
 
 export default function MapBanHeader({
@@ -12,6 +13,7 @@ export default function MapBanHeader({
   currentTeamName,
   selectedMap,
   timeLeft,
+  serverInfo,
 }: MapBanHeaderProps) {
   const formatTime = (seconds: number) => {
     return `${String(seconds).padStart(2, '0')}`;
@@ -31,6 +33,20 @@ export default function MapBanHeader({
           <span className={`timer-value ${timeLeft <= 5 ? 'timer-warning' : ''}`}>
             {formatTime(timeLeft)}s
           </span>
+        </div>
+      )}
+      {!mapBanPhase && serverInfo && (
+        <div className="server-ready-info">
+          <div className="server-detail">
+            <span className="detail-label">IP:</span>
+            <span className="detail-value">{serverInfo.ip || 'Connecting...'}</span>
+          </div>
+          {serverInfo.password && (
+            <div className="server-detail">
+              <span className="detail-label">PASSWORD:</span>
+              <span className="detail-value">{serverInfo.password}</span>
+            </div>
+          )}
         </div>
       )}
     </div>

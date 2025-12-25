@@ -57,7 +57,6 @@ function AppContent() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [user, setUser] = useState<User | null>(null);
   const [lobbyPartyMembers, setLobbyPartyMembers] = useState<PartyMember[]>([]);
-  const [selectedMap, setSelectedMap] = useState<string | undefined>();
   const [showNicknameModal, setShowNicknameModal] = useState(false);
   const [inviteNotification, setInviteNotification] = useState<{
     fromUser: any;

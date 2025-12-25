@@ -18,6 +18,7 @@ interface MapBanViewProps {
     banHistory: Array<{ team: string; map: string; timestamp: Date }>;
     mapBanPhase: boolean;
     timeLeft?: number;
+    serverInfo?: { ip?: string; password?: string };
   };
   onBanMap: (mapName: string) => void;
   isTeamLeader: boolean;
@@ -89,6 +90,7 @@ export default function MapBanView({
         currentTeamName={currentTeamName}
         selectedMap={mapBanData.selectedMap}
         timeLeft={mapBanData.timeLeft}
+        serverInfo={mapBanData.serverInfo}
       />
 
       <div className="team-leaders-grid">

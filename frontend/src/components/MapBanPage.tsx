@@ -24,6 +24,7 @@ export default function MapBanPage({ partyMembers, onCancel: _onCancel, onMapSel
   const [currentBanTeam, setCurrentBanTeam] = useState<'alpha' | 'bravo'>('alpha');
   const [banHistory, setBanHistory] = useState<Array<{ team: string; map: string; timestamp: Date }>>([]);
   const [mapBanPhase, setMapBanPhase] = useState(true);
+  const [serverInfo, setServerInfo] = useState<{ ip?: string; password?: string } | undefined>();
   const [timeLeft, setTimeLeft] = useState(BAN_TIMEOUT);
   // Initialize as true if we have party members (coming from matchmaking)
   const [stateInitialized, setStateInitialized] = useState(partyMembers.length > 0);
@@ -52,15 +53,15 @@ export default function MapBanPage({ partyMembers, onCancel: _onCancel, onMapSel
       const lobby = lastMessage.lobby;
       if (lobby && lobby.mapBanState) {
         const banState = lobby.mapBanState;
-        
+
         // Sync banned maps
         setBannedMaps(banState.bannedMaps || []);
-        
+
         // Sync current ban team
         if (banState.currentBanTeam) {
           setCurrentBanTeam(banState.currentBanTeam);
         }
-        
+
         // Sync ban history
         if (banState.banHistory) {
           setBanHistory(banState.banHistory.map((entry: any) => ({
@@ -69,13 +70,18 @@ export default function MapBanPage({ partyMembers, onCancel: _onCancel, onMapSel
             timestamp: new Date(entry.timestamp)
           })));
         }
-        
+
         // Sync selected map and phase status
         if (banState.selectedMap) {
           setSelectedMap(banState.selectedMap);
         }
         setMapBanPhase(banState.mapBanPhase !== false);
-        
+
+        // Sync server info if present
+        if (lobby.serverInfo) {
+          setServerInfo(lobby.serverInfo);
+        }
+
         // Calculate timer from server timestamp - use currentTurnStartTimestamp if available
         if (banState.mapBanPhase) {
           const timestamp = banState.currentTurnStartTimestamp || banState.lastBanTimestamp;
@@ -90,9 +96,24 @@ export default function MapBanPage({ partyMembers, onCancel: _onCancel, onMapSel
         } else {
           setTimeLeft(0);
         }
-        
+
         // Mark state as initialized (in case it wasn't already)
         setStateInitialized(true);
+      }
+    }
+
+    // Handle direct SERVER_READY message
+    if (lastMessage.type === 'SERVER_READY') {
+      if (lastMessage.serverInfo) {
+        setServerInfo(lastMessage.serverInfo);
+      }
+    }
+
+    // Handle direct MATCH_START message
+    if (lastMessage.type === 'MATCH_START') {
+      if (lastMessage.selectedMap) {
+        setSelectedMap(lastMessage.selectedMap);
+        setMapBanPhase(false);
       }
     }
   }, [lastMessage]);
@@ -100,7 +121,7 @@ export default function MapBanPage({ partyMembers, onCancel: _onCancel, onMapSel
   // Recalculate timer when currentBanTeam changes (team switch)
   useEffect(() => {
     if (!stateInitialized || !mapBanPhase) return;
-    
+
     // When team changes, we need to get fresh state from server
     // The server should have already updated currentTurnStartTimestamp
     // This effect will trigger when LOBBY_UPDATE comes with new currentBanTeam
@@ -148,14 +169,14 @@ export default function MapBanPage({ partyMembers, onCancel: _onCancel, onMapSel
     if (!mapBanPhase) {
       return;
     }
-    
+
     // Send ban message to server
     sendMessage({
       type: 'BAN_MAP',
       map: mapName,
       team: currentBanTeam
     });
-    
+
     // Don't update local state - wait for server confirmation via LOBBY_UPDATE
   };
 
@@ -247,13 +268,11 @@ export default function MapBanPage({ partyMembers, onCancel: _onCancel, onMapSel
     };
   }, [currentBanTeam, mapBanPhase, bannedMaps.length, sendMessage, stateInitialized]);
 
-  // Navigate to match lobby when map is selected and ban phase ends
+  // No auto-navigation - user stays on this page to see the result
   useEffect(() => {
     if (selectedMap && !mapBanPhase && onMapSelected) {
-      const timer = setTimeout(() => {
-        onMapSelected(selectedMap);
-      }, 2000);
-      return () => clearTimeout(timer);
+      // We could call a callback if parent wants to know
+      onMapSelected(selectedMap);
     }
   }, [selectedMap, mapBanPhase, onMapSelected]);
 
@@ -267,6 +286,7 @@ export default function MapBanPage({ partyMembers, onCancel: _onCancel, onMapSel
     banHistory,
     mapBanPhase,
     timeLeft,
+    serverInfo,
   };
 
   // Show loading state until server state is received
@@ -274,11 +294,11 @@ export default function MapBanPage({ partyMembers, onCancel: _onCancel, onMapSel
     return (
       <div className="map-ban-page">
         <div className="cyber-grid-bg"></div>
-        <div style={{ 
-          display: 'flex', 
-          flexDirection: 'column', 
-          alignItems: 'center', 
-          justifyContent: 'center', 
+        <div style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
           minHeight: '50vh',
           color: '#fff',
           gap: '1rem'
