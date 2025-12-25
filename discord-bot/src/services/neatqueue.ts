@@ -62,27 +62,28 @@ export class NeatQueueService {
 
                 if (discordId && /^\d+$/.test(discordId)) {
                     const addCommand = `!add <@${discordId}>`;
-                    console.log(`📤 Sending: ${addCommand}`);
+                    console.log(`📤 Sending command to NeatQueue: ${addCommand}`);
                     await channel.send(addCommand);
-                    // Small delay
+                    // Small delay to prevent rate limits or processing overlap
                     await new Promise(r => setTimeout(r, 700));
                 }
             }
 
-            // Send the start command to NeatQueue
+            // Step 2: Send the start command
             const startCommand = '!start';
-            console.log(`Sending start command: ${startCommand}`);
+            console.log(`📤 Sending start command: ${startCommand}`);
             await channel.send(startCommand);
-            // Or maybe just force start if it doesn't auto-start? 
-            // Usually adding 10 players auto-starts it.
 
-            // Wait for NeatQueue's response
-            console.log(`⏳ Monitoring channel ${channel.name} for 30s...`);
+            // Step 3: Wait for NeatQueue's response
+            console.log(`⏳ Monitoring channel #${channel.name} for match details...`);
 
-            // Debug: listen for ALL messages from ANYONE to see if NeatQueue is saying ANYTHING
+            // Listen for any messages to help with debugging if it fails
             const debugCollector = channel.createMessageCollector({ time: 30000 });
             debugCollector.on('collect', m => {
-                console.log(`📩 Channel Msg: [${m.author.username}] ${m.content.slice(0, 50)}... ${m.embeds.length ? '(contains embed)' : ''}`);
+                // If it's a message from anyone other than our bot, log it briefly
+                if (m.author.id !== this.client.user?.id) {
+                    console.log(`📩 Received message from ${m.author.username}: ${m.content.slice(0, 50)}... ${m.embeds.length ? '(Embed present)' : ''}`);
+                }
             });
 
             const serverInfo = await this.waitForMatchCreation(channel);
