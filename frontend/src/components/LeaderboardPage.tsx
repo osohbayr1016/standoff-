@@ -13,7 +13,11 @@ interface LeaderboardEntry {
   losses: number;
 }
 
+<<<<<<< HEAD
 type FilterType = "elo" | "winrate" | "matches";
+=======
+type FilterType = 'elo' | 'winrate' | 'matches';
+>>>>>>> b37cefacd5935a9f26aa22491f4429ab5b1ef73e
 
 export default function LeaderboardPage() {
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
@@ -21,7 +25,11 @@ export default function LeaderboardPage() {
     LeaderboardEntry[]
   >([]);
   const [loading, setLoading] = useState(true);
+<<<<<<< HEAD
   const [activeFilter, setActiveFilter] = useState<FilterType>("elo");
+=======
+  const [activeFilter, setActiveFilter] = useState<FilterType>('elo');
+>>>>>>> b37cefacd5935a9f26aa22491f4429ab5b1ef73e
 
   useEffect(() => {
     fetchLeaderboard();
@@ -50,7 +58,11 @@ export default function LeaderboardPage() {
     let sorted = [...data];
 
     switch (filter) {
+<<<<<<< HEAD
       case "elo":
+=======
+      case 'elo':
+>>>>>>> b37cefacd5935a9f26aa22491f4429ab5b1ef73e
         sorted.sort((a, b) => b.elo - a.elo);
         break;
       case "winrate":
@@ -109,11 +121,19 @@ export default function LeaderboardPage() {
 
       <div className="leaderboard-filters">
         <button
+<<<<<<< HEAD
           className={`filter-btn ${activeFilter === "elo" ? "active" : ""}`}
           onClick={() => setActiveFilter("elo")}
         >
           <span className="filter-icon">⚡</span>
           <span className="filter-text">ХАМГИЙН ӨНДӨР ELO</span>
+=======
+          className={`filter-btn ${activeFilter === 'elo' ? 'active' : ''}`}
+          onClick={() => setActiveFilter('elo')}
+        >
+          <span className="filter-icon">⚡</span>
+          <span className="filter-text">HIGHEST ELO</span>
+>>>>>>> b37cefacd5935a9f26aa22491f4429ab5b1ef73e
         </button>
         <button
           className={`filter-btn ${activeFilter === "winrate" ? "active" : ""}`}
@@ -133,11 +153,19 @@ export default function LeaderboardPage() {
 
       <div className="leaderboard-container">
         <div className="leaderboard-table-header">
+<<<<<<< HEAD
           <div className="header-rank">БАЙР</div>
           <div className="header-player">ТОГЛОГЧ</div>
           <div className="header-elo">ELO</div>
           <div className="header-stats mobile-hide">Х / Х</div>
           <div className="header-winrate mobile-hide">ХОЖЛЫН ХУВЬ</div>
+=======
+          <div className="header-rank">RANK</div>
+          <div className="header-player">OPERATOR</div>
+          <div className="header-mmr">ELO</div>
+          <div className="header-stats mobile-hide">W / L</div>
+          <div className="header-winrate mobile-hide">WIN RATE</div>
+>>>>>>> b37cefacd5935a9f26aa22491f4429ab5b1ef73e
         </div>
 
         <div className="leaderboard-list">
@@ -192,8 +220,13 @@ export default function LeaderboardPage() {
                   </div>
                 </div>
 
+<<<<<<< HEAD
                 <div className="elo-cell">
                   <span className="elo-value">{player.elo}</span>
+=======
+                <div className="mmr-cell">
+                  <span className="mmr-value">{player.elo}</span>
+>>>>>>> b37cefacd5935a9f26aa22491f4429ab5b1ef73e
                 </div>
 
                 <div className="stats-cell mobile-hide">

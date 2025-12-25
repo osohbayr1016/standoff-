@@ -62,6 +62,7 @@ export default function Header({
 
         {/* Desktop Nav */}
         <nav className="nav desktop-nav">
+<<<<<<< HEAD
           {activeLobbyId && !["mapban", "matchlobby"].includes(currentPage) && (
             <button
               className="nav-link return-match-btn"
@@ -149,6 +150,40 @@ export default function Header({
               }`}
               onClick={() => {
                 onNavigate("home");
+=======
+          {activeLobbyId && !['mapban', 'matchlobby', 'matchgame'].includes(currentPage) && (
+            <button className="nav-link return-match-btn" onClick={() => {
+              if (onReturnToMatch) {
+                onReturnToMatch();
+              }
+              onNavigate('matchgame');
+            }}>
+              <span className="pulse-dot"></span> RETURN TO MATCH
+            </button>
+          )}
+          <button className={`nav-link ${currentPage === 'home' ? 'active' : ''}`} onClick={() => onNavigate('home')}>Home</button>
+          <button className={`nav-link ${currentPage === 'matchmaking' ? 'active' : ''}`} onClick={() => onNavigate('matchmaking')}>Matchmaking</button>
+          <button className={`nav-link ${currentPage === 'leaderboard' ? 'active' : ''}`} onClick={() => onNavigate('leaderboard')}>Leaderboard</button>
+          <button className={`nav-link ${currentPage === 'rewards' ? 'active' : ''}`} onClick={() => onNavigate('rewards')}>Rewards</button>
+          <button className={`nav-link ${currentPage === 'friends' ? 'active' : ''}`} onClick={() => onNavigate('friends')}>Friends</button>
+        </nav>
+
+        {/* Mobile Side Drawer */}
+        <div className={`mobile-nav-overlay ${showDropdown ? 'active' : ''}`} onClick={() => setShowDropdown(false)}></div>
+        <nav className={`mobile-nav-drawer ${showDropdown ? 'active' : ''}`}>
+          <div className="mobile-nav-header">
+            <span className="mobile-nav-title">MENU</span>
+            <button className="close-nav-btn" onClick={() => setShowDropdown(false)}>✕</button>
+          </div>
+
+          <div className="mobile-nav-links">
+            {activeLobbyId && !['mapban', 'matchlobby', 'matchgame'].includes(currentPage) && (
+              <button className="mobile-nav-link return-match-btn-mobile" onClick={() => {
+                if (onReturnToMatch) {
+                  onReturnToMatch();
+                }
+                onNavigate('matchgame');
+>>>>>>> b37cefacd5935a9f26aa22491f4429ab5b1ef73e
                 setShowDropdown(false);
               }}
             >
@@ -219,9 +254,13 @@ export default function Header({
                   )}
                 </div>
                 <div className="mobile-user-details">
+<<<<<<< HEAD
                   <span className="mobile-username">
                     {user.standoff_nickname || user.username}
                   </span>
+=======
+                  <span className="mobile-username">{user.standoff_nickname || user.username}</span>
+>>>>>>> b37cefacd5935a9f26aa22491f4429ab5b1ef73e
                   <span className="mobile-elo">ELO: {user.elo || 1000}</span>
                 </div>
               </div>

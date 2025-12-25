@@ -62,7 +62,7 @@ export function setupAdminRoutes(app: Hono<any>) {
             // Insert into Database
             let addedCount = 0;
             const stmt = c.env.DB.prepare(
-                `INSERT INTO players (id, discord_id, discord_username, discord_avatar, mmr) 
+                `INSERT INTO players (id, discord_id, discord_username, discord_avatar, elo) 
                  VALUES (?, ?, ?, ?, 1000)
                  ON CONFLICT(id) DO UPDATE SET
                  discord_username = excluded.discord_username,

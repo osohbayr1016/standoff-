@@ -7,8 +7,8 @@ interface Player {
   id: string;
   username: string;
   avatar?: string;
-  mmr: number; // 0-3000?
-  // level will be calculated from MMR
+  elo: number; // 0-3000?
+  // level will be calculated from ELO
 }
 
 interface MatchLobbyPageProps {
@@ -35,8 +35,7 @@ const getLevelColor = (level: number) => {
 
 export default function MatchLobbyPage({ lobby, serverInfo: initialServerInfo }: MatchLobbyPageProps) {
   const [matchState, setMatchState] = useState<'LOBBY' | 'Readey' | 'LIVE'>('LOBBY');
-  // Derived state
-  const serverInfo = initialServerInfo || lobby?.serverInfo;
+  const [serverInfo, setServerInfo] = useState(initialServerInfo || lobby?.serverInfo);
   const isLive = !!(serverInfo?.ip && serverInfo?.password);
 
   const teamA = lobby?.teamA || [];
@@ -50,8 +49,24 @@ export default function MatchLobbyPage({ lobby, serverInfo: initialServerInfo }:
     }
   }, [isLive]);
 
-  // Calculate level (mock 1-10 based on MMR)
-  const getLevel = (mmr: number) => Math.min(10, Math.max(1, Math.floor(mmr / 200)));
+  // Update serverInfo from lobby if it changes
+  useEffect(() => {
+    if (lobby?.serverInfo) {
+      setServerInfo(lobby.serverInfo);
+    }
+  }, [lobby?.serverInfo]);
+
+  // Calculate level (mock 1-10 based on ELO)
+  const getLevel = (elo: number) => Math.min(10, Math.max(1, Math.floor(elo / 200)));
+
+  // Get Discord avatar URL
+  const getAvatarUrl = (player: Player) => {
+    if (!player.avatar) return null;
+    // If already a full URL, return as is
+    if (player.avatar.startsWith('http')) return player.avatar;
+    // Otherwise, format as Discord CDN URL
+    return `https://cdn.discordapp.com/avatars/${player.id}/${player.avatar}.png`;
+  };
 
   const handleCopy = (text: string) => {
     navigator.clipboard.writeText(text);
@@ -101,24 +116,28 @@ export default function MatchLobbyPage({ lobby, serverInfo: initialServerInfo }:
                   transition={{ delay: i * 0.1 }}
                   className="player-card"
                 >
-                  <div className="level-badge" style={{ borderColor: getLevelColor(getLevel(player.mmr)) }}>
-                    <Hexagon size={28} fill="#1e293b" stroke={getLevelColor(getLevel(player.mmr))} strokeWidth={2} />
-                    <span className="level-num">{getLevel(player.mmr)}</span>
+                  <div className="level-badge" style={{ borderColor: getLevelColor(getLevel(player.elo)) }}>
+                    <Hexagon size={28} fill="#1e293b" stroke={getLevelColor(getLevel(player.elo))} strokeWidth={2} />
+                    <span className="level-num">{getLevel(player.elo)}</span>
                   </div>
                   <div className="player-info">
 
                     <div className="player-name">{player.username}</div>
                     <div className="player-status ready">READY</div>
                   </div>
-                  {player.avatar && <img src={player.avatar} alt="avatar" className="player-avatar" />}
-                  {!player.avatar && <div className="player-avatar-placeholder">{player.username[0]}</div>}
+                  {getAvatarUrl(player) ? (
+                    <img src={getAvatarUrl(player)!} alt="avatar" className="player-avatar" />
+                  ) : (
+                    <div className="player-avatar-placeholder">{player.username[0]}</div>
+                  )}
                 </motion.div>
               ))}
             </div>
           </div>
 
-          {/* CENTER DIVIDER */}
+          {/* CENTER DIVIDER / CONTROL PANEL */}
           <div className="vs-divider">
+            {/* VS Circle at top */}
             <motion.div
               initial={{ scale: 0 }}
               animate={{ scale: 1 }}
@@ -126,6 +145,34 @@ export default function MatchLobbyPage({ lobby, serverInfo: initialServerInfo }:
             >
               VS
             </motion.div>
+            {/* Desktop: Show control panel in center */}
+            <div className="match-control-panel-desktop">
+              <div className="map-info">
+                <div className="map-name-label">CURRENT MAP</div>
+                <div className="map-name-value">{selectedMap}</div>
+              </div>
+
+              <div className="server-actions">
+                {isLive && serverInfo?.ip && serverInfo?.password ? (
+                  <div className="live-actions">
+                    <div className="button-group">
+                      <a 
+                        href={serverInfo.matchLink || `standoff://connect/${serverInfo.ip}/${serverInfo.password}`} 
+                        className="play-btn"
+                      >
+                        <Crosshair className="icon" /> JOIN MATCH
+                      </a>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="waiting-state">
+                    <div className="spinner"></div>
+                    <span>ALLOCATING GAME SERVER...</span>
+                  </div>
+                )}
+              </div>
+            </div>
+            {/* Mobile: Show divider line */}
             <div className="divider-line"></div>
           </div>
 
@@ -147,15 +194,18 @@ export default function MatchLobbyPage({ lobby, serverInfo: initialServerInfo }:
                   transition={{ delay: i * 0.1 }}
                   className="player-card reverse"
                 >
-                  {player.avatar && <img src={player.avatar} alt="avatar" className="player-avatar" />}
-                  {!player.avatar && <div className="player-avatar-placeholder">{player.username[0]}</div>}
+                  {getAvatarUrl(player) ? (
+                    <img src={getAvatarUrl(player)!} alt="avatar" className="player-avatar" />
+                  ) : (
+                    <div className="player-avatar-placeholder">{player.username[0]}</div>
+                  )}
                   <div className="player-info">
                     <div className="player-name">{player.username}</div>
                     <div className="player-status ready">READY</div>
                   </div>
-                  <div className="level-badge" style={{ borderColor: getLevelColor(getLevel(player.mmr)) }}>
-                    <Hexagon size={28} fill="#1e293b" stroke={getLevelColor(getLevel(player.mmr))} strokeWidth={2} />
-                    <span className="level-num">{getLevel(player.mmr)}</span>
+                  <div className="level-badge" style={{ borderColor: getLevelColor(getLevel(player.elo)) }}>
+                    <Hexagon size={28} fill="#1e293b" stroke={getLevelColor(getLevel(player.elo))} strokeWidth={2} />
+                    <span className="level-num">{getLevel(player.elo)}</span>
                   </div>
                 </motion.div>
               ))}
@@ -163,12 +213,12 @@ export default function MatchLobbyPage({ lobby, serverInfo: initialServerInfo }:
           </div>
         </div>
 
-        {/* SERVER / MAP INFO CARD */}
+        {/* SERVER / MAP INFO CARD - Mobile Only */}
         <motion.div
           initial={{ y: 50, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           transition={{ delay: 0.5 }}
-          className="match-control-panel"
+          className="match-control-panel-mobile"
         >
           <div className="map-info">
             <div className="map-name-label">CURRENT MAP</div>
@@ -176,35 +226,25 @@ export default function MatchLobbyPage({ lobby, serverInfo: initialServerInfo }:
           </div>
 
           <div className="server-actions">
-            {matchState === 'LIVE' ? (
+            {isLive && serverInfo?.ip && serverInfo?.password ? (
               <div className="live-actions">
-                <div className="server-details-row">
-                  <div className="detail-box">
-                    <span className="label">IP</span>
-                    <code onClick={() => handleCopy(serverInfo.ip)}>{serverInfo.ip}</code>
-                  </div>
-                  <div className="detail-box">
-                    <span className="label">PASS</span>
-                    <code onClick={() => handleCopy(serverInfo.password || '')}>{serverInfo.password}</code>
-                  </div>
-                </div>
                 <div className="button-group">
-                  <a href={`standoff://connect/${serverInfo.ip}/${serverInfo.password}`} className="play-btn">
-                    <Crosshair className="icon" /> JOIN SERVER
-                  </a >
-                  <button className="copy-btn" onClick={() => handleCopy(`connect ${serverInfo.ip}; password ${serverInfo.password}`)}>
-                    <Copy className="icon" /> COPY CMD
-                  </button>
-                </div >
-              </div >
+                  <a 
+                    href={serverInfo.matchLink || `standoff://connect/${serverInfo.ip}/${serverInfo.password}`} 
+                    className="play-btn"
+                  >
+                    <Crosshair className="icon" /> JOIN MATCH
+                  </a>
+                </div>
+              </div>
             ) : (
               <div className="waiting-state">
                 <div className="spinner"></div>
                 <span>ALLOCATING GAME SERVER...</span>
               </div>
             )}
-          </div >
-        </motion.div >
+          </div>
+        </motion.div>
       </div >
     </div >
   );

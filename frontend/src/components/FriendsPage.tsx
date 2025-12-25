@@ -48,8 +48,7 @@ export default function FriendsPage() {
     setLoading(true);
     try {
       const res = await fetch(
-        `${
-          import.meta.env.VITE_BACKEND_URL || "http://localhost:8787"
+        `${import.meta.env.VITE_BACKEND_URL || "http://localhost:8787"
         }/api/friends/${userId}`
       );
       if (res.ok) {
@@ -72,8 +71,7 @@ export default function FriendsPage() {
     setSearchLoading(true);
     try {
       const res = await fetch(
-        `${
-          import.meta.env.VITE_BACKEND_URL || "http://localhost:8787"
+        `${import.meta.env.VITE_BACKEND_URL || "http://localhost:8787"
         }/api/users/search?q=${searchQuery}&userId=${currentUser.id}`
       );
       if (res.ok) {
@@ -92,8 +90,7 @@ export default function FriendsPage() {
 
     try {
       const res = await fetch(
-        `${
-          import.meta.env.VITE_BACKEND_URL || "http://localhost:8787"
+        `${import.meta.env.VITE_BACKEND_URL || "http://localhost:8787"
         }/api/friends/request`,
         {
           method: "POST",
@@ -121,8 +118,7 @@ export default function FriendsPage() {
     if (!currentUser) return;
     try {
       const res = await fetch(
-        `${
-          import.meta.env.VITE_BACKEND_URL || "http://localhost:8787"
+        `${import.meta.env.VITE_BACKEND_URL || "http://localhost:8787"
         }/api/friends/accept`,
         {
           method: "PUT",
@@ -143,8 +139,7 @@ export default function FriendsPage() {
     if (!currentUser) return;
     try {
       const res = await fetch(
-        `${
-          import.meta.env.VITE_BACKEND_URL || "http://localhost:8787"
+        `${import.meta.env.VITE_BACKEND_URL || "http://localhost:8787"
         }/api/friends/${requestId}`,
         {
           method: "DELETE",
@@ -254,8 +249,8 @@ export default function FriendsPage() {
                         {result.nickname || result.username}
                       </span>
                       <span className="result-team">ELO: {result.elo}</span>
-                    </div>
-                  </div>
+                    </div >
+                  </div >
                   <div className="result-right">
                     <button
                       className="send-request-btn"
@@ -264,68 +259,73 @@ export default function FriendsPage() {
                       НЭМЭХ +
                     </button>
                   </div>
-                </div>
-              ))}
-              {searchResults.length === 0 && searchQuery && !searchLoading && (
-                <div className="no-results">МЭДЭЭЛЭЛ ОЛДОХГҮЙ</div>
-              )}
-            </div>
-          </div>
+                </div >
+              ))
+              }
+              {
+                searchResults.length === 0 && searchQuery && !searchLoading && (
+                  <div className="no-results">МЭДЭЭЛЭЛ ОЛДОХГҮЙ</div>
+                )
+              }
+            </div >
+          </div >
 
           {/* REQESTS SECTION */}
-          <div className="pending-requests-section">
+          < div className="pending-requests-section" >
             <h2 className="section-title">
               ИРСЭН ХҮСЭЛТҮҮД ({pendingRequests.length})
             </h2>
 
-            {pendingRequests.length === 0 ? (
-              <div className="empty-state-small">
-                ХУЛЭЭГДЭЖ БАЙГАА ХҮСЭЛТ БАЙХГҮЙ
-              </div>
-            ) : (
-              <div className="requests-list">
-                {pendingRequests.map((request) => (
-                  <div key={request.id} className="request-item">
-                    <div className="request-left">
-                      <div className="request-avatar">
-                        {request.avatar ? (
-                          <img
-                            src={getAvatarUrl(request.id, request.avatar)!}
-                          />
-                        ) : (
-                          request.username[0]
-                        )}
-                      </div>
-                      <div className="request-info">
-                        <span className="request-name">
-                          {request.nickname || request.username}
-                        </span>
-                        <div className="request-elo">
-                          <span className="elo-label">ELO: {request.elo}</span>
+            {
+              pendingRequests.length === 0 ? (
+                <div className="empty-state-small">
+                  ХУЛЭЭГДЭЖ БАЙГАА ХҮСЭЛТ БАЙХГҮЙ
+                </div>
+              ) : (
+                <div className="requests-list">
+                  {pendingRequests.map((request) => (
+                    <div key={request.id} className="request-item">
+                      <div className="request-left">
+                        <div className="request-avatar">
+                          {request.avatar ? (
+                            <img
+                              src={getAvatarUrl(request.id, request.avatar)!}
+                            />
+                          ) : (
+                            request.username[0]
+                          )}
+                        </div>
+                        <div className="request-info">
+                          <span className="request-name">
+                            {request.nickname || request.username}
+                          </span>
+                          <div className="request-elo">
+                            <span className="elo-label">ELO: {request.elo}</span>
+                          </div>
                         </div>
                       </div>
+                      <div className="request-actions">
+                        <button
+                          className="accept-btn"
+                          onClick={() => acceptRequest(request.friendship_id)}
+                        >
+                          ЗӨВШӨӨРӨХ
+                        </button>
+                        <button
+                          className="decline-btn"
+                          onClick={() => declineRequest(request.friendship_id)}
+                        >
+                          ТАТГАЛАХ
+                        </button>
+                      </div>
                     </div>
-                    <div className="request-actions">
-                      <button
-                        className="accept-btn"
-                        onClick={() => acceptRequest(request.friendship_id)}
-                      >
-                        ЗӨВШӨӨРӨХ
-                      </button>
-                      <button
-                        className="decline-btn"
-                        onClick={() => declineRequest(request.friendship_id)}
-                      >
-                        ТАТГАЛАХ
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
+                  ))}
+                </div>
+              )
+            }
+          </div >
+        </div >
+      </div >
+    </div >
   );
 }

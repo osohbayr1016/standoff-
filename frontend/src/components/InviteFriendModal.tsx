@@ -87,7 +87,11 @@ export default function InviteFriendModal({ currentPartyIds, onInvite, onClose }
                                     </div>
                                     <div className="friend-info-compact">
                                         <span className="friend-name-compact">{friend.nickname || friend.username}</span>
+<<<<<<< HEAD
                                         <span className="friend-elo-compact">ELO: {friend.elo}</span>
+=======
+                                        <span className="friend-mmr-compact">ELO: {friend.elo}</span>
+>>>>>>> b37cefacd5935a9f26aa22491f4429ab5b1ef73e
                                     </div>
                                     <button className="invite-btn" onClick={() => onInvite(friend)}>
                                         УРИХ +

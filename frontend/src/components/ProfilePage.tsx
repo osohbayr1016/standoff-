@@ -50,8 +50,7 @@ export default function ProfilePage({
     if (!user?.id) return;
     try {
       const res = await fetch(
-        `${
-          import.meta.env.VITE_BACKEND_URL || "http://localhost:8787"
+        `${import.meta.env.VITE_BACKEND_URL || "http://localhost:8787"
         }/api/profile/${user.id}`
       );
       if (res.ok) {
@@ -77,8 +76,7 @@ export default function ProfilePage({
 
     try {
       const res = await fetch(
-        `${
-          import.meta.env.VITE_BACKEND_URL || "http://localhost:8787"
+        `${import.meta.env.VITE_BACKEND_URL || "http://localhost:8787"
         }/api/profile/nickname`,
         {
           method: "PUT",
@@ -236,7 +234,7 @@ export default function ProfilePage({
           <div className="current-elo-box">
             <div className="elo-label">ELO Оноо </div>
             <div className="elo-value">{profile?.elo || 1000}</div>
-          </div>
+          </div >
           <div className="header-buttons-group">
             <button className="find-match-btn" onClick={onFindMatch}>
               <span className="btn-glitch-effect">ТОГЛОЛТ ЭХЛҮҮЛЭХ</span>
@@ -248,8 +246,8 @@ export default function ProfilePage({
               ГАРАХ
             </button>
           </div>
-        </div>
-      </div>
+        </div >
+      </div >
 
       <div className="rank-progression-container">
         <div className="rank-labels">
@@ -267,7 +265,7 @@ export default function ProfilePage({
         <div className="rank-xp-text">
           {currentELO} / {nextRankELO} ELO
         </div>
-      </div>
+      </div >
 
       <div className="stats-grid">
         <div className="stat-card win-rate-card">
@@ -322,37 +320,39 @@ export default function ProfilePage({
         </div>
       </div>
 
-      {showLogoutConfirm && (
-        <div
-          className="logout-confirm-overlay"
-          onClick={() => setShowLogoutConfirm(false)}
-        >
+      {
+        showLogoutConfirm && (
           <div
-            className="logout-confirm-dialog"
-            onClick={(e) => e.stopPropagation()}
+            className="logout-confirm-overlay"
+            onClick={() => setShowLogoutConfirm(false)}
           >
-            <h3 className="confirm-title">Та итгэлтэй байна уу?</h3>
-            <p className="confirm-message">Та гарахыг хүсч байна уу?</p>
-            <div className="confirm-actions">
-              <button
-                className="confirm-btn confirm-yes"
-                onClick={() => {
-                  onLogout();
-                  setShowLogoutConfirm(false);
-                }}
-              >
-                ТИЙМ
-              </button>
-              <button
-                className="confirm-btn confirm-no"
-                onClick={() => setShowLogoutConfirm(false)}
-              >
-                ҮГҮЙ
-              </button>
+            <div
+              className="logout-confirm-dialog"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h3 className="confirm-title">Та итгэлтэй байна уу?</h3>
+              <p className="confirm-message">Та гарахыг хүсч байна уу?</p>
+              <div className="confirm-actions">
+                <button
+                  className="confirm-btn confirm-yes"
+                  onClick={() => {
+                    onLogout();
+                    setShowLogoutConfirm(false);
+                  }}
+                >
+                  ТИЙМ
+                </button>
+                <button
+                  className="confirm-btn confirm-no"
+                  onClick={() => setShowLogoutConfirm(false)}
+                >
+                  ҮГҮЙ
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
-    </div>
+        )
+      }
+    </div >
   );
 }
