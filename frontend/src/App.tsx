@@ -12,7 +12,7 @@ import RewardsPage from "./components/RewardsPage";
 import FriendsPage from "./components/FriendsPage";
 import MatchmakingPage from "./components/MatchmakingPage";
 import MapBanPage from "./components/MapBanPage";
-import MatchPage from "./components/MatchPage";
+import MatchLobbyPage from "./components/MatchLobbyPage";
 import AuthPage from "./components/AuthPage";
 import NotFoundPage from "./components/NotFoundPage";
 import Footer from "./components/Footer";
@@ -245,8 +245,7 @@ function AppContent() {
 
         try {
           const res = await fetch(
-            `${
-              import.meta.env.VITE_BACKEND_URL || "http://localhost:8787"
+            `${import.meta.env.VITE_BACKEND_URL || "http://localhost:8787"
             }/api/profile/${userData.id}`
           );
           if (res.ok) {
@@ -434,12 +433,12 @@ function AppContent() {
           />
         )}
         {currentPage === "matchgame" && (
-          <MatchPage
+          <MatchLobbyPage
+            lobby={matchData?.matchData || matchData?.lobby || matchData}
             serverInfo={
               matchData?.matchData?.serverInfo || matchData?.serverInfo
             }
-            mapName={matchData?.selectedMap}
-            onGoHome={() => setCurrentPage("home")}
+            onMatchStart={() => { }}
           />
         )}
       </main>
