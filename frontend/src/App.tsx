@@ -62,22 +62,43 @@ function AppContent() {
     fromUser: any;
     lobbyId: string;
   } | null>(null);
-  const [activeLobbyId, setActiveLobbyId] = useState<string | undefined>(); // Track active lobby
+  const [activeLobbyId, setActiveLobbyId] = useState<string | undefined>(() => {
+    // Restore activeLobbyId from localStorage on mount
+    const saved = localStorage.getItem("activeLobbyId");
+    return saved || undefined;
+  }); // Track active lobby
   const [matchData, setMatchData] = useState<any>(null); // Store match server info
 
-  const { registerUser, lastMessage } = useWebSocket();
+  const { registerUser, lastMessage, requestMatchState } = useWebSocket();
 
   // Save currentPage to localStorage whenever it changes
   useEffect(() => {
     localStorage.setItem("currentPage", currentPage);
   }, [currentPage]);
 
-  // Register user on socket when authenticated
+  // Save activeLobbyId to localStorage whenever it changes
+  useEffect(() => {
+    if (activeLobbyId) {
+      localStorage.setItem("activeLobbyId", activeLobbyId);
+    } else {
+      localStorage.removeItem("activeLobbyId");
+    }
+  }, [activeLobbyId]);
+
+  // Register user on socket when authenticated and request match state if needed
   useEffect(() => {
     if (user && user.id) {
       registerUser(user.id);
+
+      // If we have an activeLobbyId, request match state after a short delay to ensure socket is ready
+      if (activeLobbyId) {
+        const timeout = setTimeout(() => {
+          requestMatchState(activeLobbyId);
+        }, 500); // Small delay to ensure socket is connected
+        return () => clearTimeout(timeout);
+      }
     }
-  }, [user, registerUser]);
+  }, [user, registerUser, activeLobbyId, requestMatchState]);
 
   // Handle incoming WebSocket messages (Invites & Match Ready)
   useEffect(() => {
@@ -132,7 +153,10 @@ function AppContent() {
     }
 
     // 3. Lobby Update / Match Start Catch-up (Persistence)
-    if (lastMessage.type === "LOBBY_UPDATE" || lastMessage.type === "MATCH_START") {
+    if (
+      lastMessage.type === "LOBBY_UPDATE" ||
+      lastMessage.type === "MATCH_START"
+    ) {
       console.log("Persistence Update:", lastMessage.type);
       const lobby = lastMessage.lobby || lastMessage.matchData;
 
@@ -171,7 +195,19 @@ function AppContent() {
       setActiveLobbyId(undefined);
       setLobbyPartyMembers([]);
       // Navigate back to matchmaking or home
-      if (currentPage === "mapban") {
+      if (currentPage === "mapban" || currentPage === "matchgame") {
+        setCurrentPage("matchmaking");
+      }
+    }
+
+    // 5. Handle Match State Error (match not found or user not in match)
+    if (lastMessage.type === "MATCH_STATE_ERROR") {
+      console.log("Match State Error:", lastMessage);
+      // Clear invalid lobby state
+      setActiveLobbyId(undefined);
+      setLobbyPartyMembers([]);
+      // Navigate back to matchmaking or home if on match pages
+      if (currentPage === "mapban" || currentPage === "matchgame") {
         setCurrentPage("matchmaking");
       }
     }
@@ -209,7 +245,8 @@ function AppContent() {
 
         try {
           const res = await fetch(
-            `${import.meta.env.VITE_BACKEND_URL || "http://localhost:8787"
+            `${
+              import.meta.env.VITE_BACKEND_URL || "http://localhost:8787"
             }/api/profile/${userData.id}`
           );
           if (res.ok) {
@@ -354,6 +391,11 @@ function AppContent() {
         onNavigate={setCurrentPage}
         onLogout={handleLogout}
         activeLobbyId={activeLobbyId}
+        onReturnToMatch={() => {
+          if (activeLobbyId) {
+            requestMatchState(activeLobbyId);
+          }
+        }}
       />
 
       <main className="main-content">
@@ -388,11 +430,14 @@ function AppContent() {
           <MapBanPage
             partyMembers={lobbyPartyMembers}
             onCancel={() => setCurrentPage("home")}
+            activeLobbyId={activeLobbyId}
           />
         )}
         {currentPage === "matchgame" && (
           <MatchPage
-            serverInfo={matchData?.matchData?.serverInfo || matchData?.serverInfo}
+            serverInfo={
+              matchData?.matchData?.serverInfo || matchData?.serverInfo
+            }
             mapName={matchData?.selectedMap}
             onGoHome={() => setCurrentPage("home")}
           />

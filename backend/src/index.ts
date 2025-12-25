@@ -46,17 +46,52 @@ export class MatchQueueDO {
   matchState: 'IDLE' | 'LOBBY' | 'GAME' = 'IDLE';
   currentLobby: any = null; // Will include: { id, players, captains, teams, readyPlayers, mapBanState, readyPhaseState, serverInfo }
   readyPhaseTimer: any = null; // Timer for ready phase countdown
+  initialized: boolean = false; // Track if we've loaded from storage
+
+  // Load match state from storage
+  async loadMatchState() {
+    try {
+      const savedState = await this.state.storage.get<{ matchState: string; currentLobby: any }>('matchState');
+      if (savedState) {
+        this.matchState = savedState.matchState as 'IDLE' | 'LOBBY' | 'GAME';
+        this.currentLobby = savedState.currentLobby;
+        console.log('✅ Loaded match state from storage:', this.matchState, this.currentLobby?.id);
+      }
+    } catch (error) {
+      console.error('❌ Error loading match state:', error);
+    }
+    this.initialized = true;
+  }
+
+  // Save match state to storage
+  async saveMatchState() {
+    try {
+      await this.state.storage.put('matchState', {
+        matchState: this.matchState,
+        currentLobby: this.currentLobby
+      });
+      console.log('💾 Saved match state to storage:', this.matchState, this.currentLobby?.id);
+    } catch (error) {
+      console.error('❌ Error saving match state:', error);
+    }
+  }
 
   async alarm() {
     try {
       console.log('⏰ Alarm firing...');
+      
+      // Load state from storage if not initialized
+      if (!this.initialized) {
+        await this.loadMatchState();
+      }
+      
       await this.syncWithNeatQueue(); // Updates this.remoteQueue
       const merged = this.getMergedQueue();
 
       // MATCH TRIGGER LOGIC
       // Threshold: 10 players (5v5)
       if (this.matchState === 'IDLE' && merged.length >= 10) {
-        this.startMatch(merged.slice(0, 10)); // Top 10 players
+        await this.startMatch(merged.slice(0, 10)); // Top 10 players
       } else if (this.matchState === 'LOBBY' && this.currentLobby?.mapBanState?.mapBanPhase) {
         // MAP BAN TIMEOUT CHECK
         const banState = this.currentLobby.mapBanState;
@@ -87,7 +122,7 @@ export class MatchQueueDO {
             banState.currentBanTeam = banState.currentBanTeam === 'alpha' ? 'bravo' : 'alpha';
             banState.currentTurnStartTimestamp = Date.now(); // Reset timer for next turn
 
-            this.broadcastLobbyUpdate();
+            await this.broadcastLobbyUpdate();
           } else if (availableMaps.length === 1) {
             // If only 1 map left, we should have finished already, but force finish here
             const remainingMap = availableMaps[0];
@@ -95,6 +130,8 @@ export class MatchQueueDO {
             banState.mapBanPhase = false;
             this.matchState = 'GAME';
 
+            // Save state before broadcasting
+            await this.saveMatchState();
             this.broadcastToAll(JSON.stringify({
               type: 'MATCH_START',
               lobbyId: this.currentLobby.id,
@@ -126,7 +163,7 @@ export class MatchQueueDO {
     return merged;
   }
 
-  startMatch(players: any[]) {
+  async startMatch(players: any[]) {
     console.log("Starting Match with:", players.length, "players");
     this.matchState = 'LOBBY';
 
@@ -161,6 +198,9 @@ export class MatchQueueDO {
       }
     };
 
+    // Save to storage
+    await this.saveMatchState();
+
     // ... (rest of startMatch)
 
     this.broadcastLobbyUpdate(); // Send initial state (replaces MATCH_READY? No, keep MATCH_READY for transition)
@@ -185,8 +225,11 @@ export class MatchQueueDO {
     });
   }
 
-  broadcastLobbyUpdate() {
+  async broadcastLobbyUpdate() {
     if (!this.currentLobby) return;
+
+    // Save state before broadcasting
+    await this.saveMatchState();
 
     const message = JSON.stringify({
       type: 'LOBBY_UPDATE',
@@ -231,9 +274,14 @@ export class MatchQueueDO {
     }
   }
 
-  handleSession(ws: WebSocket) {
+  async handleSession(ws: WebSocket) {
     ws.accept();
     this.sessions.add(ws);
+
+    // Load match state from storage on first connection
+    if (!this.initialized) {
+      await this.loadMatchState();
+    }
 
     // Ensure the alarm is running!
     this.state.storage.getAlarm().then(currentAlarm => {
@@ -366,12 +414,15 @@ export class MatchQueueDO {
 
                   // Trigger direct match start
                   this.matchState = 'GAME';
-                  this.broadcastToAll(JSON.stringify({
-                    type: 'MATCH_START',
-                    lobbyId: this.currentLobby.id,
-                    selectedMap: remainingMap,
-                    matchData: this.currentLobby
-                  }));
+                  // Save state before broadcasting
+                  this.saveMatchState().then(() => {
+                    this.broadcastToAll(JSON.stringify({
+                      type: 'MATCH_START',
+                      lobbyId: this.currentLobby.id,
+                      selectedMap: remainingMap,
+                      matchData: this.currentLobby
+                    }));
+                  });
                 }
               } else {
                 // Switch teams for next ban (alternating: alpha -> bravo -> alpha -> ...)
@@ -394,6 +445,9 @@ export class MatchQueueDO {
           if (this.currentLobby && data.lobbyId === this.currentLobby.id) {
             // Store server info in lobby
             this.currentLobby.serverInfo = data.serverInfo;
+
+            // Save state
+            await this.saveMatchState();
 
             // Broadcast to all players
             this.broadcastToAll(JSON.stringify({
@@ -490,6 +544,63 @@ export class MatchQueueDO {
 
           // Start the match with filled players
           this.startMatch(allPlayers);
+        }
+
+        // REQUEST_MATCH_STATE: Request current match state by lobbyId
+        if (data.type === 'REQUEST_MATCH_STATE') {
+          const requestedLobbyId = data.lobbyId;
+          const userId = currentUserId || data.userId;
+
+          // Load from storage if not initialized or currentLobby is null
+          if (!this.initialized || !this.currentLobby) {
+            await this.loadMatchState();
+          }
+
+          if (this.currentLobby && this.currentLobby.id === requestedLobbyId) {
+            // Check if user is in this match
+            const players = this.currentLobby.players || [];
+            const isUserInMatch = userId && players.some((p: any) => p.id === userId || p.discord_id === userId);
+
+            if (isUserInMatch) {
+              // User is in match, send appropriate state
+              if (this.matchState === 'LOBBY') {
+                // Send MATCH_READY to trigger navigation
+                ws.send(JSON.stringify({
+                  type: 'MATCH_READY',
+                  lobbyId: this.currentLobby.id,
+                  players: this.currentLobby.players,
+                  captains: [this.currentLobby.captainA, this.currentLobby.captainB]
+                }));
+                // Also send LOBBY_UPDATE with current state
+                ws.send(JSON.stringify({
+                  type: 'LOBBY_UPDATE',
+                  lobby: this.currentLobby
+                }));
+              } else if (this.matchState === 'GAME') {
+                // Match has started, send MATCH_START
+                ws.send(JSON.stringify({
+                  type: 'MATCH_START',
+                  lobbyId: this.currentLobby.id,
+                  selectedMap: this.currentLobby.mapBanState?.selectedMap,
+                  matchData: this.currentLobby
+                }));
+              }
+            } else {
+              // User not in match
+              ws.send(JSON.stringify({
+                type: 'MATCH_STATE_ERROR',
+                error: 'User not in match',
+                lobbyId: requestedLobbyId
+              }));
+            }
+          } else {
+            // Match doesn't exist or different lobbyId
+            ws.send(JSON.stringify({
+              type: 'MATCH_STATE_ERROR',
+              error: 'Match not found',
+              lobbyId: requestedLobbyId
+            }));
+          }
         }
 
         // DEBUG_DUMP: Request full state for debugging

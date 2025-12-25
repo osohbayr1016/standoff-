@@ -16,9 +16,10 @@ interface HeaderProps {
   onNavigate: (page: string) => void;
   onLogout: () => void;
   activeLobbyId?: string; // New Prop
+  onReturnToMatch?: () => void; // Callback to request match state
 }
 
-export default function Header({ currentPage, user, onNavigate, onLogout, activeLobbyId }: HeaderProps) {
+export default function Header({ currentPage, user, onNavigate, onLogout, activeLobbyId, onReturnToMatch }: HeaderProps) {
   const [showDropdown, setShowDropdown] = useState(false);
 
   const getAvatarUrl = () => {
@@ -50,7 +51,12 @@ export default function Header({ currentPage, user, onNavigate, onLogout, active
         {/* Desktop Nav */}
         <nav className="nav desktop-nav">
           {activeLobbyId && !['mapban', 'matchlobby'].includes(currentPage) && (
-            <button className="nav-link return-match-btn" onClick={() => onNavigate('mapban')}>
+            <button className="nav-link return-match-btn" onClick={() => {
+              if (onReturnToMatch) {
+                onReturnToMatch();
+              }
+              onNavigate('mapban');
+            }}>
               <span className="pulse-dot"></span> RETURN TO MATCH
             </button>
           )}
@@ -71,7 +77,13 @@ export default function Header({ currentPage, user, onNavigate, onLogout, active
 
           <div className="mobile-nav-links">
             {activeLobbyId && !['mapban', 'matchlobby'].includes(currentPage) && (
-              <button className="mobile-nav-link return-match-btn-mobile" onClick={() => { onNavigate('mapban'); setShowDropdown(false); }}>
+              <button className="mobile-nav-link return-match-btn-mobile" onClick={() => {
+                if (onReturnToMatch) {
+                  onReturnToMatch();
+                }
+                onNavigate('mapban');
+                setShowDropdown(false);
+              }}>
                 <span className="pulse-dot"></span> RETURN TO MATCH
               </button>
             )}
