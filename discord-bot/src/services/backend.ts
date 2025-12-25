@@ -57,11 +57,13 @@ export class BackendService {
             });
 
             this.ws.on('message', async (data) => {
+                const rawData = data.toString();
+                console.log('📥 Raw message received:', rawData.slice(0, 200), rawData.length > 200 ? '...' : '');
                 try {
-                    const message: BackendMessage = JSON.parse(data.toString());
+                    const message: BackendMessage = JSON.parse(rawData);
                     await this.handleMessage(message, client);
                 } catch (error) {
-                    console.error('❌ Error parsing backend message:', error);
+                    console.error('❌ Error handling backend message:', error);
                 }
             });
 
