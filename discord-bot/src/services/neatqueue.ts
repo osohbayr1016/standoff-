@@ -1,88 +1,66 @@
 import { Client, TextChannel, Message } from 'discord.js';
+import { BackendService } from './backend';
+import { MatchData } from '../types';
 
 export class NeatQueueService {
-    private queueChannelId: string;
-    private neatQueueBotId: string;
-
     constructor(
-        private client: Client,
-        queueChannelId: string,
-        neatQueueBotId: string
-    ) {
-        this.queueChannelId = queueChannelId;
-        this.neatQueueBotId = neatQueueBotId;
+        private queueChannelId: string,
+        private neatQueueBotId: string,
+        private apiKey: string,
+        private backendService?: BackendService
+    ) { }
+
+    private log(message: string) {
+        console.log(message);
+        if (this.backendService) {
+            this.backendService.sendDebugLog(message);
+        }
     }
 
     /**
      * Trigger NeatQueue to create a match
-     * This sends the command to start a match in NeatQueue
      */
-    async createMatch(players: any[]): Promise<{ success: boolean; serverInfo?: any; error?: string }> {
+    async createMatch(matchData: MatchData, guild: any): Promise<{ success: boolean; serverInfo?: any; error?: string }> {
         try {
-            const channel = await this.client.channels.fetch(this.queueChannelId) as TextChannel;
+            this.log(`🎮 Preparing NeatQueue command for match ${matchData.lobbyId}`);
+
+            this.log(`📡 Fetching channel ${this.queueChannelId}...`);
+            const channel = await guild.channels.fetch(this.queueChannelId) as TextChannel;
 
             if (!channel || !channel.isTextBased()) {
-                return { success: false, error: 'Queue channel not found or not a text channel' };
+                const err = `Queue channel ${this.queueChannelId} not found or not text-based`;
+                this.log(`❌ ${err}`);
+                return { success: false, error: err };
             }
 
-            console.log('🎮 Triggering NeatQueue match creation...');
+            this.log(`✅ Channel found: #${channel.name}`);
 
             // Step 1: Force add players to the queue
-            try {
-                // Diagnostic info
-                const guild = channel.guild;
-                // Fetch members to ensure cache is populated for diagnostics
-                await guild.members.fetch().catch(() => { });
-
-                const botsInChannel = guild.members.cache.filter(m => m.user.bot);
-                console.log(`🤖 Bots in guild: ${botsInChannel.map(b => `${b.user.username}(${b.id})`).join(', ')}`);
-                console.log(`🔍 Waiting for responses from Bot ID: ${this.neatQueueBotId}`);
-
-                const permissions = channel.permissionsFor(this.client.user!);
-                console.log(`📜 Bot Permissions in #${channel.name}: SEND_MESSAGES=${permissions?.has('SendMessages')}, VIEW_CHANNEL=${permissions?.has('ViewChannel')}, READ_MESSAGE_HISTORY=${permissions?.has('ReadMessageHistory')}`);
-            } catch (diagError) {
-                console.warn('⚠️ Diagnostic check failed (non-critical):', diagError);
-            }
+            const players = matchData.players || [];
+            this.log(`👥 Adding ${players.length} players to NeatQueue...`);
 
             for (const player of players) {
-                // Assuming player object has discord_id. If it's a bot ID (starts with 'bot_'), skip it?
-                // NeatQueue might not support adding non-discord users.
-                // If it's a real player from web, they should have a discord_id.
                 const discordId = player.discord_id || player.id;
-
-                // Skip if it looks like a generated bot ID (e.g. "bot_123...") unless we can add them
-                // For now, let's try to add everyone who has a valid-looking Discord ID (numeric)
-                // Check bot presence in channel
-                const botsInChannel = channel.guild.members.cache.filter(m => m.user.bot);
-                console.log(`🤖 Bots in guild: ${botsInChannel.map(b => `${b.user.username}(${b.id})`).join(', ')}`);
-                console.log(`🔍 Waiting for responses from Bot ID: ${this.neatQueueBotId}`);
-
-                const permissions = channel.permissionsFor(this.client.user!);
-                console.log(`📜 Bot Permissions in #${channel.name}: SEND_MESSAGES=${permissions?.has('SendMessages')}, VIEW_CHANNEL=${permissions?.has('ViewChannel')}, READ_MESSAGE_HISTORY=${permissions?.has('ReadMessageHistory')}`);
 
                 if (discordId && /^\d+$/.test(discordId)) {
                     const addCommand = `!add <@${discordId}>`;
-                    console.log(`📤 Sending command to NeatQueue: ${addCommand}`);
+                    this.log(`📤 Command: ${addCommand}`);
                     await channel.send(addCommand);
-                    // Small delay to prevent rate limits or processing overlap
-                    await new Promise(r => setTimeout(r, 700));
+                    await new Promise(r => setTimeout(r, 800));
+                } else {
+                    this.log(`ℹ️ Skipping non-discord player: ${player.username} (${discordId})`);
                 }
             }
 
-            // Step 2: Send the start command
-            const startCommand = '!start';
-            console.log(`📤 Sending start command: ${startCommand}`);
-            await channel.send(startCommand);
+            this.log('📤 Sending !start command...');
+            await channel.send('!start');
 
-            // Step 3: Wait for NeatQueue's response
-            console.log(`⏳ Monitoring channel #${channel.name} for match details...`);
+            this.log(`⏳ Monitoring channel #${channel.name} for match details (30s timeout)...`);
 
-            // Listen for any messages to help with debugging if it fails
             const debugCollector = channel.createMessageCollector({ time: 30000 });
             debugCollector.on('collect', m => {
-                // If it's a message from anyone other than our bot, log it briefly
-                if (m.author.id !== this.client.user?.id) {
-                    console.log(`📩 Received message from ${m.author.username}: ${m.content.slice(0, 50)}... ${m.embeds.length ? '(Embed present)' : ''}`);
+                if (m.author.id !== channel.client.user?.id) {
+                    this.log(`📩 Msg from ${m.author.username}: ${m.content.slice(0, 50)}${m.embeds.length ? ' (Embed)' : ''}`);
                 }
             });
 
@@ -90,28 +68,27 @@ export class NeatQueueService {
             debugCollector.stop();
 
             if (serverInfo) {
-                console.log('✅ NeatQueue match created successfully');
+                this.log('✅ NeatQueue match created successfully');
                 return { success: true, serverInfo };
             } else {
-                console.log('❌ Timeout: NeatQueue bot did not respond with a match embed.');
-                return { success: false, error: 'Timeout waiting for NeatQueue response' };
+                const err = 'Timeout: NeatQueue bot did not respond with a match embed';
+                this.log(`❌ ${err}`);
+                return { success: false, error: err };
             }
 
-        } catch (error) {
-            console.error('❌ Error creating NeatQueue match:', error);
-            return { success: false, error: String(error) };
+        } catch (error: any) {
+            const err = `Error creating NeatQueue match: ${error.message}`;
+            this.log(`❌ ${err}`);
+            return { success: false, error: error.message };
         }
     }
 
-    /**
-     * Wait for NeatQueue to respond with match details
-     */
     private async waitForMatchCreation(channel: TextChannel): Promise<any> {
         return new Promise((resolve) => {
             const timeout = setTimeout(() => {
                 collector.stop();
                 resolve(null);
-            }, 30000); // 30 second timeout
+            }, 30000);
 
             const collector = channel.createMessageCollector({
                 filter: (msg: Message) => msg.author.id === this.neatQueueBotId,
@@ -121,8 +98,6 @@ export class NeatQueueService {
 
             collector.on('collect', (message: Message) => {
                 clearTimeout(timeout);
-
-                // Parse NeatQueue's response
                 const serverInfo = this.parseMatchMessage(message);
                 resolve(serverInfo);
             });
@@ -133,28 +108,12 @@ export class NeatQueueService {
         });
     }
 
-    /**
-     * Parse NeatQueue's match creation message to extract server details
-     */
     private parseMatchMessage(message: Message): any {
         try {
-            // NeatQueue typically sends an embed with match details
             if (message.embeds.length > 0) {
                 const embed = message.embeds[0];
+                const serverInfo: any = { ip: null, password: null };
 
-                // Extract server information from embed
-                // This is a template - adjust based on actual NeatQueue embed structure
-                const serverInfo: any = {
-                    matchId: null,
-                    ip: null,
-                    password: null,
-                    teams: {
-                        alpha: [],
-                        bravo: []
-                    }
-                };
-
-                // Parse embed fields
                 embed.fields?.forEach(field => {
                     const name = field.name.toLowerCase();
                     const value = field.value;
@@ -163,88 +122,23 @@ export class NeatQueueService {
                         serverInfo.ip = value;
                     } else if (name.includes('password')) {
                         serverInfo.password = value;
-                    } else if (name.includes('team') && name.includes('alpha')) {
-                        serverInfo.teams.alpha = this.parsePlayerList(value);
-                    } else if (name.includes('team') && name.includes('bravo')) {
-                        serverInfo.teams.bravo = this.parsePlayerList(value);
                     }
                 });
 
-                // Extract match ID from title or description
                 if (embed.title) {
                     const matchIdMatch = embed.title.match(/#(\d+)/);
-                    if (matchIdMatch) {
-                        serverInfo.matchId = matchIdMatch[1];
-                    }
+                    if (matchIdMatch) serverInfo.matchId = matchIdMatch[1];
                 }
 
-                console.log('📊 Parsed server info:', serverInfo);
-                return serverInfo;
+                return serverInfo.ip ? serverInfo : null;
             }
-
-            // Fallback: parse from message content
-            const content = message.content;
-            return {
-                matchId: null,
-                ip: this.extractServerIp(content),
-                password: null,
-                rawMessage: content
-            };
-
+            return null;
         } catch (error) {
-            console.error('❌ Error parsing match message:', error);
             return null;
         }
     }
 
-    /**
-     * Parse player list from embed field value
-     */
-    private parsePlayerList(value: string): string[] {
-        // NeatQueue typically formats players as mentions or names
-        // Example: "<@123456789> <@987654321>"
-        const mentions = value.match(/<@!?(\d+)>/g);
-        if (mentions) {
-            return mentions.map(m => m.replace(/<@!?(\d+)>/, '$1'));
-        }
-
-        // Fallback: split by newlines or commas
-        return value.split(/[\n,]/).map(p => p.trim()).filter(p => p);
-    }
-
-    /**
-     * Extract server IP from text
-     */
-    private extractServerIp(text: string): string | null {
-        // Look for IP:PORT pattern
-        const ipMatch = text.match(/(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}):?(\d+)?/);
-        if (ipMatch) {
-            return ipMatch[0];
-        }
-        return null;
-    }
-
-    /**
-     * Monitor NeatQueue messages for match updates
-     */
     onMatchUpdate(callback: (matchData: any) => void) {
-        this.client.on('messageCreate', async (message) => {
-            if (message.author.id !== this.neatQueueBotId) return;
-            if (message.channelId !== this.queueChannelId) return;
-
-            // Check if this is a match update
-            if (message.embeds.length > 0) {
-                const embed = message.embeds[0];
-
-                if (embed.title?.toLowerCase().includes('match') ||
-                    embed.title?.toLowerCase().includes('game')) {
-
-                    const matchData = this.parseMatchMessage(message);
-                    if (matchData) {
-                        callback(matchData);
-                    }
-                }
-            }
-        });
+        this.log('📡 NeatQueue onMatchUpdate listener active');
     }
 }

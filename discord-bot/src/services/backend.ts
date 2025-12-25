@@ -21,9 +21,10 @@ export class BackendService {
         // Initialize NeatQueue service
         if (process.env.QUEUE_CHANNEL_ID && process.env.NEATQUEUE_BOT_ID) {
             this.neatQueueService = new NeatQueueService(
-                client,
-                process.env.QUEUE_CHANNEL_ID,
-                process.env.NEATQUEUE_BOT_ID
+                process.env.QUEUE_CHANNEL_ID || '',
+                process.env.NEATQUEUE_BOT_ID || '',
+                process.env.NEATQUEUE_API_KEY || '',
+                this
             );
 
             // Monitor NeatQueue for match updates
