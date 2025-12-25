@@ -35,10 +35,10 @@ export class BackendService {
                     this.send({ type: 'DEBUG_BOT_LOG', message: `Received: ${message.type}` });
 
                     if (message.type === 'CREATE_MATCH' && message.matchData) {
-                        // IMMEDIATELY respond with dummy server info - NO Discord interaction
                         const lobbyId = message.matchData.lobbyId;
                         this.send({ type: 'DEBUG_BOT_LOG', message: `Processing match ${lobbyId}` });
 
+                        // IMMEDIATELY respond with dummy server info - NO Discord interaction
                         this.send({
                             type: 'SERVER_CREATED',
                             lobbyId: lobbyId,
@@ -71,9 +71,43 @@ export class BackendService {
         }
     }
 
-    private send(data: any) {
+    // Required by other files
+    public send(data: any) {
         if (this.ws && (this.ws as any).readyState === 1) {
             this.ws.send(JSON.stringify(data));
         }
+    }
+
+    public sendDebugLog(message: string) {
+        console.log(`🤖 DEBUG: ${message}`);
+        this.send({ type: 'DEBUG_BOT_LOG', message });
+    }
+
+    async updateNickname(userId: string, nickname: string): Promise<boolean> {
+        try {
+            const normalizedUrl = this.backendUrl.endsWith('/') ? this.backendUrl.slice(0, -1) : this.backendUrl;
+            const response = await fetch(`${normalizedUrl}/api/profile/${userId}/nickname`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ standoff_nickname: nickname })
+            });
+            return response.ok;
+        } catch (error) {
+            console.error('❌ Error updating nickname:', error);
+            return false;
+        }
+    }
+
+    async fetchMatchStatus(): Promise<any> {
+        try {
+            const normalizedUrl = this.backendUrl.endsWith('/') ? this.backendUrl.slice(0, -1) : this.backendUrl;
+            const response = await fetch(`${normalizedUrl}/api/match/status`);
+            if (response.ok) {
+                return await response.json();
+            }
+        } catch (error) {
+            console.error('❌ Error fetching match status:', error);
+        }
+        return null;
     }
 }
