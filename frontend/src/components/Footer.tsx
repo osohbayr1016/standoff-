@@ -52,7 +52,7 @@ export default function Footer() {
 
       <div className="footer-bottom">
         <p className="copyright">2 найз 2 хоногт хийж гүйцэтгэв.</p>
-        <p className="footer-powered-bottom">Standoff 2 хөгжихийн төлөө</p>
+        <p className="footer-powered-bottom">Standoff 2 хөгжихийн төлөө.</p>
       </div>
     </footer>
   );
