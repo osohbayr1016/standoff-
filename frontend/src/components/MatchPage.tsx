@@ -71,8 +71,16 @@ export default function MatchPage({ serverInfo, mapName, onGoHome }: MatchPagePr
                         href={`steam://connect/${serverInfo?.ip}/${serverInfo?.password ? serverInfo.password : ''}`}
                         className="connect-btn cyber-button-primary"
                     >
-                        <span className="btn-content">CONNECT NOW</span>
+                        <span className="btn-content">CONNECT (STEAM)</span>
                         <div className="btn-glitch"></div>
+                    </a>
+
+                    <a
+                        href={`standoff://connect/${serverInfo?.ip}/${serverInfo?.password ? serverInfo.password : ''}`}
+                        className="connect-btn cyber-button-secondary"
+                        style={{ marginTop: '1rem', background: 'rgba(255, 166, 0, 0.2)', borderColor: 'orange', color: 'orange' }}
+                    >
+                        <span className="btn-content">CUSTOM LINK</span>
                     </a>
 
                     <button className="back-btn cyber-button-secondary" onClick={onGoHome}>

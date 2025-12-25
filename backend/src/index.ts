@@ -110,9 +110,23 @@ export class MatchQueueDO {
     } catch (error) {
       console.error('❌ Error in DO alarm:', error);
     } finally {
-      // Schedule next run in 5 seconds - ALWAYS reschedule even on error
       const SECONDS = 5;
-      await this.state.storage.setAlarm(Date.now() + SECONDS * 1000);
+
+      // Optimization: Only reschedule if we have active users OR an active match
+      // If no one is connected and no match is running, let the DO sleep.
+      // It will wake up on next fetch() / WebSocket connection.
+      const hasActiveUsers = this.sessions.size > 0;
+      // Also check remote queue count? No, because we only care if someone is WATCHING the queue.
+      // But if we want to keep syncing remote queue even if no one is watching... maybe not needed.
+      // Let's safe-guard: If we have local users OR we are in a match.
+
+      const shouldReschedule = hasActiveUsers || this.matchState !== 'IDLE';
+
+      if (shouldReschedule) {
+        await this.state.storage.setAlarm(Date.now() + SECONDS * 1000);
+      } else {
+        console.log("💤 No active users or match, stopping alarm loop.");
+      }
     }
   }
 
@@ -238,7 +252,7 @@ export class MatchQueueDO {
     // Ensure the alarm is running!
     this.state.storage.getAlarm().then(currentAlarm => {
       if (!currentAlarm) {
-        // First connection starts the loop
+        console.log("⏰ Waking up DO alarm loop...");
         this.state.storage.setAlarm(Date.now() + 1000);
       }
     });
