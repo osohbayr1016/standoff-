@@ -47,21 +47,26 @@ export class MatchQueueDO {
   currentLobby: any = null; // Will include: { id, players, captains, teams, readyPlayers, mapBanState, serverInfo }
 
   async alarm() {
-    await this.syncWithNeatQueue(); // Updates this.remoteQueue
-    const merged = this.getMergedQueue();
+    try {
+      console.log('⏰ Alarm firing...');
+      await this.syncWithNeatQueue(); // Updates this.remoteQueue
+      const merged = this.getMergedQueue();
 
-    // MATCH TRIGGER LOGIC
-    // Threshold: 10 players (5v5)
-    if (this.matchState === 'IDLE' && merged.length >= 10) {
-      this.startMatch(merged.slice(0, 10)); // Top 10 players
-    } else {
-      // Just broadcast queue if match isn't starting
-      this.broadcastMergedQueue();
+      // MATCH TRIGGER LOGIC
+      // Threshold: 10 players (5v5)
+      if (this.matchState === 'IDLE' && merged.length >= 10) {
+        this.startMatch(merged.slice(0, 10)); // Top 10 players
+      } else {
+        // Just broadcast queue if match isn't starting
+        this.broadcastMergedQueue();
+      }
+    } catch (error) {
+      console.error('❌ Error in DO alarm:', error);
+    } finally {
+      // Schedule next run in 5 seconds - ALWAYS reschedule even on error
+      const SECONDS = 5;
+      await this.state.storage.setAlarm(Date.now() + SECONDS * 1000);
     }
-
-    // Schedule next run in 5 seconds
-    const SECONDS = 5;
-    await this.state.storage.setAlarm(Date.now() + SECONDS * 1000);
   }
 
   getMergedQueue() {
@@ -139,26 +144,30 @@ export class MatchQueueDO {
     }
 
     try {
+      // Create a controller with timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 4000); // 4s timeout
+
       const response = await fetch(
         `https://api.neatqueue.com/api/v1/queue/${this.env.DISCORD_CHANNEL_ID}/players`,
         {
           headers: {
             'Authorization': `Bearer ${this.env.NEATQUEUE_API_KEY}`
-          }
+          },
+          signal: controller.signal
         }
       );
 
-      if (response.ok) {
-        // Queue item: { id, name, ... } - check API spec for exact fields
-        // API spec says "players currently in a queue channel", assuming array of objects
-        const players = await response.json() as any[];
+      clearTimeout(timeoutId);
 
-        // Update local cache
+      if (response.ok) {
+        const players = await response.json() as any[];
         this.remoteQueue = players || [];
-        // Note: We do NOT broadcast here anymore; alarm() calls broadcastMergedQueue() immediately after.
+      } else {
+        console.error(`❌ NeatQueue API returned ${response.status}: ${await response.text()}`);
       }
     } catch (e) {
-      console.error("Failed to sync with NeatQueue:", e);
+      console.error("❌ Failed to sync with NeatQueue:", e instanceof Error ? e.message : String(e));
     }
   }
 
@@ -373,7 +382,7 @@ export class MatchQueueDO {
 
           // Combine real players with bots
           const allPlayers = [...merged, ...bots].slice(0, 10);
-          
+
           // Start the match with filled players
           this.startMatch(allPlayers);
         }
@@ -457,7 +466,6 @@ app.use('/*', cors({
   credentials: true,
 }));
 
-// Setup profile routes
 // Setup routes
 setupProfileRoutes(app);
 setupLeaderboardRoutes(app);
@@ -568,32 +576,7 @@ app.get('/api/auth/callback', async (c) => {
 });
 
 
-// NOTE: NeatQueue doesn't have a public API endpoint to add players to queue
-// Players must use Discord bot commands (/join) to join the queue
-// This endpoint is commented out as it's not supported by the official API
-/*
-app.post('/api/join-queue', async (c) => {
-  try {
-    const { userId } = await c.req.json();
 
-    if (!userId) {
-      return c.json({ success: false, message: "User ID шаардлагатай" }, 400);
-    }
-
-    // NeatQueue doesn't support this via API - users must use Discord commands
-    return c.json({ 
-      success: false, 
-      message: "Please use Discord bot command /join to join the queue" 
-    }, 501);
-  } catch (error) {
-    console.error('Join queue error:', error);
-    return c.json({ 
-      success: false, 
-      message: "Дараалалд нэгдэх үед алдаа гарлаа" 
-    }, 500);
-  }
-});
-*/
 
 
 // Get Live Queue Status - Дараалалд байгаа тоглогчдын тоо
@@ -626,38 +609,7 @@ app.get('/api/queue-status', async (c) => {
   }
 });
 
-// Old NeatQueue Leaderboard endpoint replacement by setupLeaderboardRoutes
-/*
-// Get Leaderboard - Шилдэг тоглогчдын жагсаалт
-app.get('/api/leaderboard', async (c) => {
-  try {
-    const SERVER_ID = c.env.DISCORD_SERVER_ID || '';
-    const CHANNEL_ID = c.env.DISCORD_CHANNEL_ID || '';
 
-    const response = await fetch(
-      `https://api.neatqueue.com/api/v2/leaderboard/${SERVER_ID}/${CHANNEL_ID}`,
-      {
-        headers: {
-          'Authorization': `Bearer ${c.env.NEATQUEUE_API_KEY}`
-        }
-      }
-    );
-
-    if (response.ok) {
-      const data = await response.json();
-      return c.json({
-        success: true,
-        leaderboard: data
-      });
-    } else {
-      return c.json({ success: false, leaderboard: [] }, 400);
-    }
-  } catch (error) {
-    console.error('Leaderboard error:', error);
-    return c.json({ success: false, leaderboard: [] }, 500);
-  }
-});
-*/
 
 // Get Player Stats - Тоглогчийн статистик
 app.get('/api/player-stats/:playerId', async (c) => {

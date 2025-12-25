@@ -26,9 +26,10 @@ export const WebSocketProvider = ({ children, url }: { children: ReactNode; url:
         }
 
         // Determine correct WS URL based on protocol
-        // Ensure we don't double-replace if url is already ws
-        const wsUrl = url.startsWith('http') ? url.replace('http', 'ws') : url;
-        console.log(`Connecting to WebSocket: ${wsUrl}`);
+        // Strip trailing slash from url to avoid double slashes when adding /ws
+        const normalizedBaseUrl = url.endsWith('/') ? url.slice(0, -1) : url;
+        const wsUrl = normalizedBaseUrl.startsWith('http') ? normalizedBaseUrl.replace('http', 'ws') : normalizedBaseUrl;
+        console.log(`Connecting to WebSocket: ${wsUrl}/ws`);
 
         const ws = new WebSocket(`${wsUrl}/ws`);
         socketRef.current = ws;

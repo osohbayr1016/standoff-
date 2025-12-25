@@ -19,7 +19,10 @@ export function setupProfileRoutes(app: Hono<any>) {
 
             return c.json(user);
         } catch (error) {
-            console.error('Profile fetch error:', error);
+            console.error('❌ Profile fetch error:', error);
+            if (error instanceof Error) {
+                console.error('Error stack:', error.stack);
+            }
             return c.json({
                 error: 'Failed to fetch profile',
                 details: error instanceof Error ? error.message : String(error)
@@ -85,8 +88,15 @@ export function setupProfileRoutes(app: Hono<any>) {
                 discord_updated: discordUpdated
             });
         } catch (error) {
-            console.error('Nickname update error:', error);
-            return c.json({ error: 'Failed to update nickname' }, 500);
+            console.error('❌ Nickname update database error:', error);
+            if (error instanceof Error) {
+                console.error('Error details:', error.message);
+                console.error('Error stack:', error.stack);
+            }
+            return c.json({
+                error: 'Failed to update nickname',
+                details: error instanceof Error ? error.message : 'Database execution failed'
+            }, 500);
         }
     });
 

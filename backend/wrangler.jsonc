@@ -32,5 +32,13 @@
     "DISCORD_SERVER_ID": "1452635831901753357",
     "DISCORD_CHANNEL_ID": "1453526990798983394",
     "FRONTEND_URL": "https://main.standoff-frontend.pages.dev"
+  },
+  "observability": {
+    "logs": {
+      "enabled": false,
+      "head_sampling_rate": 1,
+      "invocation_logs": true,
+      "persist": true
+    }
   }
 }

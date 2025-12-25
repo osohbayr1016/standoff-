@@ -134,11 +134,18 @@ export class VoiceService {
         try {
             const guild = await this.client.guilds.fetch(process.env.DISCORD_GUILD_ID!);
 
-            // Delete category (this will delete all channels in it)
-            const category = await guild.channels.fetch(channelPair.categoryId);
-            if (category) {
+            // Fetch the category
+            const category = await guild.channels.fetch(channelPair.categoryId) as CategoryChannel;
+            if (category && category.type === ChannelType.GuildCategory) {
+                // Delete all channels within the category first
+                const children = category.children.cache;
+                for (const [_, child] of children) {
+                    await child.delete();
+                }
+
+                // Delete the category itself
                 await category.delete();
-                console.log(`✅ Deleted match channels for ${matchId}`);
+                console.log(`✅ Deleted match channels and category for ${matchId}`);
             }
 
             this.activeMatches.delete(matchId);
