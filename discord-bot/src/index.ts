@@ -8,14 +8,23 @@ dotenv.config();
 
 // Validate environment variables
 const requiredEnvVars = [
-    'DISCORD_TOKEN',
+    'DISCORD_TOKEN|DISCORD_BOT_TOKEN',
     'DISCORD_CLIENT_ID',
     'DISCORD_GUILD_ID',
     'BACKEND_URL'
 ];
 
+// Helper to get token from available env vars
+const getDiscordToken = () => process.env.DISCORD_TOKEN || process.env.DISCORD_BOT_TOKEN;
+
 for (const envVar of requiredEnvVars) {
-    if (!process.env[envVar]) {
+    if (envVar.includes('|')) {
+        const options = envVar.split('|');
+        if (!options.some(opt => process.env[opt])) {
+            console.error(`❌ Missing required environment variable: One of ${options.join(' or ')}`);
+            process.exit(1);
+        }
+    } else if (!process.env[envVar]) {
         console.error(`❌ Missing required environment variable: ${envVar}`);
         process.exit(1);
     }
@@ -43,7 +52,7 @@ async function registerCommands() {
     try {
         console.log('🔄 Registering slash commands...');
 
-        const rest = new REST().setToken(process.env.DISCORD_TOKEN!);
+        const rest = new REST().setToken(getDiscordToken()!);
 
         await rest.put(
             Routes.applicationGuildCommands(
@@ -112,6 +121,6 @@ process.on('unhandledRejection', (error) => {
 });
 
 // Login
-client.login(process.env.DISCORD_TOKEN);
+client.login(getDiscordToken());
 
 console.log('🔄 Starting Discord bot...');
