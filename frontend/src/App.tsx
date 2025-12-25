@@ -98,6 +98,19 @@ function AppContent() {
         }
       }
     }
+
+    // 3. Handle Match Cancelled
+    if (lastMessage.type === 'MATCH_CANCELLED') {
+      console.log("Match Cancelled:", lastMessage);
+      // Clear lobby state
+      setActiveLobbyId(null);
+      setLobbyPartyMembers([]);
+      setSelectedMap(undefined);
+      // Navigate back to matchmaking or home
+      if (currentPage === 'mapban' || currentPage === 'matchlobby') {
+        setCurrentPage('matchmaking');
+      }
+    }
   }, [lastMessage, currentPage]);
 
   // Discord OAuth callback-ыг шалгах

@@ -1,6 +1,7 @@
 /* ===== MOBILE FIRST: Base styles for mobile (< 768px) ===== */
 .profile-page {
   padding: 1rem 0.5rem;
+  padding-top: 0; /* Main-content already has top padding */
   width: 100%;
   max-width: 1200px;
   margin: 0 auto;
