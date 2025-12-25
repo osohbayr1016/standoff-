@@ -492,6 +492,18 @@ export class MatchQueueDO {
           this.startMatch(allPlayers);
         }
 
+        // DEBUG_DUMP: Request full state for debugging
+        if (data.type === 'DEBUG_DUMP') {
+          ws.send(JSON.stringify({
+            type: 'DEBUG_STATE',
+            localQueue: Array.from(this.localQueue.values()),
+            remoteQueue: this.remoteQueue,
+            currentLobby: this.currentLobby,
+            matchState: this.matchState,
+            timestamp: Date.now()
+          }));
+        }
+
       } catch (err) {
         console.error('WebSocket Error:', err);
       }

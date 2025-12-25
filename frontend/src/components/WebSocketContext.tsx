@@ -5,6 +5,7 @@ interface WebSocketContextType {
     socket: WebSocket | null;
     sendMessage: (message: any) => void;
     lastMessage: any;
+    messageLog: any[];
     isConnected: boolean;
     registerUser: (userId: string) => void;
 }
@@ -14,6 +15,7 @@ const WebSocketContext = createContext<WebSocketContextType | undefined>(undefin
 export const WebSocketProvider = ({ children, url }: { children: ReactNode; url: string }) => {
     const [socket, setSocket] = useState<WebSocket | null>(null);
     const [lastMessage, setLastMessage] = useState<any>(null);
+    const [messageLog, setMessageLog] = useState<any[]>([]);
     const [isConnected, setIsConnected] = useState(false);
     // use 'any' for timeout ref to avoid NodeJS vs Window timeout type issues
     const reconnectTimeoutRef = useRef<any>(null);
@@ -51,6 +53,10 @@ export const WebSocketProvider = ({ children, url }: { children: ReactNode; url:
                 const data = JSON.parse(event.data);
                 console.log("WS Message Received:", data); // DEBUG LOG
                 setLastMessage(data);
+                setMessageLog(prev => {
+                    const newLog = [...prev, { direction: 'IN', data, timestamp: new Date().toISOString() }];
+                    return newLog.slice(-50); // Keep last 50
+                });
             } catch (e) {
                 console.error('Failed to parse WS message', event.data);
             }
@@ -88,6 +94,10 @@ export const WebSocketProvider = ({ children, url }: { children: ReactNode; url:
         if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
             console.log("Sending WS Message:", message); // DEBUG LOG
             socketRef.current.send(JSON.stringify(message));
+            setMessageLog(prev => {
+                const newLog = [...prev, { direction: 'OUT', data: message, timestamp: new Date().toISOString() }];
+                return newLog.slice(-50);
+            });
         } else {
             console.warn('WebSocket not connected, message dropped:', message);
         }
@@ -103,7 +113,7 @@ export const WebSocketProvider = ({ children, url }: { children: ReactNode; url:
     }, []);
 
     return (
-        <WebSocketContext.Provider value={{ socket, sendMessage, lastMessage, isConnected, registerUser }}>
+        <WebSocketContext.Provider value={{ socket, sendMessage, lastMessage, messageLog, isConnected, registerUser }}>
             {children}
         </WebSocketContext.Provider>
     );

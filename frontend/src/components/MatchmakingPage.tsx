@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import './MatchmakingPage.css';
 import InviteFriendModal from './InviteFriendModal';
 import { useWebSocket } from './WebSocketContext'; // Import Hook
+import DebugConsole from './DebugConsole';
 
 interface PartyMember {
   id: string;
@@ -188,6 +189,7 @@ export default function MatchmakingPage({ onCancel: _onCancel, onStartLobby }: M
   return (
     <div className="matchmaking-page">
       <div className="cyber-grid-bg"></div>
+      <DebugConsole />
 
       {showInviteModal && (
         <InviteFriendModal
@@ -249,8 +251,8 @@ export default function MatchmakingPage({ onCancel: _onCancel, onStartLobby }: M
           </button>
         )}
         {partyMembers.length < 10 && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') && (
-          <button 
-            className="fill-bots-btn" 
+          <button
+            className="fill-bots-btn"
             onClick={handleFillBots}
             style={{ marginTop: '12px' }}
           >

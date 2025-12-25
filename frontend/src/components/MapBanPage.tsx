@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import './MapBanPage.css';
 import MapBanView from './MapBanView';
 import { useWebSocket } from './WebSocketContext'; // Import Hook
+import DebugConsole from './DebugConsole';
 
 interface PartyMember {
   id: string;
@@ -322,6 +323,7 @@ export default function MapBanPage({ partyMembers, onCancel: _onCancel, onMapSel
   return (
     <div className="map-ban-page">
       <div className="cyber-grid-bg"></div>
+      <DebugConsole />
       <MapBanView
         lobbyId="current-lobby"
         currentUserId={currentUserId}
