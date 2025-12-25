@@ -46,10 +46,7 @@ export class NeatQueueService {
             }
 
             // Send the start command to NeatQueue
-            // Note: Adjust this command based on your NeatQueue configuration
-            await channel.send('/start'); // Try slash command first? Bots can't send slash commands easily.
-            // If NeatQueue supports text command:
-            // await channel.send('!start'); 
+            await channel.send('!start');
             // Or maybe just force start if it doesn't auto-start? 
             // Usually adding 10 players auto-starts it.
 
