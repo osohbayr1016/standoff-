@@ -22,9 +22,11 @@ export interface MatchData {
 }
 
 export interface BackendMessage {
-    type: 'MATCH_READY' | 'MATCH_CANCELLED' | 'LOBBY_UPDATE' | 'QUEUE_UPDATE' | 'SERVER_CREATED' | 'SERVER_CREATION_FAILED' | 'MATCH_START' | 'CREATE_MATCH';
+    type: 'MATCH_READY' | 'MATCH_CANCELLED' | 'LOBBY_UPDATE' | 'QUEUE_UPDATE' | 'SERVER_CREATED' | 'SERVER_CREATION_FAILED' | 'MATCH_START' | 'CREATE_MATCH' | 'REGISTER_ACK' | 'MATCH_RESET';
     lobbyId?: string;
     matchData?: MatchData;
+    userId?: string;
+    timestamp?: number;
 }
 
 export interface QueuePlayer {

@@ -93,6 +93,10 @@ export class BackendService {
                 }
                 break;
 
+            case 'REGISTER_ACK':
+                console.log(`✅ Registration confirmed by backend for user: ${message.userId}`);
+                break;
+
             case 'QUEUE_UPDATE':
                 // Handle queue updates if needed
                 break;
