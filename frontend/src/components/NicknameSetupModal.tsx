@@ -14,12 +14,12 @@ export default function NicknameSetupModal({ userId, onSave }: NicknameSetupModa
 
     const handleSubmit = async () => {
         if (!nickname.trim()) {
-            setError('Nickname is required');
+            setError('Нэр шаардлагатай');
             return;
         }
 
         if (nickname.length < 3) {
-            setError('Nickname must be at least 3 characters');
+            setError('Нэр хамгийн багадаа 3 тэмдэгт байх ёстой');
             return;
         }
 
@@ -41,11 +41,11 @@ export default function NicknameSetupModal({ userId, onSave }: NicknameSetupModa
                 if (data.details) {
                     setError(data.details[0].message);
                 } else {
-                    setError(data.error || 'Failed to set nickname');
+                    setError(data.error || 'Нэр тохируулахад алдаа гарлаа');
                 }
             }
         } catch (err) {
-            setError('Network error occurred. Please try again.');
+            setError('Сүлжээний алдаа гарлаа. Дахин оролдоно уу.');
         } finally {
             setSaving(false);
         }
@@ -55,21 +55,21 @@ export default function NicknameSetupModal({ userId, onSave }: NicknameSetupModa
         <div className="nickname-modal-overlay">
             <div className="nickname-modal-content">
                 <div className="modal-header">
-                    <h2 className="modal-title">OPERATOR SETUP</h2>
-                    <div className="modal-subtitle">IDENTITY VERIFICATION REQUIRED</div>
+                    <h2 className="modal-title">ТОГЛОГЧИЙН ТОХИРГОО</h2>
+                    <div className="modal-subtitle">ХУВЬ ХҮНИЙ МЭДЭЭЛЭЛ ШАЛГАХ ШААРДЛАГАТАЙ</div>
                 </div>
 
                 <div className="modal-body">
                     <p className="modal-instruction">
-                        To proceed to the <span className="highlight">Standoff 2 Platform</span>,
-                        you must register your active In-Game Nickname.
+                        <span className="highlight">Standoff 2 Платформ</span> руу үргэлжлүүлэхийн тулд
+                        та тоглоомын идэвхтэй нэрээ бүртгүүлэх ёстой.
                     </p>
 
                     <div className="input-group">
                         <input
                             type="text"
                             className="cyber-input"
-                            placeholder="ENTER NICKNAME"
+                            placeholder="НЭР ОРУУЛАХ"
                             value={nickname}
                             onChange={(e) => setNickname(e.target.value)}
                             disabled={saving}
@@ -85,7 +85,7 @@ export default function NicknameSetupModal({ userId, onSave }: NicknameSetupModa
                         onClick={handleSubmit}
                         disabled={saving}
                     >
-                        {saving ? 'PROCESSING...' : 'CONFIRM IDENTITY'}
+                        {saving ? 'БОЛОВСРУУЛАЖ БАЙНА...' : 'ХУВЬ ХҮНИЙ МЭДЭЭЛЭЛ БАТЛАХ'}
                     </button>
                 </div>
             </div>

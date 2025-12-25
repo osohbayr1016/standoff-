@@ -28,27 +28,27 @@ export default function MatchPage({ serverInfo, mapName, onGoHome }: MatchPagePr
 
             <div className="match-content">
                 <div className="match-header">
-                    <h1 className="match-title">MATCH READY</h1>
-                    <div className="match-subtitle">MAP: <span className="highlight">{mapName || 'UNKNOWN'}</span></div>
+                    <h1 className="match-title">ТОГЛООМ БЭЛЭН</h1>
+                    <div className="match-subtitle">ГАЗАР ЗУРАГ: <span className="highlight">{mapName || 'ТОДОРХОЙГҮЙ'}</span></div>
                 </div>
 
                 <div className="server-card">
                     <div className="server-status">
-                        <span className="status-dot"></span> SYSTEM ONLINE
+                        <span className="status-dot"></span> СИСТЕМ ОНЛАЙН
                     </div>
 
                     <div className="server-info-grid">
                         <div className="info-group">
-                            <label>SERVER IP</label>
+                            <label>СЕРВЕРИЙН IP</label>
                             <div className="code-box" onClick={() => serverInfo?.ip && handleCopy(serverInfo.ip, 'ip')}>
-                                {serverInfo?.ip || 'Connecting...'}
+                                {serverInfo?.ip || 'Холбож байна...'}
                                 <span className="copy-icon">{copied === 'ip' ? '✓' : '❐'}</span>
                             </div>
                         </div>
 
                         {serverInfo?.password && (
                             <div className="info-group">
-                                <label>PASSWORD</label>
+                                <label>НУУЦ ҮГ</label>
                                 <div className="code-box" onClick={() => handleCopy(serverInfo.password!, 'pass')}>
                                     {serverInfo.password}
                                     <span className="copy-icon">{copied === 'pass' ? '✓' : '❐'}</span>
@@ -58,10 +58,10 @@ export default function MatchPage({ serverInfo, mapName, onGoHome }: MatchPagePr
                     </div>
 
                     <div className="connect-command-section">
-                        <label>CONSOLE COMMAND</label>
+                        <label>КОНСОЛЬЫН ТУШААЛ</label>
                         <div className="command-box" onClick={() => handleCopy(connectCommand, 'cmd')}>
                             <code>{connectCommand}</code>
-                            <span className="copy-hint">{copied === 'cmd' ? 'COPIED!' : 'CLICK TO COPY'}</span>
+                            <span className="copy-hint">{copied === 'cmd' ? 'ХУУЛСАН!' : 'ХУУЛАХДАА ДАРАХ'}</span>
                         </div>
                     </div>
                 </div>
@@ -71,7 +71,7 @@ export default function MatchPage({ serverInfo, mapName, onGoHome }: MatchPagePr
                         href={`steam://connect/${serverInfo?.ip}/${serverInfo?.password ? serverInfo.password : ''}`}
                         className="connect-btn cyber-button-primary"
                     >
-                        <span className="btn-content">CONNECT (STEAM)</span>
+                        <span className="btn-content">ХОЛБОХ (STEAM)</span>
                         <div className="btn-glitch"></div>
                     </a>
 
@@ -80,11 +80,11 @@ export default function MatchPage({ serverInfo, mapName, onGoHome }: MatchPagePr
                         className="connect-btn cyber-button-secondary"
                         style={{ marginTop: '1rem', background: 'rgba(255, 166, 0, 0.2)', borderColor: 'orange', color: 'orange' }}
                     >
-                        <span className="btn-content">CUSTOM LINK</span>
+                        <span className="btn-content">ӨӨРИЙН ХОЛБООС</span>
                     </a>
 
                     <button className="back-btn cyber-button-secondary" onClick={onGoHome}>
-                        RETURN TO MENU
+                        ЦЭС РҮҮ БУЦАХ
                     </button>
                 </div>
             </div>

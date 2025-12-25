@@ -126,14 +126,14 @@ export default function MapBanView({
 
       {isTeamLeader && !isMyTurn && mapBanData.mapBanPhase && (
         <div className="wait-turn-message">
-          <p>👑 You are the team leader. Wait for your turn to ban.</p>
+          <p>👑 Та багийн удирдагч байна. Таны ээлж хүлээгээрэй.</p>
         </div>
       )}
 
       {!isTeamLeader && mapBanData.mapBanPhase && (
         <div className="watch-ban-message">
           <p>
-            Only team leaders can ban maps. Watch the ban phase.
+            Зөвхөн багийн удирдагчид газар зургийг хориглож чадна. Хориглох үе шатыг ажиглана уу.
           </p>
         </div>
       )}

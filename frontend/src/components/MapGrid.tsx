@@ -66,12 +66,12 @@ export default function MapGrid({
             {(isBanned || isBanningNow) && (
               <div className="map-banned-overlay">
                 <div className="banned-icon">🚫</div>
-                <p className="banned-text">BANNED</p>
+                <p className="banned-text">ХОРИГЛОСОН</p>
               </div>
             )}
 
             {canBan && isAvailable && (
-              <div className="click-to-ban-indicator">Click to Ban</div>
+              <div className="click-to-ban-indicator">Хориглохын тулд дарах</div>
             )}
           </div>
         );

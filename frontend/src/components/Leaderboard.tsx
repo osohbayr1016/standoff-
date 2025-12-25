@@ -11,7 +11,7 @@ const leaderboardData = [
 export default function Leaderboard() {
   return (
     <div className="leaderboard-card">
-      <h3 className="card-title">Live Leaderboard Top 5</h3>
+      <h3 className="card-title">Шууд Чансаа Дээд 5</h3>
       <div className="leaderboard-list">
         {leaderboardData.map((player) => (
           <div key={player.rank} className={`leaderboard-item rank-${player.rank}`}>

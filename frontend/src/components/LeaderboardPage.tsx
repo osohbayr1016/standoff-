@@ -1,6 +1,5 @@
-
-import { useState, useEffect } from 'react';
-import './LeaderboardPage.css';
+import { useState, useEffect } from "react";
+import "./LeaderboardPage.css";
 
 interface LeaderboardEntry {
   rank: number;
@@ -9,18 +8,20 @@ interface LeaderboardEntry {
   username: string;
   avatar?: string;
   nickname?: string;
-  mmr: number;
+  elo: number;
   wins: number;
   losses: number;
 }
 
-type FilterType = 'mmr' | 'winrate' | 'matches';
+type FilterType = "elo" | "winrate" | "matches";
 
 export default function LeaderboardPage() {
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
-  const [filteredLeaderboard, setFilteredLeaderboard] = useState<LeaderboardEntry[]>([]);
+  const [filteredLeaderboard, setFilteredLeaderboard] = useState<
+    LeaderboardEntry[]
+  >([]);
   const [loading, setLoading] = useState(true);
-  const [activeFilter, setActiveFilter] = useState<FilterType>('mmr');
+  const [activeFilter, setActiveFilter] = useState<FilterType>("elo");
 
   useEffect(() => {
     fetchLeaderboard();
@@ -28,14 +29,18 @@ export default function LeaderboardPage() {
 
   const fetchLeaderboard = async () => {
     try {
-      const res = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'http://localhost:8787'}/api/leaderboard`);
+      const res = await fetch(
+        `${
+          import.meta.env.VITE_BACKEND_URL || "http://localhost:8787"
+        }/api/leaderboard`
+      );
       if (res.ok) {
         const data = await res.json();
         setLeaderboard(data);
         applyFilter(data, activeFilter);
       }
     } catch (err) {
-      console.error('Error fetching leaderboard:', err);
+      console.error("Error fetching leaderboard:", err);
     } finally {
       setLoading(false);
     }
@@ -45,17 +50,19 @@ export default function LeaderboardPage() {
     let sorted = [...data];
 
     switch (filter) {
-      case 'mmr':
-        sorted.sort((a, b) => b.mmr - a.mmr);
+      case "elo":
+        sorted.sort((a, b) => b.elo - a.elo);
         break;
-      case 'winrate':
+      case "winrate":
         sorted.sort((a, b) => {
-          const winrateA = (a.wins + a.losses) > 0 ? a.wins / (a.wins + a.losses) : 0;
-          const winrateB = (b.wins + b.losses) > 0 ? b.wins / (b.wins + b.losses) : 0;
+          const winrateA =
+            a.wins + a.losses > 0 ? a.wins / (a.wins + a.losses) : 0;
+          const winrateB =
+            b.wins + b.losses > 0 ? b.wins / (b.wins + b.losses) : 0;
           return winrateB - winrateA;
         });
         break;
-      case 'matches':
+      case "matches":
         sorted.sort((a, b) => {
           const matchesA = a.wins + a.losses;
           const matchesB = b.wins + b.losses;
@@ -67,7 +74,7 @@ export default function LeaderboardPage() {
     // Recalculate ranks after sorting
     const ranked = sorted.map((player, index) => ({
       ...player,
-      rank: index + 1
+      rank: index + 1,
     }));
 
     setFilteredLeaderboard(ranked);
@@ -85,7 +92,9 @@ export default function LeaderboardPage() {
       <div className="leaderboard-page">
         <div className="loading-container">
           <div className="cyber-spinner"></div>
-          <div className="loading-text">ACCESSING RANKING DATABASE...</div>
+          <div className="loading-text">
+            ЧАНСААНЫ МЭДЭЭЛЛИЙН САНД ХАНДАЖ БАЙНА...
+          </div>
         </div>
       </div>
     );
@@ -94,82 +103,110 @@ export default function LeaderboardPage() {
   return (
     <div className="leaderboard-page">
       <div className="leaderboard-header">
-        <h1 className="cyber-title">TOP 500 OPERATORS</h1>
-        <div className="cyber-subtitle">GLOBAL RANKINGS</div>
+        <h1 className="cyber-title">СЕРВЕРИЙН ТОП 500 ТОГЛОГЧ</h1>
+        <div className="cyber-subtitle">СЕРВЕРИЙН ЧАНСАА</div>
       </div>
 
       <div className="leaderboard-filters">
         <button
-          className={`filter-btn ${activeFilter === 'mmr' ? 'active' : ''}`}
-          onClick={() => setActiveFilter('mmr')}
+          className={`filter-btn ${activeFilter === "elo" ? "active" : ""}`}
+          onClick={() => setActiveFilter("elo")}
         >
           <span className="filter-icon">⚡</span>
-          <span className="filter-text">HIGHEST MMR</span>
+          <span className="filter-text">ХАМГИЙН ӨНДӨР ELO</span>
         </button>
         <button
-          className={`filter-btn ${activeFilter === 'winrate' ? 'active' : ''}`}
-          onClick={() => setActiveFilter('winrate')}
+          className={`filter-btn ${activeFilter === "winrate" ? "active" : ""}`}
+          onClick={() => setActiveFilter("winrate")}
         >
           <span className="filter-icon">📊</span>
-          <span className="filter-text">HIGHEST WINRATE</span>
+          <span className="filter-text">ХАМГИЙН ӨНДӨР ХОЖЛЫН ХУВЬ</span>
         </button>
         <button
-          className={`filter-btn ${activeFilter === 'matches' ? 'active' : ''}`}
-          onClick={() => setActiveFilter('matches')}
+          className={`filter-btn ${activeFilter === "matches" ? "active" : ""}`}
+          onClick={() => setActiveFilter("matches")}
         >
           <span className="filter-icon">🎯</span>
-          <span className="filter-text">HIGHEST MATCHES</span>
+          <span className="filter-text">ХАМГИЙН ОЛОН ТОГЛОЛТ</span>
         </button>
       </div>
 
       <div className="leaderboard-container">
         <div className="leaderboard-table-header">
-          <div className="header-rank">RANK</div>
-          <div className="header-player">OPERATOR</div>
-          <div className="header-mmr">MMR</div>
-          <div className="header-stats mobile-hide">W / L</div>
-          <div className="header-winrate mobile-hide">WIN RATE</div>
+          <div className="header-rank">БАЙР</div>
+          <div className="header-player">ТОГЛОГЧ</div>
+          <div className="header-elo">ELO</div>
+          <div className="header-stats mobile-hide">Х / Х</div>
+          <div className="header-winrate mobile-hide">ХОЖЛЫН ХУВЬ</div>
         </div>
 
         <div className="leaderboard-list">
           {filteredLeaderboard.map((player) => {
-            const winRate = (player.wins + player.losses) > 0
-              ? ((player.wins / (player.wins + player.losses)) * 100).toFixed(1)
-              : '0.0';
+            const winRate =
+              player.wins + player.losses > 0
+                ? ((player.wins / (player.wins + player.losses)) * 100).toFixed(
+                    1
+                  )
+                : "0.0";
 
             return (
-              <div key={player.id} className={`leaderboard-row rank-${player.rank <= 3 ? player.rank : 'other'}`}>
+              <div
+                key={player.id}
+                className={`leaderboard-row rank-${
+                  player.rank <= 3 ? player.rank : "other"
+                }`}
+              >
                 <div className="rank-cell">
-                  {player.rank === 1 && <span className="rank-icon gold">🥇</span>}
-                  {player.rank === 2 && <span className="rank-icon silver">🥈</span>}
-                  {player.rank === 3 && <span className="rank-icon bronze">🥉</span>}
+                  {player.rank === 1 && (
+                    <span className="rank-icon gold">🥇</span>
+                  )}
+                  {player.rank === 2 && (
+                    <span className="rank-icon silver">🥈</span>
+                  )}
+                  {player.rank === 3 && (
+                    <span className="rank-icon bronze">🥉</span>
+                  )}
                   <span className="rank-number">#{player.rank}</span>
                 </div>
 
                 <div className="player-cell">
                   <div className="player-avatar">
-                    {player.avatar ?
-                      <img src={`https://cdn.discordapp.com/avatars/${player.discord_id}/${player.avatar}.png`} alt="" /> :
-                      <div className="avatar-placeholder">{player.username?.[0]}</div>
-                    }
+                    {player.avatar ? (
+                      <img
+                        src={`https://cdn.discordapp.com/avatars/${player.discord_id}/${player.avatar}.png`}
+                        alt=""
+                      />
+                    ) : (
+                      <div className="avatar-placeholder">
+                        {player.username?.[0]}
+                      </div>
+                    )}
                   </div>
                   <div className="player-info">
-                    <div className="player-nickname">{player.nickname || player.username}</div>
-                    {player.nickname && <div className="player-discord">@{player.username}</div>}
+                    <div className="player-nickname">
+                      {player.nickname || player.username}
+                    </div>
+                    {player.nickname && (
+                      <div className="player-discord">@{player.username}</div>
+                    )}
                   </div>
                 </div>
 
-                <div className="mmr-cell">
-                  <span className="mmr-value">{player.mmr}</span>
+                <div className="elo-cell">
+                  <span className="elo-value">{player.elo}</span>
                 </div>
 
                 <div className="stats-cell mobile-hide">
-                  <span className="wins">{player.wins}</span> / <span className="losses">{player.losses}</span>
+                  <span className="wins">{player.wins}</span> /{" "}
+                  <span className="losses">{player.losses}</span>
                 </div>
 
                 <div className="winrate-cell mobile-hide">
                   <div className="winrate-bar-bg">
-                    <div className="winrate-bar-fill" style={{ width: `${winRate}%` }}></div>
+                    <div
+                      className="winrate-bar-fill"
+                      style={{ width: `${winRate}%` }}
+                    ></div>
                   </div>
                   <span className="winrate-text">{winRate}%</span>
                 </div>
@@ -178,7 +215,7 @@ export default function LeaderboardPage() {
           })}
 
           {filteredLeaderboard.length === 0 && (
-            <div className="no-data">NO RANKING DATA AVAILABLE</div>
+            <div className="no-data">ЧАНСААНЫ МЭДЭЭЛЭЛ БАЙХГҮЙ</div>
           )}
         </div>
       </div>

@@ -21,7 +21,7 @@ export default function MapBanHistory({
 
   return (
     <div className="map-ban-history">
-      <h3 className="ban-history-title">Ban History</h3>
+      <h3 className="ban-history-title">Хориглолтын түүх</h3>
       <div className="ban-history-list">
         {banHistory.map((ban, index) => {
           const banTeamName = ban.team === 'alpha' ? alphaTeamName : bravoTeamName;
@@ -33,7 +33,7 @@ export default function MapBanHistory({
                 }`}
               />
               <span className="ban-history-text">
-                {banTeamName} banned{' '}
+                {banTeamName} хориглосон{' '}
                 <span className="ban-map-name">{ban.map}</span>
               </span>
             </div>

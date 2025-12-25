@@ -14,8 +14,8 @@ export default function Hero({ onFindMatch }: HeroProps) {
           <span className="title-highlight">D</span>
           <span className="title-text">OFF 2</span>
         </h1>
-        <h2 className="hero-subtitle">COMPETITIVE HUB</h2>
-        <button className="find-match-btn" onClick={onFindMatch}>Find Match</button>
+        <h2 className="hero-subtitle">ТЭМЦЭЭНИЙ ТӨВ</h2>
+        <button className="find-match-btn" onClick={onFindMatch}>Тоглолт олох</button>
       </div>
     </section>
   );

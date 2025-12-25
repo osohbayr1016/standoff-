@@ -9,7 +9,7 @@ const matchesData = [
 export default function RecentMatches() {
   return (
     <div className="matches-card">
-      <h3 className="card-title">Recent Matches</h3>
+      <h3 className="card-title">Сүүлийн тоглолтууд</h3>
       <div className="matches-list">
         {matchesData.map((match, index) => (
           <div key={index} className="match-item">

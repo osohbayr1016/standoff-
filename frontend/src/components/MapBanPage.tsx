@@ -354,7 +354,7 @@ export default function MapBanPage({ partyMembers, onCancel: _onCancel, onMapSel
             animation: 'spin 1s linear infinite'
           }}></div>
           <div style={{ fontFamily: 'monospace', letterSpacing: '2px', fontSize: '0.8rem' }}>
-            SYNCING WITH SERVER...
+            СЕРВЕРТЭЙ СИНХРОНЧЛОЖ БАЙНА...
           </div>
         </div>
       </div>

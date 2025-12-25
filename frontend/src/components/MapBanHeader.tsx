@@ -21,15 +21,15 @@ export default function MapBanHeader({
 
   return (
     <div className="map-ban-header">
-      <h1 className="map-ban-title">Map Ban Phase</h1>
+      <h1 className="map-ban-title">Газар зургийг хориглох үе шат</h1>
       <p className="map-ban-subtitle">
         {mapBanPhase
-          ? `${currentTeamName}'s turn to ban`
-          : `Selected Map: ${selectedMap || 'None'}`}
+          ? `${currentTeamName}-ийн хориглох ээлж`
+          : `Сонгосон газар зураг: ${selectedMap || 'Байхгүй'}`}
       </p>
       {mapBanPhase && timeLeft !== undefined && (
         <div className="ban-timer">
-          <span className="timer-label">Time remaining:</span>
+          <span className="timer-label">Үлдсэн хугацаа:</span>
           <span className={`timer-value ${timeLeft <= 5 ? 'timer-warning' : ''}`}>
             {formatTime(timeLeft)}s
           </span>
@@ -39,7 +39,7 @@ export default function MapBanHeader({
         <div className="server-ready-info">
           <div className="server-detail">
             <span className="detail-label">IP:</span>
-            <span className="detail-value">{serverInfo.ip || 'Connecting...'}</span>
+            <span className="detail-value">{serverInfo.ip || 'Холбож байна...'}</span>
           </div>
           {serverInfo.password && (
             <div className="server-detail">
