@@ -44,7 +44,7 @@ export class MatchQueueDO {
   }
 
   matchState: 'IDLE' | 'LOBBY' | 'GAME' = 'IDLE';
-  currentLobby: any = null;
+  currentLobby: any = null; // Will include: { id, players, captains, teams, readyPlayers, mapBanState, serverInfo }
 
   async alarm() {
     await this.syncWithNeatQueue(); // Updates this.remoteQueue
@@ -272,6 +272,37 @@ export class MatchQueueDO {
               banState.bannedMaps.push(map);
               this.broadcastLobbyUpdate();
             }
+          }
+        }
+
+        // SERVER_CREATED - Discord bot created game server via NeatQueue
+        if (data.type === 'SERVER_CREATED') {
+          if (this.currentLobby && data.lobbyId === this.currentLobby.id) {
+            // Store server info in lobby
+            this.currentLobby.serverInfo = data.serverInfo;
+
+            // Broadcast to all players
+            this.broadcastToAll(JSON.stringify({
+              type: 'SERVER_READY',
+              lobbyId: data.lobbyId,
+              serverInfo: data.serverInfo
+            }));
+
+            console.log('✅ Game server ready:', data.serverInfo);
+          }
+        }
+
+        // SERVER_CREATION_FAILED - Failed to create server
+        if (data.type === 'SERVER_CREATION_FAILED') {
+          if (this.currentLobby && data.lobbyId === this.currentLobby.id) {
+            // Notify all players
+            this.broadcastToAll(JSON.stringify({
+              type: 'SERVER_ERROR',
+              lobbyId: data.lobbyId,
+              error: data.error || 'Failed to create game server'
+            }));
+
+            console.error('❌ Server creation failed:', data.error);
           }
         }
 

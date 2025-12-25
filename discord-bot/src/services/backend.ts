@@ -2,11 +2,13 @@ import { Client } from 'discord.js';
 import WebSocket from 'ws';
 import type { BackendMessage, MatchData } from '../types';
 import { VoiceService } from './voice';
+import { NeatQueueService } from './neatqueue';
 
 export class BackendService {
     private ws: WebSocket | null = null;
     private reconnectTimeout: NodeJS.Timeout | null = null;
     private voiceService: VoiceService | null = null;
+    private neatQueueService: NeatQueueService | null = null;
 
     constructor(
         private backendUrl: string,
@@ -15,6 +17,25 @@ export class BackendService {
 
     async connect(client: Client) {
         this.voiceService = new VoiceService(client);
+
+        // Initialize NeatQueue service
+        if (process.env.QUEUE_CHANNEL_ID && process.env.NEATQUEUE_BOT_ID) {
+            this.neatQueueService = new NeatQueueService(
+                client,
+                process.env.QUEUE_CHANNEL_ID,
+                process.env.NEATQUEUE_BOT_ID
+            );
+
+            // Monitor NeatQueue for match updates
+            this.neatQueueService.onMatchUpdate((matchData) => {
+                console.log('📊 NeatQueue match update:', matchData);
+                // Send to backend
+                this.send({
+                    type: 'NEATQUEUE_MATCH_UPDATE',
+                    matchData
+                });
+            });
+        }
 
         const wsUrl = this.backendUrl.replace('https://', 'wss://').replace('http://', 'ws://');
 
@@ -81,10 +102,37 @@ export class BackendService {
         try {
             const guild = await client.guilds.fetch(process.env.DISCORD_GUILD_ID!);
 
-            // Create voice channels
+            // Step 1: Trigger NeatQueue to create game server
+            if (this.neatQueueService) {
+                console.log('🎮 Requesting NeatQueue to create game server...');
+                const result = await this.neatQueueService.createMatch(matchData.players);
+
+                if (result.success && result.serverInfo) {
+                    console.log('✅ Game server created:', result.serverInfo);
+
+                    // Send server info back to backend
+                    this.send({
+                        type: 'SERVER_CREATED',
+                        lobbyId: matchData.lobbyId,
+                        serverInfo: result.serverInfo
+                    });
+                } else {
+                    console.error('❌ Failed to create game server:', result.error);
+
+                    // Notify backend of failure
+                    this.send({
+                        type: 'SERVER_CREATION_FAILED',
+                        lobbyId: matchData.lobbyId,
+                        error: result.error
+                    });
+                    return;
+                }
+            }
+
+            // Step 2: Create voice channels
             await this.voiceService?.createMatchChannels(guild, matchData);
 
-            console.log('✅ Match channels created successfully');
+            console.log('✅ Match setup complete');
         } catch (error) {
             console.error('❌ Error creating match:', error);
         }
