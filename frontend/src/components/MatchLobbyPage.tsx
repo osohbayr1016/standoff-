@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Crosshair, Copy, Shield, Target } from 'lucide-react';
+import { useWebSocket } from './WebSocketContext';
 import './MatchLobbyPage.css';
 
 interface Player {
@@ -36,6 +37,7 @@ const getLevelColor = (level: number) => {
 export default function MatchLobbyPage({ lobby, serverInfo: initialServerInfo }: MatchLobbyPageProps) {
   const [serverInfo, setServerInfo] = useState(initialServerInfo || lobby?.serverInfo);
   const isLive = !!(serverInfo?.ip && serverInfo?.password);
+  const { leaveMatch } = useWebSocket();
 
   const teamA = lobby?.teamA || [];
   const teamB = lobby?.teamB || [];
@@ -59,6 +61,15 @@ export default function MatchLobbyPage({ lobby, serverInfo: initialServerInfo }:
   const handleCopy = (text: string) => {
     navigator.clipboard.writeText(text);
     // You could add a toast here
+  };
+
+  const handleLeaveMatch = () => {
+    if (confirm('Are you sure you want to leave this match? You can requeue immediately after leaving.')) {
+      const user = JSON.parse(localStorage.getItem('user') || '{}');
+      if (user.id) {
+        leaveMatch(user.id, lobby?.id);
+      }
+    }
   };
 
   return (
@@ -193,26 +204,26 @@ export default function MatchLobbyPage({ lobby, serverInfo: initialServerInfo }:
                     </div>
                   </div>
                 )}
-              </div>
 
-              {/* Emergency Leave */}
-              <button
-                className="copy-btn"
-                style={{ opacity: 0.3, fontSize: '0.7rem', marginTop: 'auto' }}
-                onClick={() => {
-                  if (confirm('Leave Match Room?')) {
-                    localStorage.removeItem('activeLobbyId');
-                    window.location.href = '/';
-                  }
-                }}
-              >
-                DISCONNECT LOBBY
-              </button>
-            </motion.div>
-          </div>
+                {/* Leave Match Button */}
+                <button
+                  className="copy-btn"
+                  style={{
+                    background: '#ef4444',
+                    borderColor: '#ef4444',
+                    marginTop: '1rem',
+                    width: '100%'
+                  }}
+                  onClick={handleLeaveMatch}
+                >
+                  LEAVE MATCH
+                </button>
+              </div >
+            </motion.div >
+          </div >
 
           {/* TEAM BRAVO */}
-          <div className="team-column team-bravo animate-slide-right">
+          < div className="team-column team-bravo animate-slide-right" >
             <div className="team-header-info">
               <div className="team-label">HOSTILE SIDE</div>
               <div className="team-name-row">
@@ -248,9 +259,9 @@ export default function MatchLobbyPage({ lobby, serverInfo: initialServerInfo }:
                 </motion.div>
               ))}
             </div>
-          </div>
-        </div>
-      </div>
-    </div>
+          </div >
+        </div >
+      </div >
+    </div >
   );
 }
