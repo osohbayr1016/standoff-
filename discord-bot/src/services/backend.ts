@@ -105,25 +105,26 @@ export class BackendService {
     }
 
     private async handleMatchCreation(matchData: MatchData, client: Client) {
-        console.log(`🎮 Creating match: ${matchData.lobbyId}`);
+        this.sendDebugLog(`🎮 Processing CREATE_MATCH for lobby ${matchData.lobbyId}`);
 
         // Diagnostic: Check environment variables
         const requiredVars = ['DISCORD_GUILD_ID', 'QUEUE_CHANNEL_ID', 'NEATQUEUE_BOT_ID', 'BACKEND_URL'];
-        console.log('📋 Environmental Variable Status:');
         requiredVars.forEach(v => {
-            console.log(`   ${v}: ${process.env[v] ? '✅ SET' : '❌ MISSING'}`);
+            this.sendDebugLog(`   Env check: ${v} = ${process.env[v] ? 'Present' : 'MISSING'}`);
         });
 
         try {
             const guildId = process.env.DISCORD_GUILD_ID;
             if (!guildId) {
-                throw new Error('MISSING DISCORD_GUILD_ID in environment variables');
+                throw new Error('MISSING DISCORD_GUILD_ID');
             }
 
+            this.sendDebugLog(`📡 Fetching guild ${guildId}...`);
             const guild = await client.guilds.fetch(guildId);
             if (!guild) {
-                throw new Error(`Guild with ID ${guildId} not found by bot`);
+                throw new Error(`Guild ${guildId} not accessible`);
             }
+            this.sendDebugLog(`✅ Guild found: ${guild.name}`);
 
             // Step 1: Trigger NeatQueue to create game server
             if (this.neatQueueService) {
@@ -221,6 +222,17 @@ export class BackendService {
             console.error('❌ Error updating nickname:', error);
             return false;
         }
+    }
+
+    /**
+     * Send a debug log to the backend console (via Wrangler)
+     */
+    public sendDebugLog(message: string) {
+        console.log(`🤖 DEBUG: ${message}`);
+        this.send({
+            type: 'DEBUG_BOT_LOG',
+            message
+        });
     }
 
     async sendServerInfo(lobbyId: string, serverInfo: { ip: string; password: string; matchLink?: string }): Promise<boolean> {
