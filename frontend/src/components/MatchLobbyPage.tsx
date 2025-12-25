@@ -47,6 +47,16 @@ export default function MatchLobbyPage({ partyMembers, selectedMap, onCancel: _o
     return '';
   })();
 
+  // Listen for LOBBY_UPDATE from server
+  useEffect(() => {
+    if (lastMessage && lastMessage.type === 'LOBBY_UPDATE') {
+      const lobby = lastMessage.lobby;
+      if (lobby && lobby.readyPlayers) {
+        setReadyPlayers(new Set(lobby.readyPlayers));
+      }
+    }
+  }, [lastMessage]);
+
   // Auto-ready bots after a short delay
   useEffect(() => {
     const botReadyTimer = setTimeout(() => {
@@ -98,11 +108,8 @@ export default function MatchLobbyPage({ partyMembers, selectedMap, onCancel: _o
   }, [countdownStarted, handleLaunchGame]);
 
   const handleReadyClick = (playerId: string) => {
-    setReadyPlayers((prev) => {
-      const newReady = new Set(prev);
-      newReady.add(playerId);
-      return newReady;
-    });
+    // Send ready status to server
+    sendMessage({ type: 'PLAYER_READY', userId: playerId });
   };
 
   // Split players into two teams of 5

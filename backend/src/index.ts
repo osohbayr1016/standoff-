@@ -232,16 +232,18 @@ export class MatchQueueDO {
 
         // PLAYER_READY - User confirms ready in Match Lobby
         if (data.type === 'PLAYER_READY') {
-          if (this.currentLobby && (this.matchState === 'LOBBY' || this.matchState === 'GAME')) { // 'GAME' if we count Lobby as Game start
-            // Add to ready list
-            if (!this.currentLobby.readyPlayers) this.currentLobby.readyPlayers = [];
-
-            if (!this.currentLobby.readyPlayers.includes(data.userId)) {
-              this.currentLobby.readyPlayers.push(data.userId);
+          if (this.currentLobby && (this.matchState === 'LOBBY' || this.matchState === 'GAME')) {
+            // Defensive: Ensure readyPlayers array exists
+            if (!this.currentLobby.readyPlayers) {
+              this.currentLobby.readyPlayers = [];
             }
 
-            // Broadcast Update
-            this.broadcastLobbyUpdate();
+            // Validate userId exists
+            const userId = data.userId;
+            if (userId && !this.currentLobby.readyPlayers.includes(userId)) {
+              this.currentLobby.readyPlayers.push(userId);
+              this.broadcastLobbyUpdate();
+            }
           }
         }
 
@@ -249,17 +251,25 @@ export class MatchQueueDO {
         if (data.type === 'BAN_MAP') {
           if (this.currentLobby && this.matchState === 'LOBBY') {
             const { map, team } = data;
-            // Verify turn? For now, trust client for MVP speed, or verify strict turn
+
+            // Defensive: Ensure mapBanState exists
+            if (!this.currentLobby.mapBanState) {
+              this.currentLobby.mapBanState = {
+                step: 0,
+                bannedMaps: [],
+                turn: this.currentLobby.captainA?.id || ''
+              };
+            }
+
             const banState = this.currentLobby.mapBanState;
 
-            if (!banState.bannedMaps.includes(map)) {
+            // Defensive: Ensure bannedMaps array exists
+            if (!banState.bannedMaps) {
+              banState.bannedMaps = [];
+            }
+
+            if (map && !banState.bannedMaps.includes(map)) {
               banState.bannedMaps.push(map);
-              // Add to history if needed
-              // banState.history.push({ team, map }); 
-
-              // Switch Turn logic could be here, or trusted from client for now
-              // Updating backend state is key so we can broadcast it
-
               this.broadcastLobbyUpdate();
             }
           }

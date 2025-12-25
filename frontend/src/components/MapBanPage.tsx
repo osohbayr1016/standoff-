@@ -31,6 +31,26 @@ export default function MapBanPage({ partyMembers, onCancel: _onCancel, onMapSel
 
   const { sendMessage, lastMessage } = useWebSocket(); // Hook
 
+  // Listen for LOBBY_UPDATE from server
+  useEffect(() => {
+    if (lastMessage && lastMessage.type === 'LOBBY_UPDATE') {
+      const lobby = lastMessage.lobby;
+      if (lobby && lobby.mapBanState) {
+        const serverBanned = lobby.mapBanState.bannedMaps || [];
+        setBannedMaps(serverBanned);
+
+        // Check if ban phase is complete
+        if (serverBanned.length >= 6) {
+          const remaining = ALL_MAPS.find(m => !serverBanned.includes(m));
+          if (remaining) {
+            setSelectedMap(remaining);
+            setMapBanPhase(false);
+          }
+        }
+      }
+    }
+  }, [lastMessage]);
+
   // Get current user
   const currentUserId = (() => {
     const savedUser = localStorage.getItem('user');
