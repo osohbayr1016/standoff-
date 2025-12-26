@@ -129,4 +129,54 @@ export function setupProfileRoutes(app: Hono<any>) {
             return c.json({ available: false, error: 'Check failed' }, 500);
         }
     });
+
+    // GET /api/profile/:userId/matches - Get match history
+    app.get('/api/profile/:userId/matches', async (c) => {
+        try {
+            const userId = c.req.param('userId');
+
+            // Find all matches user participated in
+            const matches = await c.env.DB.prepare(
+                `SELECT 
+                    m.id, 
+                    m.map_name, 
+                    m.status, 
+                    m.winner_team,
+                    m.created_at,
+                    m.result_screenshot_url,
+                    mp.team as player_team,
+                    mp.joined_at,
+                    m.alpha_score,
+                    m.bravo_score
+                FROM matches m
+                JOIN match_players mp ON m.id = mp.match_id
+                WHERE mp.player_id = ? AND m.status IN ('completed', 'pending_review')
+                ORDER BY m.created_at DESC
+                LIMIT 20`
+            ).bind(userId).all();
+
+            return c.json({ matches: matches.results || [] });
+        } catch (error) {
+            console.error('Match history error:', error);
+            return c.json({ error: 'Failed to fetch match history' }, 500);
+        }
+    });
+
+    // GET /api/profile/:userId/elo-history - Get ELO history
+    app.get('/api/profile/:userId/elo-history', async (c) => {
+        try {
+            const userId = c.req.param('userId');
+
+            const history = await c.env.DB.prepare(
+                `SELECT * FROM elo_history 
+                 WHERE user_id = ? 
+                 ORDER BY created_at ASC`
+            ).bind(userId).all();
+
+            return c.json({ history: history.results || [] });
+        } catch (error) {
+            console.error('ELO history error:', error);
+            return c.json({ error: 'Failed to fetch ELO history' }, 500);
+        }
+    });
 }

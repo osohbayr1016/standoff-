@@ -8,7 +8,8 @@ import { setupProfileRoutes } from './routes/profile';
 import { setupLeaderboardRoutes } from './routes/leaderboard';
 import { setupAdminRoutes } from './routes/admin';
 import { setupFriendsRoutes } from './routes/friends';
-import neatqueueWebhook from './webhooks/neatqueue';
+import { matchesRoutes } from './routes/matches';
+import { moderatorRoutes } from './routes/moderator';
 
 // ============= Type Definitions =============
 interface QueuePlayer {
@@ -68,7 +69,9 @@ interface Env {
   DISCORD_SERVER_ID: string;
   DISCORD_CHANNEL_ID: string;
   FRONTEND_URL: string;
+  MODERATOR_ROLE_ID?: string;
   NEATQUEUE_API_KEY?: string;
+  DISCORD_BOT_TOKEN?: string;
   NEATQUEUE_WEBHOOK_SECRET?: string;
 }
 
@@ -313,14 +316,11 @@ export class MatchQueueDO {
         await this.loadMatchState();
       }
 
-      await this.syncWithNeatQueue(); // Updates this.remoteQueue
+      // Process lobby updates (no more auto-matchmaking)
       const merged = this.getMergedQueue();
 
-      // 1. MATCHMAKING CHECK
-      // Always check if we have enough players to start a NEW match
-      if (merged.length >= 10) {
-        await this.startMatch(merged.slice(0, 10));
-      }
+      // Note: Auto-matchmaking removed - using manual lobby system
+      // Old logic that started match when 10 players queued is removed
 
       // 2. LOBBY TIMEOUT CHECKS
       for (const [lobbyId, lobby] of this.activeLobbies) {
@@ -620,49 +620,7 @@ export class MatchQueueDO {
 
 
 
-  async syncWithNeatQueue() {
-    if (!this.env.NEATQUEUE_API_KEY || !this.env.DISCORD_CHANNEL_ID) {
-      // console.warn("NeatQueue env vars missing, skipping sync");
-      return;
-    }
-
-    try {
-      // Create a controller with timeout
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 4000); // 4s timeout
-
-      const apiKey = this.env.NEATQUEUE_API_KEY;
-      if (!apiKey) {
-        console.error("❌ NEATQUEUE_API_KEY is missing in env!");
-        return;
-      }
-
-      // Log masked key to verify it's loaded correctly
-      const maskedKey = apiKey.substring(0, 4) + '...' + apiKey.substring(apiKey.length - 4);
-      console.log(`🔍 Syncing with NeatQueue using key: ${maskedKey}`);
-
-      const response = await fetch(
-        `https://api.neatqueue.com/api/v1/queue/${this.env.DISCORD_CHANNEL_ID}/players`,
-        {
-          headers: {
-            'Authorization': `${apiKey}`
-          },
-          signal: controller.signal
-        }
-      );
-
-      clearTimeout(timeoutId);
-
-      if (response.ok) {
-        const data = await response.json() as any;
-        this.remoteQueue = data.players || [];
-      } else {
-        console.error(`❌ NeatQueue API returned ${response.status}: ${await response.text()}`);
-      }
-    } catch (e) {
-      console.error("❌ Failed to sync with NeatQueue:", e instanceof Error ? e.message : String(e));
-    }
-  }
+  // NeatQueue sync removed - using manual lobby system now
 
   async handleSession(ws: WebSocket) {
     ws.accept();
@@ -760,7 +718,7 @@ export class MatchQueueDO {
               elo: msg.elo || currentUserData?.elo || 1000
             };
             this.localQueue.set(userId, user);
-            this.syncWithNeatQueue();
+            // NeatQueue sync removed
             this.broadcastMergedQueue();
           }
         }
@@ -1066,7 +1024,7 @@ export class MatchQueueDO {
             const result = await this.env.DB.prepare(
               'SELECT role FROM players WHERE id = ?'
             ).bind(userId).first();
-            return result && (result.role === 'moderator' || result.role === 'admin');
+            return !!(result && (result.role === 'moderator' || result.role === 'admin'));
           } catch (e) {
             console.error('Error checking moderator status:', e);
             return false;
@@ -1284,20 +1242,7 @@ export class MatchQueueDO {
 }
 
 // 2. Hono API
-const app = new Hono<{
-  Bindings: {
-    DB: D1Database,
-    MATCH_QUEUE: DurableObjectNamespace,
-    DISCORD_CLIENT_ID: string,
-    DISCORD_CLIENT_SECRET: string,
-    DISCORD_REDIRECT_URI: string,
-    NEATQUEUE_API_KEY: string,
-    DISCORD_SERVER_ID: string,
-    DISCORD_CHANNEL_ID: string,
-    DISCORD_BOT_TOKEN: string,
-    FRONTEND_URL: string
-  }
-}>();
+const app = new Hono<{ Bindings: Env }>();
 
 // CORS-ийг идэвхжүүлэх
 app.use('/*', cors({
@@ -1393,6 +1338,8 @@ app.get('/api/auth/callback', async (c) => {
 
     // 2.5 Verify Membership in Official Server
     const requiredGuildId = c.env.DISCORD_SERVER_ID;
+    let hasModeratorRole = false;
+
     if (requiredGuildId) {
       try {
         const memberResponse = await fetch(`https://discord.com/api/users/@me/guilds/${requiredGuildId}/member`, {
@@ -1406,6 +1353,28 @@ app.get('/api/auth/callback', async (c) => {
           const frontendUrl = c.env.FRONTEND_URL || 'http://localhost:5173';
           return c.redirect(`${frontendUrl}?error=not_in_server`);
         }
+
+        // Check if user has moderator role
+        const moderatorRoleId = c.env.MODERATOR_ROLE_ID;
+        if (moderatorRoleId) {
+          const memberData = await memberResponse.json() as any;
+          if (memberData.roles && Array.isArray(memberData.roles)) {
+            hasModeratorRole = memberData.roles.includes(moderatorRoleId);
+            console.log(`User ${userData.id} moderator role check: ${hasModeratorRole} (Expected Role: ${moderatorRoleId}, User Roles: ${JSON.stringify(memberData.roles)})`);
+          } else {
+            console.warn(`User ${userData.id} has no roles or invalid response`, memberData);
+          }
+        } else {
+          console.warn('MODERATOR_ROLE_ID not set in env');
+        }
+
+        // TEMP FIX: Force moderator for nevalast03
+        if (userData.id === '1237067681623052288') {
+          console.log('Force granting moderator/admin to nevalast03');
+          hasModeratorRole = true;
+          // Also force set to admin if needed, but let's stick to moderator logic first
+        }
+
       } catch (membErr) {
         console.error('Error checking guild membership:', membErr);
         // We might choose to allow or block on error. 
@@ -1429,6 +1398,18 @@ app.get('/api/auth/callback', async (c) => {
         userData.username,
         userData.avatar
       ).run();
+
+      // Update role based on Discord moderator role
+      if (hasModeratorRole) {
+        await c.env.DB.prepare(
+          `UPDATE players SET role = 'moderator' WHERE id = ? AND (role = 'user' OR role IS NULL)`
+        ).bind(userData.id).run();
+      } else {
+        // If user lost moderator role in Discord, revert to user (but not if they're admin)
+        await c.env.DB.prepare(
+          `UPDATE players SET role = 'user' WHERE id = ? AND role = 'moderator'`
+        ).bind(userData.id).run();
+      }
 
       const { results } = await c.env.DB.prepare(
         `SELECT role, elo FROM players WHERE id = ?`
@@ -1562,8 +1543,9 @@ app.post('/api/match/server-info', async (c) => {
   }
 });
 
-// NeatQueue Webhook Handler
-app.route('/api/neatqueue', neatqueueWebhook);
+// New Manual Matchmaking Routes
+app.route('/api/matches', matchesRoutes);
+app.route('/api/moderator', moderatorRoutes);
 
 export default {
   fetch: app.fetch,

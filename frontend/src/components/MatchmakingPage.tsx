@@ -1,380 +1,363 @@
-import { useState, useEffect } from "react";
-import "./MatchmakingPage.css";
-import InviteFriendModal from "./InviteFriendModal";
-import { useWebSocket } from "./WebSocketContext"; // Import Hook
-import DebugConsole from "./DebugConsole";
+import React, { useState, useEffect } from 'react';
+import { useWebSocket } from './WebSocketContext';
+import LobbyDetailPage from './LobbyDetailPage';
+import './MatchmakingPage.css';
 
-interface PartyMember {
-  id: string;
-  username: string;
-  avatar?: string;
-  elo?: number;
+interface Match {
+    id: string;
+    lobby_url: string;
+    host_id: string;
+    host_username?: string;
+    host_avatar?: string;
+    status: string;
+    player_count: number;
+    max_players: number;
+    map_name?: string;
+    current_players?: number;
+    created_at: string;
 }
 
 interface MatchmakingPageProps {
-  onCancel: () => void;
-  onStartLobby?: (partyMembers: PartyMember[]) => void;
-  activeLobbyId?: string; // Add prop to check if user is in a lobby
-  lobbyState?: any; // Full lobby data
+    user: {
+        id: string;
+        username: string;
+        avatar?: string;
+    } | null;
+    backendUrl: string;
 }
 
-export default function MatchmakingPage({
-  onCancel: _onCancel,
-  onStartLobby,
-  activeLobbyId,
-  lobbyState
-}: MatchmakingPageProps) {
-  const [partyMembers, setPartyMembers] = useState<PartyMember[]>([]);
-  const [showInviteModal, setShowInviteModal] = useState(false);
+const MatchmakingPage: React.FC<MatchmakingPageProps> = ({ user, backendUrl }) => {
+    const { sendMessage: _sendMessage, lastMessage } = useWebSocket();
+    const [matches, setMatches] = useState<Match[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [showCreateModal, setShowCreateModal] = useState(false);
+    const [lobbyUrl, setLobbyUrl] = useState('');
+    const [mapName, setMapName] = useState('');
+    const [creating, setCreating] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+    const [, setUserMatch] = useState<Match | null>(null);
+    const [selectedMatchId, setSelectedMatchId] = useState<string | null>(null);
 
-  const { sendMessage, lastMessage } = useWebSocket(); // Use Real WS
-
-  useEffect(() => {
-    // Load current user into party
-    const savedUser = localStorage.getItem("user");
-    if (savedUser) {
-      try {
-        const userData = JSON.parse(savedUser);
-        setPartyMembers([userData]);
-      } catch (e) {
-        // Invalid data
-      }
-    }
-
-    // NOTE: Removed auto-leave queue to allow persistence
-  }, [sendMessage]);
-
-  // Listen for WS Updates
-  useEffect(() => {
-    if (!lastMessage) return;
-
-    if (lastMessage.type === "QUEUE_UPDATE") {
-      // Logic for queue updates (count)
-      if (lastMessage.players && Array.isArray(lastMessage.players)) {
-        // Map NeatQueue players to our UI format
-        const externalPlayers: PartyMember[] = lastMessage.players.map(
-          (p: any) => ({
-            id: p.id || p.discord_id || "unknown",
-            username: p.username || p.name || "Unknown Player",
-            avatar: p.avatar_url || p.avatar || undefined, // Adjust based on actual API response
-            elo: p.elo || 1000,
-          })
-        );
-
-        // Update local party view with these players
-        // We only show them as filling slots
-        setPartyMembers(externalPlayers);
-
-        // SYNC LOCAL STATE: Check if WE are in this list
-        // This allows user to navigate away and return to "Finding Match" state
-        const user = JSON.parse(localStorage.getItem("user") || "{}");
-        if (user.id) {
-          const amIInQueue = externalPlayers.some(p => String(p.id) === String(user.id) || String(p.username) === String(user.username));
-          setIsInQueue(amIInQueue);
-          if (amIInQueue) {
-            console.log("Synced queue state: User is in queue");
-          }
+    // Fetch matches
+    const fetchMatches = async () => {
+        try {
+            const response = await fetch(`${backendUrl}/api/matches?status=waiting`);
+            const data = await response.json();
+            if (data.success) {
+                setMatches(data.matches);
+            }
+        } catch (err) {
+            console.error('Error fetching matches:', err);
+        } finally {
+            setLoading(false);
         }
-      }
-    }
+    };
 
-    // Don't auto-navigate to lobby from matchmaking page
-    // User should use "RETURN TO MATCH" button to go to lobby
-    // This prevents wrong lobby bug and allows free navigation
-    if (lastMessage.type === "MATCH_READY") {
-      // Just log that match is ready, but don't navigate
-      // The global handler in App.tsx will set activeLobbyId
-      // and show "RETURN TO MATCH" button
-      console.log("Match Ready received on matchmaking page - staying on page");
-    }
-  }, [lastMessage, onStartLobby]);
+    useEffect(() => {
+        fetchMatches();
+        // Refresh every 5 seconds
+        const interval = setInterval(fetchMatches, 5000);
+        return () => clearInterval(interval);
+    }, [backendUrl]);
 
-  // Check if current user is in queue (only set when explicitly joining, not from QUEUE_UPDATE)
-  const [isInQueue, setIsInQueue] = useState(false);
-
-  const handleJoinQueue = () => {
-    // Don't allow joining queue if user is already in a lobby
-    if (activeLobbyId) {
-      return;
-    }
-    const user = JSON.parse(localStorage.getItem("user") || "{}");
-    if (user.id) {
-      sendMessage({
-        type: "JOIN_QUEUE",
-        userId: user.id,
-        username: user.username,
-        avatar: user.avatar,
-      });
-      setIsInQueue(true);
-    }
-  };
-
-  const handleLeaveQueue = () => {
-    const user = JSON.parse(localStorage.getItem("user") || "{}");
-    if (user.id) {
-      sendMessage({ type: "LEAVE_QUEUE", userId: user.id });
-      setIsInQueue(false);
-    }
-  };
-
-  const handleInviteFriend = (_slotIndex: number) => {
-    setShowInviteModal(true);
-  };
-
-  const handleFriendInvited = (friend: any) => {
-    // Send invite via WebSocket
-    const user = JSON.parse(localStorage.getItem("user") || "{}");
-    if (user.id) {
-      sendMessage({
-        type: "SEND_INVITE",
-        targetId: friend.id,
-        fromUser: {
-          id: user.id,
-          username: user.username,
-          avatar: user.avatar,
-        },
-        lobbyId: "global", // Or specific lobby ID if we were using rooms
-      });
-      alert(`${friend.nickname || friend.username} хүнд урилга илгээлээ!`);
-      setShowInviteModal(false);
-    }
-  };
-
-
-
-  // ... helper methods ...
-  const getAvatarUrl = (member: PartyMember) => {
-    if (member.avatar) {
-      if (member.avatar.startsWith("http")) return member.avatar;
-      return `https://cdn.discordapp.com/avatars/${member.id}/${member.avatar}.png`;
-    }
-    return null;
-  };
-
-  const renderPartySlot = (index: number) => {
-    const member =
-      index < partyMembers.length ? partyMembers[index] : undefined;
-    return (
-      <div
-        key={index}
-        className={`party-slot ${member ? "filled" : "empty"}`}
-        onClick={() => !member && handleInviteFriend(index)}
-      >
-        <div className="party-slot-border">
-          <div className="slot-corner-tl"></div>
-          <div className="slot-corner-tr"></div>
-          <div className="slot-corner-bl"></div>
-          <div className="slot-corner-br"></div>
-        </div>
-        {member ? (
-          <>
-            <div className="party-slot-avatar">
-              {getAvatarUrl(member) ? (
-                <img src={getAvatarUrl(member)!} alt={member.username} />
-              ) : (
-                <div className="party-slot-avatar-placeholder">
-                  {member.username.charAt(0).toUpperCase()}
-                </div>
-              )}
-            </div>
-            <div className="party-slot-info">
-              <div className="party-slot-username">{member.username}</div>
-              <div className="party-slot-elo">{member.elo || 1000} ELO</div>
-              <div className="party-slot-status">БЭЛЭН</div>
-            </div >
-          </>
-        ) : (
-          <div className="party-slot-add-icon"></div>
-        )
-        }
-      </div >
-    );
-  };
-
-  // If user is in a lobby, show active match info instead of queue
-  if (activeLobbyId) {
-    const teamA = lobbyState?.teamA || [];
-    const teamB = lobbyState?.teamB || [];
-    const mapName = lobbyState?.mapBanState?.selectedMap || 'Unknown';
-
-    return (
-      <div className="matchmaking-page">
-        <div className="cyber-grid-bg"></div>
-        <DebugConsole />
-
-        <div className="matchmaking-content">
-          <h1 className="matchmaking-title" data-text="ACTIVE MATCH">ACTIVE MATCH</h1>
-
-          <div className="active-match-card" style={{
-            background: 'rgba(15, 23, 42, 0.8)',
-            border: '2px solid #ff8c00',
-            borderRadius: '12px',
-            padding: '2rem',
-            width: '100%',
-            maxWidth: '600px',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            gap: '1.5rem',
-            boxShadow: '0 0 40px rgba(255, 140, 0, 0.2)'
-          }}>
-            <div className="match-status-badge" style={{
-              background: '#22c55e', color: 'white', padding: '0.25rem 1rem', borderRadius: '20px', fontWeight: 'bold'
-            }}>
-              LIVE
-            </div>
-
-            <div className="map-display" style={{ fontSize: '2rem', fontWeight: '900', color: 'white' }}>
-              {mapName}
-            </div>
-
-            <div className="teams-preview" style={{ display: 'flex', gap: '2rem', alignItems: 'center' }}>
-              <div className="team-a-preview" style={{ textAlign: 'right' }}>
-                <div style={{ color: '#60a5fa', fontWeight: 'bold' }}>TEAM ALPHA</div>
-                <div style={{ fontSize: '1.5rem', fontWeight: '900' }}>{teamA.length} Players</div>
-              </div>
-              <div style={{ fontSize: '1.5rem', color: '#ff8c00', fontWeight: '900' }}>VS</div>
-              <div className="team-b-preview" style={{ textAlign: 'left' }}>
-                <div style={{ color: '#f87171', fontWeight: 'bold' }}>TEAM BRAVO</div>
-                <div style={{ fontSize: '1.5rem', fontWeight: '900' }}>{teamB.length} Players</div>
-              </div>
-            </div>
-
-            <button
-              className="find-match-btn-large"
-              style={{ width: '100%', marginTop: '1rem' }}
-              onClick={() => {
-                // If we could access setCurrentPage here we would use it, 
-                // but for now we rely on the header navigation or wait for auto-redirect
-                window.location.reload();
-              }}
-            >
-              RETURN TO LOBBY
-            </button>
-
-            <button
-              className="cancel-button"
-              style={{ width: '100%', marginTop: '0.5rem', background: '#ef4444', border: '1px solid #dc2626' }}
-              onClick={() => {
-                if (confirm("Are you sure you want to force leave this match? Use this only if you are stuck.")) {
-                  const user = JSON.parse(localStorage.getItem("user") || "{}");
-                  if (user.id && activeLobbyId) {
-                    sendMessage({ type: "LEAVE_MATCH", userId: user.id, lobbyId: activeLobbyId });
-                    // Also proactively clear local state just in case
-                    localStorage.removeItem("activeLobbyId");
-                    window.location.reload();
-                  }
+    // Handle WebSocket messages for real-time updates
+    useEffect(() => {
+        if (lastMessage) {
+            try {
+                const msg = JSON.parse(lastMessage);
+                if (msg.type === 'LOBBY_CREATED' || msg.type === 'LOBBY_UPDATED' || msg.type === 'PLAYER_JOINED' || msg.type === 'PLAYER_LEFT') {
+                    fetchMatches();
                 }
-              }}
-            >
-              FORCE LEAVE (STUCK?)
-            </button>
+            } catch (e) { }
+        }
+    }, [lastMessage]);
 
-            <p style={{ color: '#94a3b8', fontSize: '0.9rem' }}>
-              Click "Return to Match" in header/menu
-            </p>
-          </div>
-        </div>
-      </div>
-    );
-  }
+    // Create lobby
+    const handleCreateLobby = async () => {
+        if (!user || !lobbyUrl.trim()) return;
 
-  return (
-    <div className="matchmaking-page">
-      <div className="cyber-grid-bg"></div>
-      <DebugConsole />
+        setCreating(true);
+        setError(null);
 
-      {showInviteModal && (
-        <InviteFriendModal
-          currentPartyIds={partyMembers.map((m) => m.id)}
-          onInvite={handleFriendInvited}
-          onClose={() => setShowInviteModal(false)}
-        />
-      )}
+        try {
+            const response = await fetch(`${backendUrl}/api/matches`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    lobby_url: lobbyUrl.trim(),
+                    host_id: user.id,
+                    map_name: mapName.trim() || undefined
+                })
+            });
 
-      <div className="matchmaking-content">
-        <>
-          <h1 className="matchmaking-title" data-text="НЭГДСЭН ТОГЛОЛТ ОЛОХ">
-            НЭГДСЭН ДАРААЛАЛ
-          </h1>
-          <div className="matchmaking-subtitle">Веб + Discord Синхрончлол</div>
+            const data = await response.json();
 
-          <div className="live-counter-large">
-            <span className="live-count-number">{partyMembers.length}</span>
-            <span className="live-count-text">ДАРААЛАЛД БАЙГАА ТОГЛОГЧИД</span>
-          </div>
+            if (data.success) {
+                setShowCreateModal(false);
+                setLobbyUrl('');
+                setMapName('');
+                fetchMatches();
+            } else {
+                setError(data.error || 'Failed to create lobby');
+            }
+        } catch (err) {
+            setError('Network error');
+        } finally {
+            setCreating(false);
+        }
+    };
 
-          <div className="radar-container">
-            <div className="radar-outer-ring"></div>
-            <div className="radar-sweep"></div>
-            <div className="radar-grid-lines"></div>
+    // Join lobby
+    const handleJoinLobby = async (matchId: string) => {
+        if (!user) return;
 
-            <div className="map-hologram">
-              <div
-                style={{
-                  color: isInQueue ? "#00ff00" : "#ff6b35",
-                  fontSize: "24px",
-                  textAlign: "center",
-                  marginTop: "15px",
+        try {
+            const response = await fetch(`${backendUrl}/api/matches/${matchId}/join`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    player_id: user.id
+                })
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                fetchMatches();
+            } else {
+                alert(data.error || 'Failed to join lobby');
+            }
+        } catch (err) {
+            alert('Network error');
+        }
+    };
+
+    // Leave lobby
+    const handleLeaveLobby = async (matchId: string) => {
+        if (!user) return;
+
+        try {
+            const response = await fetch(`${backendUrl}/api/matches/${matchId}/leave`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    player_id: user.id
+                })
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                setUserMatch(null);
+                fetchMatches();
+            } else {
+                alert(data.error || 'Failed to leave lobby');
+            }
+        } catch (err) {
+            alert('Network error');
+        }
+    };
+
+    // Start match
+    const handleStartMatch = async (matchId: string) => {
+        if (!user) return;
+
+        try {
+            const response = await fetch(`${backendUrl}/api/matches/${matchId}/status`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    host_id: user.id,
+                    status: 'in_progress'
+                })
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                fetchMatches();
+            } else {
+                alert(data.error || 'Failed to start match');
+            }
+        } catch (err) {
+            alert('Network error');
+        }
+    };
+
+    if (!user) {
+        return (
+            <div className="matchmaking-page">
+                <div className="matchmaking-container">
+                    <h1>🎮 Matchmaking</h1>
+                    <p className="login-prompt">Please login to access matchmaking</p>
+                </div>
+            </div>
+        );
+    }
+
+    // Show lobby detail page if a match is selected
+    if (selectedMatchId) {
+        return (
+            <LobbyDetailPage
+                matchId={selectedMatchId}
+                user={user}
+                backendUrl={backendUrl}
+                onBack={() => {
+                    setSelectedMatchId(null);
+                    fetchMatches();
                 }}
-              >
-                {isInQueue ? "ХАЙЖ БАЙНА" : "ХООСОН"}
-              </div>
-            </div>
-          </div>
+            />
+        );
+    }
 
-          <div className="timer-section">
-            <div className="player-count">
-              <span className="count-label">ДАРААЛАЛД БАЙГАА ТОГЛОГЧИД</span>
-              <span className="count-val">{partyMembers.length} / 10</span>
-            </div>
-          </div>
-        </>
-      </div>
+    return (
+        <div className="matchmaking-page">
+            <div className="matchmaking-container">
+                <div className="matchmaking-header">
+                    <h1>🎮 Active Lobbies</h1>
+                    <button
+                        className="create-lobby-btn"
+                        onClick={() => setShowCreateModal(true)}
+                    >
+                        + Create Lobby
+                    </button>
+                </div>
 
-      <div className="party-slots-container">
-        <div className="party-slots-label">
-          ЛОББИЙН ТӨЛӨВ //{" "}
-          <span className="highlight">
-            {isInQueue ? "ХАЙЖ БАЙНА..." : "ХУЛЭЭЖ БАЙНА"}
-          </span>
-        </div>
-        <div className="party-slots">
-          <div className="party-slots-row">
-            {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((index) =>
-              renderPartySlot(index)
+                {loading ? (
+                    <div className="loading-state">
+                        <div className="spinner"></div>
+                        <p>Loading lobbies...</p>
+                    </div>
+                ) : matches.length === 0 ? (
+                    <div className="empty-state">
+                        <div className="empty-icon">🎯</div>
+                        <h3>No Active Lobbies</h3>
+                        <p>Be the first to create a lobby!</p>
+                        <button
+                            className="create-lobby-btn large"
+                            onClick={() => setShowCreateModal(true)}
+                        >
+                            Create Lobby
+                        </button>
+                    </div>
+                ) : (
+                    <div className="lobbies-grid">
+                        {matches.map((match) => (
+                            <div key={match.id} className="lobby-card" onClick={() => setSelectedMatchId(match.id)} style={{ cursor: 'pointer' }}>
+                                <div className="lobby-header">
+                                    <div className="host-info">
+                                        {match.host_avatar && (
+                                            <img
+                                                src={`https://cdn.discordapp.com/avatars/${match.host_id}/${match.host_avatar}.png`}
+                                                alt=""
+                                                className="host-avatar"
+                                            />
+                                        )}
+                                        <span className="host-name">{match.host_username || 'Unknown Host'}</span>
+                                    </div>
+                                    <span className={`status-badge ${match.status}`}>
+                                        {match.status}
+                                    </span>
+                                </div>
+
+                                <div className="lobby-info">
+                                    <div className="player-count">
+                                        <span className="count">{match.current_players || match.player_count}</span>
+                                        <span className="separator">/</span>
+                                        <span className="max">{match.max_players}</span>
+                                        <span className="label">players</span>
+                                    </div>
+                                    {match.map_name && (
+                                        <div className="map-name">
+                                            🗺️ {match.map_name}
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div className="lobby-actions">
+                                    {match.host_id === user.id ? (
+                                        <>
+                                            <button
+                                                className="action-btn start"
+                                                onClick={() => handleStartMatch(match.id)}
+                                                disabled={(match.current_players || match.player_count) < 2}
+                                            >
+                                                Start Match
+                                            </button>
+                                            <button
+                                                className="action-btn cancel"
+                                                onClick={() => handleLeaveLobby(match.id)}
+                                            >
+                                                Cancel
+                                            </button>
+                                        </>
+                                    ) : (
+                                        <button
+                                            className="action-btn join"
+                                            onClick={() => handleJoinLobby(match.id)}
+                                            disabled={(match.current_players || match.player_count) >= match.max_players}
+                                        >
+                                            Join Lobby
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </div>
+
+            {/* Create Lobby Modal */}
+            {showCreateModal && (
+                <div className="modal-overlay" onClick={() => setShowCreateModal(false)}>
+                    <div className="modal-content" onClick={e => e.stopPropagation()}>
+                        <h2>Create New Lobby</h2>
+
+                        <div className="form-group">
+                            <label>Lobby URL *</label>
+                            <input
+                                type="text"
+                                value={lobbyUrl}
+                                onChange={(e) => setLobbyUrl(e.target.value)}
+                                placeholder="standoff2://lobby/..."
+                                className="form-input"
+                            />
+                            <p className="form-hint">Paste your Standoff 2 custom lobby URL</p>
+                        </div>
+
+                        <div className="form-group">
+                            <label>Map Name (optional)</label>
+                            <input
+                                type="text"
+                                value={mapName}
+                                onChange={(e) => setMapName(e.target.value)}
+                                placeholder="e.g. Dust, Sandstone..."
+                                className="form-input"
+                            />
+                        </div>
+
+                        {error && <div className="error-message">{error}</div>}
+
+                        <div className="modal-actions">
+                            <button
+                                className="btn-cancel"
+                                onClick={() => setShowCreateModal(false)}
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                className="btn-create"
+                                onClick={handleCreateLobby}
+                                disabled={creating || !lobbyUrl.trim()}
+                            >
+                                {creating ? 'Creating...' : 'Create Lobby'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
             )}
-          </div>
         </div>
-      </div>
+    );
+};
 
-      <div className="matchmaking-actions">
-        {!isInQueue ? (
-          <button
-            className="find-match-btn-large cyber-button-primary"
-            onClick={handleJoinQueue}
-            disabled={!!activeLobbyId}
-            style={{
-              opacity: activeLobbyId ? 0.5 : 1,
-              cursor: activeLobbyId ? "not-allowed" : "pointer",
-            }}
-            title={activeLobbyId ? "You are already in a match lobby" : ""}
-          >
-            <span className="btn-content">
-              {activeLobbyId ? "ЛОББИД БАЙНА" : "ДАРААЛАЛД НЭГДЭХ"}
-            </span>
-            <div className="btn-glitch"></div>
-          </button>
-        ) : (
-          <button
-            className="cancel-button cyber-button-secondary"
-            onClick={handleLeaveQueue}
-          >
-            <span className="btn-content">ДАРААЛАЛААС ГАРАХ</span>
-          </button>
-        )}
-
-      </div>
-    </div>
-  );
-}
+export default MatchmakingPage;

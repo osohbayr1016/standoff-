@@ -22,10 +22,32 @@ export interface MatchData {
 }
 
 export interface BackendMessage {
-    type: 'MATCH_READY' | 'MATCH_CANCELLED' | 'LOBBY_UPDATE' | 'QUEUE_UPDATE' | 'SERVER_CREATED' | 'SERVER_CREATION_FAILED' | 'MATCH_START' | 'CREATE_MATCH' | 'REGISTER_ACK' | 'MATCH_RESET';
+    type:
+    | 'MATCH_READY'
+    | 'MATCH_CANCELLED'
+    | 'LOBBY_UPDATE'
+    | 'QUEUE_UPDATE'
+    | 'SERVER_CREATED'
+    | 'SERVER_CREATION_FAILED'
+    | 'MATCH_START'
+    | 'CREATE_MATCH'
+    | 'REGISTER_ACK'
+    | 'MATCH_RESET'
+    // New types for manual matchmaking
+    | 'VERIFY_MODERATOR'
+    | 'VERIFY_MODERATOR_RESPONSE'
+    | 'MATCH_CREATED'
+    | 'MATCH_RESULT_SUBMITTED'
+    | 'LOBBY_CREATED'
+    | 'PLAYER_JOINED'
+    | 'PLAYER_LEFT';
     lobbyId?: string;
+    matchId?: string;
     matchData?: MatchData;
     userId?: string;
+    discordId?: string;
+    requestId?: string;
+    isModerator?: boolean;
     timestamp?: number;
 }
 

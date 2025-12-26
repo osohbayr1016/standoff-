@@ -32,7 +32,7 @@
     "DISCORD_SERVER_ID": "1452635831901753357",
     "DISCORD_CHANNEL_ID": "1453526990798983394",
     "FRONTEND_URL": "https://main.standoff-frontend.pages.dev",
-    "NEATQUEUE_WEBHOOK_SECRET": "CMMvOiC5EiecsaKPldUf11N4HsyIZsE0"
+    "MODERATOR_ROLE_ID": "1454067327074177167"
   },
   "observability": {
     "logs": {

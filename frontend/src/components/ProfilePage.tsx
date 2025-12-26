@@ -16,6 +16,7 @@ interface ProfileData {
   elo: number;
   wins: number;
   losses: number;
+  matches?: any[];
 }
 
 interface ProfilePageProps {
@@ -53,10 +54,30 @@ export default function ProfilePage({
         `${import.meta.env.VITE_BACKEND_URL || "http://localhost:8787"
         }/api/profile/${user.id}`
       );
+
+      let profileData: any = {};
+
       if (res.ok) {
-        const data = await res.json();
-        setProfile(data);
-        setNewNickname(data.standoff_nickname || "");
+        profileData = await res.json();
+      }
+
+      // Fetch Matches
+      try {
+        const matchesRes = await fetch(
+          `${import.meta.env.VITE_BACKEND_URL || "http://localhost:8787"
+          }/api/profile/${user.id}/matches`
+        );
+        if (matchesRes.ok) {
+          const matchesData = await matchesRes.json();
+          profileData.matches = matchesData.matches || [];
+        }
+      } catch (e) {
+        console.error("Failed to fetch matches", e);
+      }
+
+      if (profileData.id) {
+        setProfile(profileData);
+        setNewNickname(profileData.standoff_nickname || "");
         setAvatarError(false); // Reset avatar error when profile loads
       } else {
         console.error("Failed to fetch profile");
@@ -308,13 +329,33 @@ export default function ProfilePage({
             <div className="table-header">
               <span>ГАЗАР ЗУРАГ</span>
               <span>ҮР ДҮН</span>
-              <span>ОНОО</span>
+              <span>ОНОО (A-B)</span>
               <span>ОГНОО</span>
             </div>
 
             <div className="match-history-list">
-              {/* Match history integration pending backend endpoint */}
-              <div className="no-matches">БИЧИГДСЭН АЖИЛЛАГАА БАЙХГҮЙ</div>
+              {profile?.matches && profile.matches.length > 0 ? (
+                profile.matches.map((match: any) => {
+                  const isWinner = match.winner_team === match.player_team;
+                  const resultClass = isWinner ? 'win' : 'loss';
+                  const resultText = isWinner ? 'ХОЖИЛ' : 'ХОЖИГДОЛ';
+
+                  return (
+                    <div key={match.id} className={`history-row ${resultClass}`}>
+                      <span className="map-name">{match.map_name || 'Random'}</span>
+                      <span className={`result-badge ${resultClass}`}>{resultText}</span>
+                      <span className="score-text">
+                        {match.alpha_score ?? '-'} : {match.bravo_score ?? '-'}
+                      </span>
+                      <span className="date-text">
+                        {new Date(match.created_at).toLocaleDateString()}
+                      </span>
+                    </div>
+                  );
+                })
+              ) : (
+                <div className="no-matches">БИЧИГДСЭН АЖИЛЛАГАА БАЙХГҮЙ</div>
+              )}
             </div>
           </div>
         </div>

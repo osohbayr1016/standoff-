@@ -15,8 +15,6 @@ interface HeaderProps {
   user?: User | null;
   onNavigate: (page: string) => void;
   onLogout: () => void;
-  activeLobbyId?: string; // New Prop
-  onReturnToMatch?: () => void; // Callback to request match state
 }
 
 export default function Header({
@@ -24,8 +22,6 @@ export default function Header({
   user,
   onNavigate,
   onLogout,
-  activeLobbyId,
-  onReturnToMatch,
 }: HeaderProps) {
   const [showDropdown, setShowDropdown] = useState(false);
 
@@ -63,19 +59,7 @@ export default function Header({
 
         {/* Desktop Nav */}
         <nav className="nav desktop-nav">
-          {activeLobbyId && !["mapban", "matchlobby", "matchgame"].includes(currentPage) && (
-            <button
-              className="nav-link return-match-btn"
-              onClick={() => {
-                if (onReturnToMatch) {
-                  onReturnToMatch();
-                }
-                onNavigate("mapban");
-              }}
-            >
-              <span className="pulse-dot"></span> Тоглолт-руу буцах
-            </button>
-          )}
+
           <button
             className={`nav-link ${currentPage === "home" ? "active" : ""}`}
             onClick={() => onNavigate("home")}
@@ -135,21 +119,7 @@ export default function Header({
           </div>
 
           <div className="mobile-nav-links">
-            {activeLobbyId &&
-              !["mapban", "matchlobby", "matchgame"].includes(currentPage) && (
-                <button
-                  className="mobile-nav-link return-match-btn-mobile"
-                  onClick={() => {
-                    if (onReturnToMatch) {
-                      onReturnToMatch();
-                    }
-                    onNavigate("mapban");
-                    setShowDropdown(false);
-                  }}
-                >
-                  <span className="pulse-dot"></span> Тоглолт-руу буцах
-                </button>
-              )}
+
             <button
               className={`mobile-nav-link ${currentPage === "home" ? "active" : ""
                 }`}

@@ -1,21 +1,21 @@
 import { Client } from 'discord.js';
 import WebSocket from 'ws';
 import type { BackendMessage, MatchData } from '../types';
-import { NeatQueueService } from './neatqueue';
+import { ModeratorService } from './moderator';
 
 export class BackendService {
     private ws: WebSocket | null = null;
     private reconnectTimeout: NodeJS.Timeout | null = null;
     private client: Client | null = null;
-    private neatQueueService: NeatQueueService | null = null;
+    private moderatorService: ModeratorService | null = null;
 
     constructor(
         private backendUrl: string,
         private webhookSecret?: string
     ) { }
 
-    setNeatQueueService(service: NeatQueueService) {
-        this.neatQueueService = service;
+    setModeratorService(service: ModeratorService) {
+        this.moderatorService = service;
     }
 
     async connect(client: Client) {
@@ -42,8 +42,18 @@ export class BackendService {
                     const message: BackendMessage = JSON.parse(raw);
                     this.send({ type: 'DEBUG_BOT_LOG', message: `Received: ${message.type}` });
 
-                    if (message.type === 'CREATE_MATCH' && message.matchData) {
-                        await this.handleCreateMatch(message.matchData);
+                    // Handle moderator verification requests
+                    if (message.type === 'VERIFY_MODERATOR') {
+                        await this.handleVerifyModerator(message);
+                    }
+
+                    // Handle match-related messages (simplified without NeatQueue)
+                    if (message.type === 'MATCH_CREATED') {
+                        this.sendDebugLog(`📢 Match created: ${message.matchId}`);
+                    }
+
+                    if (message.type === 'MATCH_RESULT_SUBMITTED') {
+                        this.sendDebugLog(`📋 Match result submitted: ${message.matchId}`);
                     }
                 } catch (error) {
                     console.error('Parse error:', error);
@@ -65,76 +75,39 @@ export class BackendService {
         }
     }
 
-    private async handleCreateMatch(matchData: MatchData) {
-        const lobbyId = matchData.lobbyId;
-        this.sendDebugLog(`🎮 Processing CREATE_MATCH for lobby ${lobbyId}`);
+    private async handleVerifyModerator(message: any) {
+        const { discordId, requestId } = message;
+        this.sendDebugLog(`🔍 Verifying moderator: ${discordId}`);
 
-        // Check if we have NeatQueue service configured
-        if (this.neatQueueService && this.client) {
-            try {
-                const guildId = process.env.DISCORD_GUILD_ID;
-                if (!guildId) {
-                    throw new Error('DISCORD_GUILD_ID not configured');
-                }
-
-                const guild = await this.client.guilds.fetch(guildId);
-                this.sendDebugLog(`✅ Guild found: ${guild.name}`);
-
-                // Use NeatQueue to create the match
-                this.sendDebugLog(`📡 Calling NeatQueue createMatch...`);
-                const result = await this.neatQueueService.createMatch(matchData, guild);
-
-                if (result.success && result.serverInfo) {
-                    this.sendDebugLog(`✅ NeatQueue match created successfully`);
-                    this.send({
-                        type: 'SERVER_CREATED',
-                        lobbyId: lobbyId,
-                        serverInfo: result.serverInfo
-                    });
-                } else {
-                    this.sendDebugLog(`❌ NeatQueue failed: ${result.error}`);
-                    // Fall back to dummy data so the match can still proceed
-                    this.sendDebugLog(`⚠️ Using fallback dummy server info`);
-                    this.send({
-                        type: 'SERVER_CREATED',
-                        lobbyId: lobbyId,
-                        serverInfo: {
-                            ip: '127.0.0.1:27015',
-                            password: 'test123',
-                            matchLink: 'standoff://connect/127.0.0.1:27015/test123',
-                            note: 'Fallback - NeatQueue failed'
-                        }
-                    });
-                }
-            } catch (error: any) {
-                this.sendDebugLog(`❌ Error in NeatQueue flow: ${error.message}`);
-                // Fall back to dummy data
-                this.send({
-                    type: 'SERVER_CREATED',
-                    lobbyId: lobbyId,
-                    serverInfo: {
-                        ip: '127.0.0.1:27015',
-                        password: 'test123',
-                        matchLink: 'standoff://connect/127.0.0.1:27015/test123',
-                        note: 'Fallback - Error occurred'
-                    }
-                });
-            }
-        } else {
-            // No NeatQueue configured, use dummy data
-            this.sendDebugLog(`⚠️ NeatQueue service not configured, using dummy data`);
+        if (!this.moderatorService) {
             this.send({
-                type: 'SERVER_CREATED',
-                lobbyId: lobbyId,
-                serverInfo: {
-                    ip: '127.0.0.1:27015',
-                    password: 'test123',
-                    matchLink: 'standoff://connect/127.0.0.1:27015/test123'
-                }
+                type: 'VERIFY_MODERATOR_RESPONSE',
+                requestId,
+                discordId,
+                isModerator: false,
+                error: 'Moderator service not configured'
             });
+            return;
         }
 
-        this.sendDebugLog(`✅ Sent SERVER_CREATED for ${lobbyId}`);
+        try {
+            const isModerator = await this.moderatorService.checkModeratorRole(discordId);
+            this.send({
+                type: 'VERIFY_MODERATOR_RESPONSE',
+                requestId,
+                discordId,
+                isModerator
+            });
+            this.sendDebugLog(`✅ Moderator check complete: ${discordId} = ${isModerator}`);
+        } catch (error: any) {
+            this.send({
+                type: 'VERIFY_MODERATOR_RESPONSE',
+                requestId,
+                discordId,
+                isModerator: false,
+                error: error.message
+            });
+        }
     }
 
     // Required by other files
@@ -175,5 +148,24 @@ export class BackendService {
             console.error('❌ Error fetching match status:', error);
         }
         return null;
+    }
+
+    // Check moderator status directly
+    async checkModerator(discordId: string): Promise<boolean> {
+        if (!this.moderatorService) {
+            return false;
+        }
+        return this.moderatorService.checkModeratorRole(discordId);
+    }
+
+    // Notify match events to Discord (for announcements)
+    async notifyMatchCreated(matchId: string, hostName: string, lobbyUrl: string) {
+        // Future: Send to a Discord channel
+        this.sendDebugLog(`📢 New match by ${hostName}: ${matchId}`);
+    }
+
+    async notifyMatchCompleted(matchId: string, winnerTeam: string) {
+        // Future: Send to a Discord channel
+        this.sendDebugLog(`🏆 Match ${matchId} completed. Winner: ${winnerTeam}`);
     }
 }

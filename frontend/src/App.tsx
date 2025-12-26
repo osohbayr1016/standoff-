@@ -4,22 +4,24 @@ import "./InviteToast.css";
 import Header from "./components/Header";
 import Hero from "./components/Hero";
 import Leaderboard from "./components/Leaderboard";
-import RecentMatches from "./components/RecentMatches";
-import DailyRewards from "./components/DailyRewards";
 import ProfilePage from "./components/ProfilePage";
 import LeaderboardPage from "./components/LeaderboardPage";
-import RewardsPage from "./components/RewardsPage";
 import FriendsPage from "./components/FriendsPage";
-import MatchmakingPage from "./components/MatchmakingPage";
-import MapBanPage from "./components/MapBanPage";
-import MatchLobbyPage from "./components/MatchLobbyPage";
 import AuthPage from "./components/AuthPage";
 import NotFoundPage from "./components/NotFoundPage";
 import JoinGatePage from "./components/JoinGatePage";
 import ModeratorPage from "./components/ModeratorPage";
 import Footer from "./components/Footer";
 import NicknameSetupModal from "./components/NicknameSetupModal";
+import MatchmakingPage from "./components/MatchmakingPage";
 import { WebSocketProvider, useWebSocket } from "./components/WebSocketContext";
+
+// Placeholder components (to be implemented)
+const RecentMatches = () => <div className="placeholder-card">Recent Matches - Coming Soon</div>;
+const DailyRewards = () => <div className="placeholder-card">Daily Rewards - Coming Soon</div>;
+const RewardsPage = () => <div className="placeholder-page">Rewards Page - Coming Soon</div>;
+const MapBanPage = (_props: any) => <div className="placeholder-page">Map Ban - Coming Soon</div>;
+const MatchLobbyPage = (_props: any) => <div className="placeholder-page">Match Lobby - Coming Soon</div>;
 
 interface User {
   id: string;
@@ -27,6 +29,7 @@ interface User {
   avatar: string;
   standoff_nickname?: string;
   elo?: number;
+  role?: string;
 }
 
 interface PartyMember {
@@ -51,11 +54,7 @@ function AppContent() {
       "home",
       "profile",
       "leaderboard",
-      "rewards",
       "friends",
-      "matchmaking",
-      "mapban",
-      "matchgame",
       "join_gate"
     ];
     if (savedPage && validPages.includes(savedPage)) {
@@ -340,8 +339,9 @@ function AppContent() {
               ...userData,
               standoff_nickname: profile.standoff_nickname,
               elo: profile.elo || 1000,
+              role: profile.role || 'user', // Add role for moderator access
             };
-            if (updatedUser.elo !== userData.elo || updatedUser.standoff_nickname !== userData.standoff_nickname) {
+            if (updatedUser.elo !== userData.elo || updatedUser.standoff_nickname !== userData.standoff_nickname || updatedUser.role !== (userData as any).role) {
               setUser(updatedUser);
               localStorage.setItem("user", JSON.stringify(updatedUser));
             }
@@ -443,13 +443,6 @@ function AppContent() {
         user={user}
         onNavigate={handleNavigate}
         onLogout={handleLogout}
-        activeLobbyId={activeLobbyId}
-        onReturnToMatch={() => {
-          if (activeLobbyId) {
-            setNavigatedAwayLobbyId(null);
-            requestMatchState(activeLobbyId);
-          }
-        }}
       />
 
       <main className="main-content">
@@ -467,13 +460,11 @@ function AppContent() {
         {currentPage === "leaderboard" && <LeaderboardPage />}
         {currentPage === "rewards" && <RewardsPage />}
         {currentPage === "friends" && <FriendsPage />}
-        {currentPage === "moderator" && <ModeratorPage />}
+        {currentPage === "moderator" && <ModeratorPage user={user} backendUrl={import.meta.env.VITE_BACKEND_URL || "http://localhost:8787"} />}
         {currentPage === "matchmaking" && (
           <MatchmakingPage
-            onCancel={() => { }}
-            onStartLobby={() => { }}
-            activeLobbyId={activeLobbyId}
-            lobbyState={matchData?.lobby || matchData?.matchData || matchData}
+            user={user}
+            backendUrl={import.meta.env.VITE_BACKEND_URL || "http://localhost:8787"}
           />
         )}
         {currentPage === "mapban" && (

@@ -3,7 +3,7 @@ import dotenv from 'dotenv';
 import { setupEventHandlers } from './events';
 import { commands } from './commands';
 import { BackendService } from './services/backend';
-import { NeatQueueService } from './services/neatqueue';
+import { ModeratorService } from './services/moderator';
 
 dotenv.config();
 
@@ -67,21 +67,18 @@ const backendService = new BackendService(
     process.env.BACKEND_WEBHOOK_SECRET
 );
 
-// Initialize NeatQueue service if configured
-if (process.env.QUEUE_CHANNEL_ID && process.env.NEATQUEUE_BOT_ID && process.env.NEATQUEUE_API_KEY) {
-    console.log('✅ NeatQueue service configured');
-    const neatQueueService = new NeatQueueService(
-        process.env.QUEUE_CHANNEL_ID,
-        process.env.NEATQUEUE_BOT_ID,
-        process.env.NEATQUEUE_API_KEY,
-        backendService
-    );
-    backendService.setNeatQueueService(neatQueueService);
+// Initialize ModeratorService if configured
+const moderatorRoleId = process.env.MODERATOR_ROLE_ID;
+const guildId = process.env.DISCORD_GUILD_ID;
+
+if (moderatorRoleId && guildId) {
+    console.log('✅ Moderator role checking configured');
+    console.log(`   Guild ID: ${guildId}`);
+    console.log(`   Moderator Role ID: ${moderatorRoleId}`);
 } else {
-    console.log('⚠️ NeatQueue not fully configured - will use dummy server info');
-    console.log('   QUEUE_CHANNEL_ID:', process.env.QUEUE_CHANNEL_ID ? 'Set' : 'Missing');
-    console.log('   NEATQUEUE_BOT_ID:', process.env.NEATQUEUE_BOT_ID ? 'Set' : 'Missing');
-    console.log('   NEATQUEUE_API_KEY:', process.env.NEATQUEUE_API_KEY ? 'Set' : 'Missing');
+    console.log('⚠️ Moderator role checking not configured');
+    console.log('   MODERATOR_ROLE_ID:', moderatorRoleId ? 'Set' : 'Missing');
+    console.log('   DISCORD_GUILD_ID:', guildId ? 'Set' : 'Missing');
 }
 
 // Register slash commands
@@ -109,6 +106,13 @@ async function registerCommands(botToken: string) {
 client.once(Events.ClientReady, async (c) => {
     console.log(`✅ Bot logged in as ${c.user.tag}`);
     console.log(`🎮 Serving ${c.guilds.cache.size} guild(s)`);
+
+    // Initialize ModeratorService after client is ready
+    if (moderatorRoleId && guildId) {
+        const moderatorService = new ModeratorService(client, guildId, moderatorRoleId);
+        backendService.setModeratorService(moderatorService);
+        console.log('✅ ModeratorService connected to BackendService');
+    }
 
     // Register commands
     await registerCommands(token);
@@ -161,4 +165,5 @@ process.on('unhandledRejection', (error) => {
 // Login
 console.log('🔄 Starting Discord bot...');
 client.login(token);
+
 
