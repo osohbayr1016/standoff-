@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Gamepad2, Plus, Users, Map as MapIcon, Loader2, Trophy, AlertTriangle, ExternalLink, Check } from "lucide-react";
+import { Gamepad2, Plus, Users, Map as MapIcon, Loader2, Trophy, AlertTriangle, ExternalLink, Check, ShieldAlert } from "lucide-react";
 import {
     Carousel,
     CarouselContent,
@@ -35,6 +35,9 @@ interface MatchmakingPageProps {
         id: string;
         username: string;
         avatar?: string;
+        is_vip?: number;
+        vip_until?: string;
+        role?: string;
     } | null;
     backendUrl: string;
 }
@@ -46,6 +49,7 @@ const MatchmakingPage: React.FC<MatchmakingPageProps> = ({ user, backendUrl }) =
     const [showCreateModal, setShowCreateModal] = useState(false);
     const [lobbyUrl, setLobbyUrl] = useState('');
     const [selectedMap, setSelectedMap] = useState<string | null>(null);
+    const [matchType, setMatchType] = useState<'casual' | 'league'>('casual');
 
     const MAPS = [
         { name: 'Hanami', image: '/maps/hanami.png' },
@@ -135,7 +139,8 @@ const MatchmakingPage: React.FC<MatchmakingPageProps> = ({ user, backendUrl }) =
                 body: JSON.stringify({
                     lobby_url: lobbyUrl.trim(),
                     host_id: user.id,
-                    map_name: selectedMap || undefined
+                    map_name: selectedMap || undefined,
+                    match_type: matchType
                 })
             });
 
@@ -145,6 +150,7 @@ const MatchmakingPage: React.FC<MatchmakingPageProps> = ({ user, backendUrl }) =
                 setShowCreateModal(false);
                 setLobbyUrl('');
                 setSelectedMap(null);
+                setMatchType('casual');
                 fetchMatches();
                 console.log("Lobby Created Successfully!");
             } else {
@@ -459,6 +465,81 @@ const MatchmakingPage: React.FC<MatchmakingPageProps> = ({ user, backendUrl }) =
                                 />
                             </div>
                             <p className="text-[10px] text-gray-500">Paste the custom lobby link generated in Standoff 2.</p>
+                        </div>
+
+                        {/* Match Type Selector */}
+                        <div className="space-y-2">
+                            <label className="text-sm font-medium leading-none text-white block">
+                                Match Type <span className="text-destructive">*</span>
+                            </label>
+                            <div className="grid grid-cols-2 gap-3">
+                                <button
+                                    type="button"
+                                    onClick={() => setMatchType('casual')}
+                                    className={`
+                                        relative p-4 rounded-lg border-2 transition-all text-left
+                                        ${matchType === 'casual'
+                                            ? 'border-primary bg-primary/10 shadow-lg shadow-primary/20'
+                                            : 'border-white/10 bg-zinc-800/50 hover:border-white/20'
+                                        }
+                                    `}
+                                >
+                                    <div className="flex items-center gap-2 mb-1">
+                                        <Gamepad2 className="h-4 w-4 text-primary" />
+                                        <span className="font-bold text-white">Casual</span>
+                                    </div>
+                                    <p className="text-xs text-gray-400">Quick match, no ELO changes</p>
+                                    {matchType === 'casual' && (
+                                        <div className="absolute top-2 right-2">
+                                            <Check className="h-4 w-4 text-primary" />
+                                        </div>
+                                    )}
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        const isVip = user?.is_vip === 1;
+                                        const isAdmin = user?.role === 'admin';
+                                        const vipUntil = user?.vip_until ? new Date(user.vip_until) : null;
+                                        const now = new Date();
+                                        const isActive = (isVip && vipUntil && vipUntil > now) || isAdmin;
+
+                                        if (isActive) {
+                                            setMatchType('league');
+                                        } else {
+                                            setError('League matches require an active VIP membership. Contact an administrator to upgrade.');
+                                        }
+                                    }}
+                                    className={`
+                                        relative p-4 rounded-lg border-2 transition-all text-left group
+                                        ${matchType === 'league'
+                                            ? 'border-primary bg-primary/10 shadow-lg shadow-primary/20'
+                                            : ((user?.is_vip === 1 && user.vip_until && new Date(user.vip_until) > new Date()) || user?.role === 'admin')
+                                                ? 'border-white/10 bg-zinc-800/50 hover:border-white/20'
+                                                : 'border-white/5 bg-zinc-900/30 opacity-60 cursor-not-allowed'
+                                        }
+                                    `}
+                                >
+                                    <div className="flex items-center gap-2 mb-1">
+                                        <Trophy className="h-4 w-4 text-primary" />
+                                        <span className="font-bold text-white">League</span>
+                                        {(!user?.is_vip || !user.vip_until || new Date(user.vip_until) < new Date()) && (
+                                            <ShieldAlert className="h-3 w-3 text-yellow-500" />
+                                        )}
+                                    </div>
+                                    <p className="text-xs text-gray-400">Ranked, ELO changes apply</p>
+                                    {matchType === 'league' && (
+                                        <div className="absolute top-2 right-2">
+                                            <Check className="h-4 w-4 text-primary" />
+                                        </div>
+                                    )}
+                                    {(!user?.is_vip || !user.vip_until || new Date(user.vip_until) < new Date()) && (
+                                        <div className="absolute -top-10 left-1/2 -translate-x-1/2 bg-yellow-600 text-[10px] text-black font-bold px-2 py-1 rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+                                            VIP Required
+                                        </div>
+                                    )}
+                                </button>
+                            </div>
                         </div>
 
                         <div className="space-y-2">

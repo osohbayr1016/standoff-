@@ -13,7 +13,9 @@ export const players = sqliteTable('players', {
     nickname_updated_at: text('nickname_updated_at'),
     role: text('role').default('user').notNull(), // 'user', 'moderator', 'admin'
     banned: integer('banned').default(0),
-    is_discord_member: integer('is_discord_member').default(0)
+    is_discord_member: integer('is_discord_member').default(0),
+    is_vip: integer('is_vip').default(0),
+    vip_until: text('vip_until')
 });
 
 export const friendships = sqliteTable('friendships', {
@@ -30,6 +32,7 @@ export const matches = sqliteTable('matches', {
     id: text('id').primaryKey(),
     lobby_url: text('lobby_url').notNull(),
     host_id: text('host_id').notNull().references(() => players.id),
+    match_type: text('match_type').default('casual'), // casual, league
     status: text('status').default('waiting').notNull(), // waiting, in_progress, pending_review, completed, cancelled
     player_count: integer('player_count').default(0),
     max_players: integer('max_players').default(10),

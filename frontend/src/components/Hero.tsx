@@ -1,65 +1,70 @@
 import { useState, useEffect } from 'react';
-import { Card, CardHeader, CardContent, CardTitle, CardFooter } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { Card, CardHeader, CardContent, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Plus, Users, Globe, Gamepad2, Timer } from "lucide-react";
+import { Trophy, TrendingUp, Users, Gamepad2, Clock, MapPin } from "lucide-react";
 
-interface Match {
-  id: string;
-  host_id: string;
-  map_name: string;
-  status: string;
-  player_count: number;
-  max_players: number;
-  players?: any[];
+interface LeaderboardPlayer {
+  rank: number;
+  discord_id: string;
+  username: string;
+  avatar: string;
+  elo: number;
+  wins: number;
+  losses: number;
+  win_rate: number;
+}
+
+interface PlatformStats {
+  matches_today: number;
+  matches_week: number;
+  active_players: number;
+  popular_map: string;
+  avg_duration_minutes: number;
 }
 
 interface HeroProps {
-  onFindMatch: () => void;
-  onViewMatch: (matchId: string) => void;
   userId?: string;
   backendUrl: string;
 }
 
-export default function Hero({ onFindMatch, onViewMatch, userId, backendUrl }: HeroProps) {
-  const [activeMatches, setActiveMatches] = useState<Match[]>([]);
-  const [myMatchId, setMyMatchId] = useState<string | null>(null);
+export default function Hero({ backendUrl }: HeroProps) {
+  const [leaderboard, setLeaderboard] = useState<LeaderboardPlayer[]>([]);
+  const [stats, setStats] = useState<PlatformStats | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchActiveMatches();
-    const interval = setInterval(fetchActiveMatches, 5000);
+    fetchData();
+    const interval = setInterval(fetchData, 30000); // Refresh every 30s
     return () => clearInterval(interval);
-  }, [userId]);
+  }, []);
 
-  const fetchActiveMatches = async () => {
+  const fetchData = async () => {
     try {
-      const response = await fetch(`${backendUrl}/api/matches?status=waiting,in_progress`);
-      const data = await response.json();
-      if (data.success) {
-        // Sort: My match first, then by player count descending
-        const matches = (data.matches || []).sort((a: Match, b: Match) => {
-          if (userId) {
-            // If I have a match ID, prioritize it? logic is complex here, simplest is just render
-          }
-          return b.player_count - a.player_count;
-        });
-        setActiveMatches(matches);
+      // Fetch leaderboard
+      const leaderboardRes = await fetch(`${backendUrl}/api/leaderboard`);
+      const leaderboardData = await leaderboardRes.json();
+      if (Array.isArray(leaderboardData)) {
+        setLeaderboard(leaderboardData.slice(0, 10));
       }
 
-      // Check if user is in any match
-      if (userId) {
-        const userMatchRes = await fetch(`${backendUrl}/api/matches/user/${userId}/active`);
-        const userMatchData = await userMatchRes.json();
-        if (userMatchData.success && userMatchData.match) {
-          setMyMatchId(userMatchData.match.id);
-        } else {
-          setMyMatchId(null);
-        }
+      // Fetch stats
+      const statsRes = await fetch(`${backendUrl}/api/stats`);
+      const statsData = await statsRes.json();
+      if (statsData.success) {
+        setStats(statsData.stats);
       }
     } catch (err) {
-      console.error('Error fetching matches:', err);
+      console.error('Error fetching data:', err);
+    } finally {
+      setLoading(false);
     }
+  };
+
+  const getRankIcon = (rank: number) => {
+    if (rank === 1) return "🥇";
+    if (rank === 2) return "🥈";
+    if (rank === 3) return "🥉";
+    return `#${rank}`;
   };
 
   return (
@@ -76,99 +81,148 @@ export default function Hero({ onFindMatch, onViewMatch, userId, backendUrl }: H
         </p>
       </div>
 
-      <div className="flex items-center justify-between">
-        <h2 className="text-xl font-bold tracking-tight text-foreground flex items-center gap-2">
-          <Globe className="w-5 h-5 text-primary" /> Active Matches
-        </h2>
-        <Button onClick={onFindMatch} size="lg" className="shadow-lg shadow-primary/20">
-          <Plus className="mr-2 h-4 w-4" /> Create Lobby
-        </Button>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-        {activeMatches.map(match => {
-          const isMyMatch = match.id === myMatchId;
-          const players = match.players || [];
-          const maxDisplayPlayers = 5;
-
-          return (
-            <Card
-              key={match.id}
-              className={`group relative overflow-hidden transition-all hover:-translate-y-1 hover:border-primary/50 cursor-pointer ${isMyMatch ? 'border-primary shadow-[0_0_20px_hsl(45_93%_47%_/_0.15)]' : 'border-border'}`}
-              onClick={() => onViewMatch(match.id)}
-            >
-              {isMyMatch && (
-                <div className="absolute top-0 right-0 p-2">
-                  <Badge variant="default" className="text-[10px] px-2 py-0.5">YOUR MATCH</Badge>
-                </div>
-              )}
-
-              <CardHeader className="pb-2">
-                <CardTitle className="flex justify-between items-start">
-                  <span className="text-lg font-bold truncate pr-6">{match.map_name || 'Map TBD'}</span>
-                </CardTitle>
-                <div className="flex gap-2 mt-1">
-                  <Badge variant={match.status === 'in_progress' ? "destructive" : "secondary"} className="text-[10px] uppercase">
-                    {match.status === 'in_progress' ? 'Live' : 'Waiting'}
-                  </Badge>
-                  <Badge variant="outline" className="text-[10px] border-primary/20 text-muted-foreground flex items-center gap-1">
-                    <Users className="w-3 h-3" />
-                    {match.player_count}/{match.max_players}
-                  </Badge>
-                </div>
-              </CardHeader>
-
-              <CardContent className="space-y-4">
-                <div className="flex -space-x-2 overflow-hidden py-1">
-                  {players.length === 0 ? (
-                    <span className="text-xs text-muted-foreground italic pl-1">No players yet</span>
-                  ) : (
-                    players.slice(0, maxDisplayPlayers).map((p, i) => (
-                      <Avatar key={i} className="inline-block h-8 w-8 border-2 border-background ring-2 ring-background">
-                        <AvatarImage src={`https://cdn.discordapp.com/avatars/${p.discord_id}/${p.discord_avatar}.png`} />
-                        <AvatarFallback className="bg-muted text-[10px]">
-                          {p.discord_username?.[0]?.toUpperCase() || 'P'}
-                        </AvatarFallback>
-                      </Avatar>
-                    ))
-                  )}
-                  {players.length > maxDisplayPlayers && (
-                    <div className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-background bg-muted text-[10px] font-medium text-muted-foreground hover:bg-muted/80">
-                      +{players.length - maxDisplayPlayers}
+      {/* Leaderboard + Statistics Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Leaderboard - Takes 2 columns on desktop */}
+        <Card className="lg:col-span-2 border-border bg-card/50 backdrop-blur">
+          <CardHeader className="border-b border-border/50">
+            <CardTitle className="flex items-center gap-2 text-xl font-bold">
+              <Trophy className="h-5 w-5 text-primary" />
+              Top Players
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            {loading ? (
+              <div className="p-8 text-center text-muted-foreground">Loading leaderboard...</div>
+            ) : leaderboard.length === 0 ? (
+              <div className="p-8 text-center text-muted-foreground">No players yet</div>
+            ) : (
+              <div className="divide-y divide-border/50">
+                {leaderboard.map((player) => (
+                  <div
+                    key={player.discord_id}
+                    className="flex items-center gap-4 p-4 hover:bg-muted/30 transition-colors"
+                  >
+                    {/* Rank */}
+                    <div className="text-2xl font-bold w-12 text-center">
+                      {getRankIcon(player.rank)}
                     </div>
-                  )}
-                </div>
-              </CardContent>
-              <CardFooter className="pt-0 text-xs text-muted-foreground flex justify-between items-center">
-                <span className="flex items-center gap-1">
-                  <Gamepad2 className="w-3 h-3" /> 5v5
-                </span>
-                {match.status === 'waiting' && (
-                  <span className="flex items-center gap-1 text-primary">
-                    <Timer className="w-3 h-3" /> Waiting...
-                  </span>
-                )}
-              </CardFooter>
-            </Card>
-          );
-        })}
 
-        {activeMatches.length === 0 && (
-          <div className="col-span-full py-12 flex flex-col items-center justify-center text-center border-2 border-dashed border-border rounded-xl bg-card/50">
-            <div className="h-12 w-12 rounded-full bg-muted/50 flex items-center justify-center mb-4">
-              <Globe className="h-6 w-6 text-muted-foreground/50" />
-            </div>
-            <h3 className="text-lg font-semibold">No Active Matches</h3>
-            <p className="text-sm text-muted-foreground max-w-sm mb-6">
-              Be the first to create a lobby and start the game!
-            </p>
-            <Button onClick={onFindMatch} variant="outline">
-              Create First Lobby
-            </Button>
-          </div>
-        )}
+                    {/* Avatar */}
+                    <Avatar className="h-12 w-12 border-2 border-primary/30">
+                      <AvatarImage src={`https://cdn.discordapp.com/avatars/${player.discord_id}/${player.avatar}.png`} />
+                      <AvatarFallback className="bg-primary/20 text-primary">
+                        {player.username[0]?.toUpperCase()}
+                      </AvatarFallback>
+                    </Avatar>
+
+                    {/* Player Info */}
+                    <div className="flex-1 min-w-0">
+                      <div className="font-semibold text-foreground truncate">{player.username}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {player.wins}W - {player.losses}L ({player.win_rate}% WR)
+                      </div>
+                    </div>
+
+                    {/* ELO */}
+                    <div className="text-right">
+                      <div className="text-lg font-bold text-primary">{player.elo}</div>
+                      <div className="text-[10px] text-muted-foreground uppercase tracking-wide">ELO</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Statistics - Takes 1 column on desktop */}
+        <div className="space-y-4">
+          <Card className="border-border bg-card/50 backdrop-blur">
+            <CardHeader className="border-b border-border/50">
+              <CardTitle className="flex items-center gap-2 text-xl font-bold">
+                <TrendingUp className="h-5 w-5 text-primary" />
+                Live Stats
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-4 space-y-4">
+              {loading || !stats ? (
+                <div className="text-center text-muted-foreground py-4">Loading stats...</div>
+              ) : (
+                <>
+                  {/* Matches Today */}
+                  <div className="flex items-center justify-between p-3 rounded-lg bg-muted/30">
+                    <div className="flex items-center gap-3">
+                      <div className="h-10 w-10 rounded-full bg-primary/20 flex items-center justify-center">
+                        <Gamepad2 className="h-5 w-5 text-primary" />
+                      </div>
+                      <div>
+                        <div className="text-xs text-muted-foreground">Today</div>
+                        <div className="font-semibold">Matches</div>
+                      </div>
+                    </div>
+                    <div className="text-2xl font-bold text-primary">{stats.matches_today}</div>
+                  </div>
+
+                  {/* Matches This Week */}
+                  <div className="flex items-center justify-between p-3 rounded-lg bg-muted/30">
+                    <div className="flex items-center gap-3">
+                      <div className="h-10 w-10 rounded-full bg-blue-500/20 flex items-center justify-center">
+                        <Gamepad2 className="h-5 w-5 text-blue-500" />
+                      </div>
+                      <div>
+                        <div className="text-xs text-muted-foreground">This Week</div>
+                        <div className="font-semibold">Matches</div>
+                      </div>
+                    </div>
+                    <div className="text-2xl font-bold text-blue-500">{stats.matches_week}</div>
+                  </div>
+
+                  {/* Active Players */}
+                  <div className="flex items-center justify-between p-3 rounded-lg bg-muted/30">
+                    <div className="flex items-center gap-3">
+                      <div className="h-10 w-10 rounded-full bg-green-500/20 flex items-center justify-center">
+                        <Users className="h-5 w-5 text-green-500" />
+                      </div>
+                      <div>
+                        <div className="text-xs text-muted-foreground">24h Active</div>
+                        <div className="font-semibold">Players</div>
+                      </div>
+                    </div>
+                    <div className="text-2xl font-bold text-green-500">{stats.active_players}</div>
+                  </div>
+
+                  {/* Popular Map */}
+                  <div className="flex items-center justify-between p-3 rounded-lg bg-muted/30">
+                    <div className="flex items-center gap-3">
+                      <div className="h-10 w-10 rounded-full bg-purple-500/20 flex items-center justify-center">
+                        <MapPin className="h-5 w-5 text-purple-500" />
+                      </div>
+                      <div>
+                        <div className="text-xs text-muted-foreground">Popular Map</div>
+                        <div className="font-semibold">{stats.popular_map}</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Average Duration */}
+                  <div className="flex items-center justify-between p-3 rounded-lg bg-muted/30">
+                    <div className="flex items-center gap-3">
+                      <div className="h-10 w-10 rounded-full bg-orange-500/20 flex items-center justify-center">
+                        <Clock className="h-5 w-5 text-orange-500" />
+                      </div>
+                      <div>
+                        <div className="text-xs text-muted-foreground">Avg Duration</div>
+                        <div className="font-semibold">{stats.avg_duration_minutes} min</div>
+                      </div>
+                    </div>
+                  </div>
+                </>
+              )}
+            </CardContent>
+          </Card>
+        </div>
       </div>
     </section>
   );
 }
-

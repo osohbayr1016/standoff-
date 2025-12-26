@@ -11,8 +11,10 @@ import {
   Users,
   Shield,
   LogOut,
-  User as UserIcon
+  User as UserIcon,
+  ShieldAlert
 } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -29,6 +31,8 @@ interface User {
   standoff_nickname?: string;
   elo?: number;
   role?: string;
+  is_vip?: number;
+  vip_until?: string;
 }
 
 interface HeaderProps {
@@ -126,6 +130,19 @@ export default function Header({
           MOD PANEL
         </Button>
       )}
+      {user?.role === 'admin' && (
+        <Button
+          variant={currentPage === "admin" ? "default" : "ghost"}
+          className={`justify-start text-primary hover:text-primary-foreground hover:bg-primary/90 ${mobile ? "w-full" : ""}`}
+          onClick={() => {
+            onNavigate("admin");
+            if (mobile) setIsOpen(false);
+          }}
+        >
+          <ShieldAlert className="mr-2 h-4 w-4" />
+          ADMIN PANEL
+        </Button>
+      )}
     </>
   );
 
@@ -163,8 +180,18 @@ export default function Header({
               <DropdownMenuContent className="w-56" align="end" forceMount>
                 <DropdownMenuLabel className="font-normal">
                   <div className="flex flex-col space-y-1">
-                    <p className="text-sm font-medium leading-none">{user.standoff_nickname || user.username}</p>
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-medium leading-none">{user.standoff_nickname || user.username}</p>
+                      {user.is_vip === 1 && (
+                        <Badge className="bg-gradient-to-r from-yellow-400 to-yellow-600 text-[10px] h-4 px-1 border-none text-black font-bold">VIP</Badge>
+                      )}
+                    </div>
                     <p className="text-xs leading-none text-muted-foreground">ELO: {user.elo || 1000}</p>
+                    {user.is_vip === 1 && user.vip_until && (
+                      <p className="text-[10px] leading-none text-yellow-500/70">
+                        Expires: {new Date(user.vip_until).toLocaleDateString()}
+                      </p>
+                    )}
                   </div>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />

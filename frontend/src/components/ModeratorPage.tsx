@@ -56,6 +56,8 @@ interface User {
     losses: number;
     banned: number;
     standoff_nickname?: string;
+    is_vip?: number;
+    vip_until?: string;
 }
 
 interface EloHistoryEntry {
@@ -304,6 +306,34 @@ export default function ModeratorPage({ user, backendUrl }: ModeratorPageProps) 
             }
         } catch (err) {
             alert('Network error');
+        }
+    };
+
+    const handleVipToggle = async (playerId: string, grant: boolean) => {
+        if (!user) return;
+        setProcessing(true);
+
+        try {
+            const endpoint = grant ? 'grant' : 'revoke';
+            const response = await fetch(`${backendUrl}/api/moderator/players/${playerId}/vip/${endpoint}`, {
+                method: 'POST',
+                headers: { 'X-User-Id': user.id }
+            });
+
+            const data = await response.json();
+            if (data.success) {
+                // Refresh player data
+                if (selectedPlayer && selectedPlayer.id === playerId) {
+                    fetchPlayerHistory(playerId);
+                }
+                fetchPlayers(currentPage, searchQuery);
+            } else {
+                alert(data.error || `Failed to ${grant ? 'grant' : 'revoke'} VIP`);
+            }
+        } catch (err) {
+            alert('Network error');
+        } finally {
+            setProcessing(false);
         }
     };
 
@@ -578,7 +608,12 @@ export default function ModeratorPage({ user, backendUrl }: ModeratorPageProps) 
                                             <AvatarFallback>{u.discord_username[0]?.toUpperCase()}</AvatarFallback>
                                         </Avatar>
                                         <div className="flex flex-col">
-                                            <span>{u.discord_username}</span>
+                                            <div className="flex items-center gap-1">
+                                                <span>{u.discord_username}</span>
+                                                {u.is_vip === 1 && (
+                                                    <Badge className="bg-gradient-to-r from-yellow-400 to-yellow-600 text-[8px] h-3 px-1 border-none text-black font-bold">VIP</Badge>
+                                                )}
+                                            </div>
                                             {u.standoff_nickname && <span className="text-xs text-muted-foreground">{u.standoff_nickname}</span>}
                                         </div>
                                     </div>
@@ -861,9 +896,16 @@ export default function ModeratorPage({ user, backendUrl }: ModeratorPageProps) 
                                 <span className="text-xs font-normal text-muted-foreground font-sans">ID: {selectedPlayer?.id}</span>
                             </div>
                         </DialogTitle>
-                        <DialogDescription className="flex items-center gap-4 pt-2">
+                        <DialogDescription className="flex items-center gap-4 pt-2 flex-wrap">
                             <Badge variant="outline" className="text-primary border-primary/20">Current ELO: {selectedPlayer?.elo}</Badge>
                             <span className="text-xs text-muted-foreground">{selectedPlayer?.wins}W - {selectedPlayer?.losses}L</span>
+                            {selectedPlayer?.is_vip === 1 ? (
+                                <Badge className="bg-yellow-500 text-black border-none font-bold">
+                                    VIP ACTIVE (Until {selectedPlayer.vip_until ? new Date(selectedPlayer.vip_until).toLocaleDateString() : 'N/A'})
+                                </Badge>
+                            ) : (
+                                <Badge variant="outline" className="text-gray-500 border-white/10">Standard Player</Badge>
+                            )}
                         </DialogDescription>
                     </DialogHeader>
 
@@ -888,6 +930,42 @@ export default function ModeratorPage({ user, backendUrl }: ModeratorPageProps) 
                             </Button>
                         </div>
                     </div>
+
+                    {/* VIP Management - Admin Only */}
+                    {users.find(u => u.id === user?.id)?.role === 'admin' && (
+                        <div className="bg-gradient-to-r from-yellow-900/20 to-zinc-900/50 p-4 rounded-lg space-y-4 border border-yellow-500/10">
+                            <h4 className="text-sm font-bold text-yellow-500 uppercase tracking-wider flex items-center gap-2">
+                                <ShieldAlert className="h-4 w-4" /> VIP Management
+                            </h4>
+                            <div className="flex items-center justify-between">
+                                <p className="text-xs text-gray-400">
+                                    {selectedPlayer?.is_vip === 1
+                                        ? "Granting VIP again will renew the membership for 1 month from now."
+                                        : "Granting VIP will allow this player to access League matches for 1 month."}
+                                </p>
+                                <div className="flex gap-2">
+                                    {selectedPlayer?.is_vip === 1 && (
+                                        <Button
+                                            variant="destructive"
+                                            size="sm"
+                                            onClick={() => handleVipToggle(selectedPlayer.id, false)}
+                                            disabled={processing}
+                                        >
+                                            Revoke VIP
+                                        </Button>
+                                    )}
+                                    <Button
+                                        className="bg-yellow-600 hover:bg-yellow-700 text-black font-bold"
+                                        size="sm"
+                                        onClick={() => handleVipToggle(selectedPlayer!.id, true)}
+                                        disabled={processing}
+                                    >
+                                        {selectedPlayer?.is_vip === 1 ? 'Renew VIP' : 'Grant VIP (1mo)'}
+                                    </Button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
 
                     <div className="mt-6">
                         <h4 className="text-sm font-bold text-white mb-4 uppercase tracking-wider">ELO History</h4>

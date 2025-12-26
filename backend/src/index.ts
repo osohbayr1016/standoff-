@@ -75,6 +75,7 @@ interface Env {
   NEATQUEUE_API_KEY?: string;
   DISCORD_BOT_TOKEN?: string;
   NEATQUEUE_WEBHOOK_SECRET?: string;
+  ADMIN_SECRET?: string;
 }
 
 interface WebhookData {
@@ -1243,6 +1244,50 @@ export class MatchQueueDO {
 
 }
 
+// 2. Helper for VIP Cleanup
+async function cleanupExpiredVips(env: Env) {
+  try {
+    const expiredPlayers = await env.DB.prepare(`
+            SELECT id FROM players 
+            WHERE is_vip = 1 AND vip_until < datetime('now')
+        `).all();
+
+    const playersList = expiredPlayers.results || [];
+    const DISCORD_VIP_ROLE_ID = '1454234806933258382';
+
+    for (const player of playersList) {
+      const playerId = player.id as string;
+
+      // Remove from Discord
+      try {
+        await fetch(
+          `https://discord.com/api/v10/guilds/${env.DISCORD_SERVER_ID}/members/${playerId}/roles/${DISCORD_VIP_ROLE_ID}`,
+          {
+            method: 'DELETE',
+            headers: {
+              'Authorization': `Bot ${env.DISCORD_BOT_TOKEN}`,
+              'Content-Type': 'application/json',
+            }
+          }
+        );
+      } catch (err) {
+        console.error(`Failed to remove Discord role for ${playerId}:`, err);
+      }
+
+      // Update DB
+      await env.DB.prepare(`
+                UPDATE players SET is_vip = 0, vip_until = NULL WHERE id = ?
+            `).bind(playerId).run();
+
+      console.log(`Cleaned up expired VIP for ${playerId}`);
+    }
+    return playersList.length;
+  } catch (err) {
+    console.error('Error in VIP cleanup:', err);
+    return 0;
+  }
+}
+
 // 2. Hono API
 const app = new Hono<{ Bindings: Env }>();
 
@@ -1342,50 +1387,93 @@ app.get('/api/auth/callback', async (c) => {
 
     const userData = await userResponse.json() as any;
 
-    // Check Discord server membership (non-blocking - for badge only)
+    // 3. Check Discord roles and membership
     const requiredGuildId = c.env.DISCORD_SERVER_ID;
+    const botToken = c.env.DISCORD_BOT_TOKEN;
     let isDiscordMember = false;
+    let hasAdminRole = false;
+    let hasVipRole = false;
+    let tierElo = 1000;
 
-    if (requiredGuildId) {
+    if (requiredGuildId && botToken) {
       try {
-        const guildsResponse = await fetch('https://discord.com/api/users/@me/guilds', {
+        // Fetch guild member info to get roles
+        const memberResponse = await fetch(`https://discord.com/api/v10/guilds/${requiredGuildId}/members/${userData.id}`, {
           headers: {
-            Authorization: `Bearer ${tokens.access_token}`
+            Authorization: `Bot ${botToken}`
           }
         });
 
-        if (guildsResponse.ok) {
-          const guilds = await guildsResponse.json() as any[];
-          isDiscordMember = guilds.some((guild: any) => guild.id === requiredGuildId);
-          console.log(`User ${userData.id} Discord server member: ${isDiscordMember}`);
+        if (memberResponse.ok) {
+          const memberData = await memberResponse.json() as any;
+          isDiscordMember = true;
+          const roles = memberData.roles || [];
+
+          // Role IDs provided by user:
+          // Admin: 1453054732141854751
+          // VIP: 1454234806933258382
+          hasAdminRole = roles.includes('1453054732141854751');
+          hasVipRole = roles.includes('1454234806933258382');
+
+          // Tier Role IDs:
+          // Gold: 1454095406446153839 (1600+)
+          // Silver: 1454150874531234065 (1200+)
+          // Bronze: 1454150924556570624 (1000+)
+          if (roles.includes('1454095406446153839')) {
+            tierElo = 1600;
+          } else if (roles.includes('1454150874531234065')) {
+            tierElo = 1200;
+          } else if (roles.includes('1454150924556570624')) {
+            tierElo = 1000;
+          }
+
+          console.log(`User ${userData.id} profile: Admin=${hasAdminRole}, VIP=${hasVipRole}, TierElo=${tierElo}`);
         }
       } catch (err) {
-        console.warn('Could not check Discord server membership:', err);
+        console.warn('Could not fetch Discord guild roles:', err);
       }
     }
 
-    // 3. Хэрэглэгчийг Database-д хадгалах bolon info avah
+    // 4. Update Database
     let player: any = null;
     try {
+      // Determine role and VIP status
+      const roleToSet = hasAdminRole ? 'admin' : 'user'; // We don't downgrade moderators unless they aren't admin? 
+      // Actually, if they have the Discord Admin role, they ARE admin. 
+      // If we don't want to overwrite existing 'moderator' status, we might need to check DB first.
+
+      const eloDefault = 1000;
+
+      // Calculate VIP expiry if they have the role
+      const oneMonthFromNow = new Date();
+      oneMonthFromNow.setMonth(oneMonthFromNow.getMonth() + 1);
+      const vipUntilDate = oneMonthFromNow.toISOString();
+
       await c.env.DB.prepare(
-        `INSERT INTO players (id, discord_id, discord_username, discord_avatar, is_discord_member) 
-         VALUES (?, ?, ?, ?, ?)
+        `INSERT INTO players (id, discord_id, discord_username, discord_avatar, is_discord_member, role, is_vip, vip_until, elo) 
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(id) DO UPDATE SET
          discord_username = excluded.discord_username,
          discord_avatar = excluded.discord_avatar,
-         is_discord_member = excluded.is_discord_member`
+         is_discord_member = excluded.is_discord_member,
+         role = CASE WHEN excluded.role = 'admin' THEN 'admin' ELSE players.role END,
+         is_vip = CASE WHEN excluded.is_vip = 1 THEN 1 ELSE players.is_vip END,
+         vip_until = CASE WHEN excluded.is_vip = 1 THEN excluded.vip_until ELSE players.vip_until END,
+         elo = CASE WHEN excluded.elo > players.elo THEN excluded.elo ELSE players.elo END`
       ).bind(
         userData.id,
         userData.id,
         userData.username,
         userData.avatar,
-        isDiscordMember ? 1 : 0
+        isDiscordMember ? 1 : 0,
+        roleToSet,
+        hasVipRole ? 1 : 0,
+        hasVipRole ? vipUntilDate : null,
+        tierElo
       ).run();
 
-      // No automatic role assignment from Discord - roles managed manually
-
       const { results } = await c.env.DB.prepare(
-        `SELECT role, elo FROM players WHERE id = ?`
+        `SELECT role, elo, is_vip, vip_until FROM players WHERE id = ?`
       ).bind(userData.id).all();
 
       if (results && results.length > 0) {
@@ -1395,13 +1483,15 @@ app.get('/api/auth/callback', async (c) => {
       console.error('Database error:', dbError);
     }
 
-    // 4. Хэрэглэгчийг Frontend рүү нь буцаах
+    // 5. Redirect to Frontend
     const frontendUrl = c.env.FRONTEND_URL || 'http://localhost:5173';
     const role = player?.role || 'user';
     const elo = player?.elo || 1000;
+    const isVip = player?.is_vip || 0;
+    const vipUntil = player?.vip_until || '';
 
     return c.redirect(
-      `${frontendUrl}?id=${userData.id}&username=${userData.username}&avatar=${userData.avatar || ''}&role=${role}&elo=${elo}`
+      `${frontendUrl}?id=${userData.id}&username=${userData.username}&avatar=${userData.avatar || ''}&role=${role}&elo=${elo}&is_vip=${isVip}&vip_until=${vipUntil}`
     );
   } catch (error) {
     console.error('Auth error:', error);
@@ -1521,13 +1611,82 @@ app.get('/ws', async (c) => {
 //   }
 // });
 
+// Debug Discord Roles
+app.get('/api/admin/debug-discord/:userId', async (c) => {
+  const secret = c.req.query('secret');
+  if (secret !== (c.env.ADMIN_SECRET || 'admin-secret-123')) {
+    return c.json({ error: 'Unauthorized' }, 401);
+  }
+
+  const userId = c.req.param('userId');
+  const guildId = c.env.DISCORD_SERVER_ID;
+  const botToken = c.env.DISCORD_BOT_TOKEN;
+
+  if (!guildId || !botToken) {
+    return c.json({
+      error: 'Missing config',
+      hasGuildId: !!guildId,
+      hasBotToken: !!botToken
+    }, 500);
+  }
+
+  try {
+    const response = await fetch(`https://discord.com/api/v10/guilds/${guildId}/members/${userId}`, {
+      headers: { Authorization: `Bot ${botToken}` }
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      return c.json({
+        ok: false,
+        status: response.status,
+        statusText: response.statusText,
+        errorBody: text,
+        guildId,
+        botTokenHint: botToken.substring(0, 10) + '...'
+      });
+    }
+
+    const data = await response.json() as any;
+    return c.json({
+      ok: true,
+      roles: data.roles,
+      isAdminRolePresent: data.roles?.includes('1453054732141854751')
+    });
+  } catch (err: any) {
+    return c.json({ ok: false, error: err.message });
+  }
+});
+
+// Manual VIP cleanup endpoint (for testing/emergency)
+app.post('/api/admin/cleanup-vips', async (c) => {
+  const secret = c.req.query('secret');
+  if (secret !== c.env.ADMIN_SECRET) {
+    return c.json({ error: 'Unauthorized' }, 401);
+  }
+
+  try {
+    const cleanedCount = await cleanupExpiredVips(c.env);
+    return c.json({ success: true, message: `Cleaned up ${cleanedCount} expired VIPs.` });
+  } catch (error) {
+    console.error('Manual VIP cleanup failed:', error);
+    return c.json({ success: false, error: error instanceof Error ? error.message : 'Unknown error' }, 500);
+  }
+});
+
 // New Manual Matchmaking Routes
 app.route('/api/matches', matchesRoutes);
 app.route('/api/matches', lobbyInviteRoutes);
 app.route('/api/moderator', moderatorRoutes);
 // app.route('/api', uploadRoutes); // R2 permissions missing, temporarily disabled
 
-export default {
-  fetch: app.fetch,
-  // MatchQueueDO
+const handler = {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext) {
+    return app.fetch(request, env, ctx);
+  },
+  async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext) {
+    ctx.waitUntil(cleanupExpiredVips(env));
+  }
 };
+
+export default handler;

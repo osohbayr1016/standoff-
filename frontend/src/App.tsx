@@ -10,6 +10,7 @@ import AuthPage from "./components/AuthPage";
 import NotFoundPage from "./components/NotFoundPage";
 import JoinGatePage from "./components/JoinGatePage";
 import ModeratorPage from "./components/ModeratorPage";
+import AdminPage from "@/components/AdminPage";
 import Footer from "./components/Footer";
 import NicknameSetupModal from "./components/NicknameSetupModal";
 import MatchmakingPage from "./components/MatchmakingPage";
@@ -29,6 +30,8 @@ interface User {
   standoff_nickname?: string;
   elo?: number;
   role?: string;
+  is_vip?: number;
+  vip_until?: string;
 }
 
 interface PartyMember {
@@ -314,7 +317,20 @@ function AppContent() {
       let userData: User | null = null;
 
       if (id && username) {
-        userData = { id, username, avatar: avatar || "", elo: 1000 };
+        const role = params.get("role") || 'user';
+        const elo = params.get("elo") ? parseInt(params.get("elo")!) : 1000;
+        const is_vip = params.get("is_vip") === '1' ? 1 : 0;
+        const vip_until = params.get("vip_until") || undefined;
+
+        userData = {
+          id,
+          username,
+          avatar: avatar || "",
+          role,
+          elo,
+          is_vip,
+          vip_until
+        };
         window.history.replaceState({}, document.title, "/");
       } else {
         const savedUser = localStorage.getItem("user");
@@ -345,9 +361,17 @@ function AppContent() {
               ...userData,
               standoff_nickname: profile.standoff_nickname,
               elo: profile.elo || 1000,
-              role: profile.role || 'user', // Add role for moderator access
+              role: profile.role === 'admin' ? 'admin' : (userData.role === 'admin' ? 'admin' : (profile.role || 'user')),
+              is_vip: profile.is_vip || 0,
+              vip_until: profile.vip_until,
             };
-            if (updatedUser.elo !== userData.elo || updatedUser.standoff_nickname !== userData.standoff_nickname || updatedUser.role !== (userData as any).role) {
+            if (
+              updatedUser.elo !== userData.elo ||
+              updatedUser.standoff_nickname !== userData.standoff_nickname ||
+              updatedUser.role !== (userData as any).role ||
+              updatedUser.is_vip !== (userData as any).is_vip ||
+              updatedUser.vip_until !== (userData as any).vip_until
+            ) {
               setUser(updatedUser);
               localStorage.setItem("user", JSON.stringify(updatedUser));
             }
@@ -410,7 +434,7 @@ function AppContent() {
   const validPages = [
     "home", "profile", "leaderboard", "rewards",
     "friends", "matchmaking", "matchlobby", "mapban",
-    "matchgame", "join_gate", "moderator"
+    "matchgame", "join_gate", "moderator", "admin"
   ];
 
   if (currentPage === "join_gate") {
@@ -463,12 +487,6 @@ function AppContent() {
         {currentPage === "home" && (
           <>
             <Hero
-              onFindMatch={handleFindMatch}
-              onViewMatch={(matchId) => {
-                console.log('Viewing match:', matchId);
-                handleNavigate('matchmaking');
-              }}
-              userId={user?.id}
               backendUrl={import.meta.env.VITE_BACKEND_URL || "http://localhost:8787"}
             />
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-8">
@@ -483,6 +501,7 @@ function AppContent() {
         {currentPage === "rewards" && <RewardsPage />}
         {currentPage === "friends" && <FriendsPage onViewProfile={handleViewProfile} />}
         {currentPage === "moderator" && <ModeratorPage user={user} backendUrl={import.meta.env.VITE_BACKEND_URL || "http://localhost:8787"} />}
+        {currentPage === "admin" && <AdminPage user={user} backendUrl={import.meta.env.VITE_BACKEND_URL || "http://localhost:8787"} />}
         {currentPage === "matchmaking" && (
           <MatchmakingPage
             user={user}

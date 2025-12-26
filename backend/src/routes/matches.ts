@@ -159,6 +159,7 @@ matchesRoutes.post('/', async (c) => {
             lobby_url: string;
             host_id: string;
             map_name?: string;
+            match_type?: 'casual' | 'league';
         }>();
 
         if (!body.lobby_url || !body.host_id) {
@@ -167,7 +168,7 @@ matchesRoutes.post('/', async (c) => {
 
         // Check if host exists
         const host = await c.env.DB.prepare(
-            'SELECT id, banned FROM players WHERE id = ?'
+            'SELECT id, banned, is_vip, vip_until FROM players WHERE id = ?'
         ).bind(body.host_id).first();
 
         if (!host) {
@@ -176,6 +177,25 @@ matchesRoutes.post('/', async (c) => {
 
         if (host.banned === 1) {
             return c.json({ success: false, error: 'You are banned from creating matches' }, 403);
+        }
+
+        const matchType = body.match_type || 'casual';
+
+        // Check VIP status for League matches
+        if (matchType === 'league') {
+            const isVip = host.is_vip === 1 || host.is_vip === true;
+            const isAdmin = host.role === 'admin';
+            const vipUntil = host.vip_until ? new Date(host.vip_until as string) : null;
+            const now = new Date();
+
+            const hasActiveVip = isVip && vipUntil && vipUntil > now;
+
+            if (!isAdmin && !hasActiveVip) {
+                return c.json({
+                    success: false,
+                    error: 'League matches require an active VIP membership. Contact an administrator to upgrade.'
+                }, 403);
+            }
         }
 
         // Check if host is already in an active match
@@ -197,9 +217,9 @@ matchesRoutes.post('/', async (c) => {
 
         // Create match
         await c.env.DB.prepare(`
-            INSERT INTO matches (id, lobby_url, host_id, map_name, status, player_count, created_at, updated_at)
-            VALUES (?, ?, ?, ?, 'waiting', 1, datetime('now'), datetime('now'))
-        `).bind(matchId, body.lobby_url, body.host_id, body.map_name || null).run();
+            INSERT INTO matches (id, lobby_url, host_id, map_name, match_type, status, player_count, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, 'waiting', 1, datetime('now'), datetime('now'))
+        `).bind(matchId, body.lobby_url, body.host_id, body.map_name || null, matchType).run();
 
         // Add host as first player (alpha team, captain)
         await c.env.DB.prepare(`
@@ -518,17 +538,22 @@ matchesRoutes.post('/:id/result', async (c) => {
             bravo_score?: number;
         }>();
 
-        if (!body.screenshot_url || !body.winner_team) {
-            return c.json({ success: false, error: 'screenshot_url and winner_team are required' }, 400);
-        }
-
-        // Verify host and match status
+        // Screenshot is optional for casual matches, required for league
         const match = await c.env.DB.prepare(
-            'SELECT host_id, status FROM matches WHERE id = ?'
+            'SELECT host_id, status, match_type FROM matches WHERE id = ?'
         ).bind(matchId).first();
 
         if (!match) {
             return c.json({ success: false, error: 'Match not found' }, 404);
+        }
+
+        // Validate screenshot requirement based on match type
+        if (match.match_type === 'league' && !body.screenshot_url) {
+            return c.json({ success: false, error: 'Screenshot is required for league matches' }, 400);
+        }
+
+        if (!body.winner_team) {
+            return c.json({ success: false, error: 'winner_team is required' }, 400);
         }
 
         if (match.host_id !== body.host_id) {

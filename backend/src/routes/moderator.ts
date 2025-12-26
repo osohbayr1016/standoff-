@@ -5,9 +5,50 @@ import { matches, matchPlayers, eloHistory, players } from '../db/schema';
 
 interface Env {
     DB: D1Database;
+    DISCORD_BOT_TOKEN: string;
+    DISCORD_SERVER_ID: string;
 }
 
 const moderatorRoutes = new Hono<{ Bindings: Env }>();
+
+// Discord Tier Role IDs
+const TIERS = {
+    GOLD: '1454095406446153839',   // 1600+
+    SILVER: '1454150874531234065', // 1200+
+    BRONZE: '1454150924556570624', // 1000+
+    VIP: '1454234806933258382'
+};
+
+const updateDiscordRole = async (env: Env, userId: string, roleId: string, add: boolean) => {
+    try {
+        await fetch(
+            `https://discord.com/api/v10/guilds/${env.DISCORD_SERVER_ID}/members/${userId}/roles/${roleId}`,
+            {
+                method: add ? 'PUT' : 'DELETE',
+                headers: {
+                    'Authorization': `Bot ${env.DISCORD_BOT_TOKEN}`,
+                    'Content-Type': 'application/json',
+                }
+            }
+        );
+    } catch (err) {
+        console.error(`Error ${add ? 'adding' : 'removing'} Discord role ${roleId}:`, err);
+    }
+};
+
+const syncDiscordTiers = async (env: Env, userId: string, newElo: number) => {
+    let targetRole = TIERS.BRONZE;
+    if (newElo >= 1600) targetRole = TIERS.GOLD;
+    else if (newElo >= 1200) targetRole = TIERS.SILVER;
+
+    // Remove other tier roles and add the target one
+    const rolesToRemove = [TIERS.GOLD, TIERS.SILVER, TIERS.BRONZE].filter(r => r !== targetRole);
+
+    for (const roleId of rolesToRemove) {
+        await updateDiscordRole(env, userId, roleId, false);
+    }
+    await updateDiscordRole(env, userId, targetRole, true);
+};
 
 // Middleware to check moderator role
 const requireModerator = async (c: any, next: () => Promise<void>) => {
@@ -224,6 +265,9 @@ moderatorRoutes.post('/matches/:id/review', async (c) => {
                 moderatorId,
                 body.notes || null
             ).run();
+
+            // Sync Discord Tiers
+            await syncDiscordTiers(c.env, player.player_id as string, newElo);
         }
 
         // Update match as completed
@@ -270,7 +314,7 @@ moderatorRoutes.get('/players', async (c) => {
 
     try {
         let query = `
-            SELECT id, discord_username, discord_avatar, standoff_nickname, elo, wins, losses, role, banned
+            SELECT id, discord_username, discord_avatar, standoff_nickname, elo, wins, losses, role, banned, is_vip, vip_until
             FROM players
         `;
         const params: any[] = [];
@@ -401,6 +445,9 @@ moderatorRoutes.post('/players/:id/elo-adjust', async (c) => {
             body.reason
         ).run();
 
+        // Sync Discord Tiers
+        await syncDiscordTiers(c.env, playerId, newElo);
+
         return c.json({
             success: true,
             message: 'ELO adjusted',
@@ -472,6 +519,82 @@ moderatorRoutes.post('/players/:id/role', async (c) => {
         });
     } catch (error: any) {
         console.error('Error changing role:', error);
+        return c.json({ success: false, error: error.message }, 500);
+    }
+});
+
+// POST /api/moderator/players/:id/vip/grant - Grant VIP status for 1 month (Admin only)
+moderatorRoutes.post('/players/:id/vip/grant', async (c) => {
+    const playerId = c.req.param('id');
+    const adminId = c.req.header('X-User-Id');
+
+    try {
+        // Check if requester is admin
+        const adminPlayer = await c.env.DB.prepare(
+            'SELECT role FROM players WHERE id = ?'
+        ).bind(adminId).first();
+
+        if (!adminPlayer || adminPlayer.role !== 'admin') {
+            return c.json({ success: false, error: 'Only administrators can grant VIP status' }, 403);
+        }
+
+        // Calculate ISO date in JS for consistency
+        const vipUntilDate = new Date();
+        vipUntilDate.setMonth(vipUntilDate.getMonth() + 1);
+        const isoVipUntil = vipUntilDate.toISOString();
+
+        // Set VIP status for 1 month
+        await c.env.DB.prepare(`
+            UPDATE players 
+            SET is_vip = 1, 
+                vip_until = ?
+            WHERE id = ?
+        `).bind(isoVipUntil, playerId).run();
+
+        // Instant Discord Role assignment
+        await updateDiscordRole(c.env, playerId, TIERS.VIP, true);
+
+        return c.json({
+            success: true,
+            message: 'VIP status granted for 1 month'
+        });
+    } catch (error: any) {
+        console.error('Error granting VIP:', error);
+        return c.json({ success: false, error: error.message }, 500);
+    }
+});
+
+// POST /api/moderator/players/:id/vip/revoke - Revoke VIP status (Admin only)
+moderatorRoutes.post('/players/:id/vip/revoke', async (c) => {
+    const playerId = c.req.param('id');
+    const adminId = c.req.header('X-User-Id');
+
+    try {
+        // Check if requester is admin
+        const adminPlayer = await c.env.DB.prepare(
+            'SELECT role FROM players WHERE id = ?'
+        ).bind(adminId).first();
+
+        if (!adminPlayer || adminPlayer.role !== 'admin') {
+            return c.json({ success: false, error: 'Only administrators can revoke VIP status' }, 403);
+        }
+
+        await c.env.DB.prepare(`
+            UPDATE players 
+            SET is_vip = 0, 
+                vip_until = NULL 
+            WHERE id = ?
+        `).bind(playerId).run();
+
+        // Remove Discord Role instantly
+        await updateDiscordRole(c.env, playerId, TIERS.VIP, false);
+
+        return c.json({
+            success: true,
+            message: 'VIP status revoked'
+        });
+    } catch (error: any) {
+        console.error('Error revoking VIP:', error);
         return c.json({ success: false, error: error.message }, 500);
     }
 });

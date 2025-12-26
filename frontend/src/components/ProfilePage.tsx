@@ -47,6 +47,8 @@ interface ProfileData {
   wins: number;
   losses: number;
   is_discord_member?: boolean;
+  is_vip?: number;
+  vip_until?: string;
   matches?: MatchHistoryItem[];
 }
 
@@ -296,8 +298,20 @@ export default function ProfilePage({
                   </div>
                 ) : (
                   <div className="flex items-center justify-center md:justify-start gap-3 group">
-                    <h1 className="text-3xl md:text-5xl font-black font-display tracking-tighter text-white drop-shadow-sm">
+                    <h1 className="text-3xl md:text-5xl font-black font-display tracking-tighter text-white drop-shadow-sm flex items-center gap-3">
                       {profile?.standoff_nickname || profile?.discord_username || "Unknown Player"}
+                      {profile?.is_vip === 1 && (
+                        <div className="relative group/vip">
+                          <Badge className="bg-gradient-to-r from-yellow-400 via-yellow-200 to-yellow-600 text-black border-none font-black text-[10px] md:text-xs py-0.5 px-2 shadow-[0_0_15px_rgba(250,204,21,0.4)] animate-pulse">
+                            VIP
+                          </Badge>
+                          {profile.vip_until && (
+                            <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 py-1 px-2 bg-black border border-yellow-500/20 rounded text-[10px] text-yellow-500 opacity-0 group-hover/vip:opacity-100 transition-opacity whitespace-nowrap z-50">
+                              Member until {new Date(profile.vip_until).toLocaleDateString()}
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </h1>
                     {isOwnProfile && (
                       <Button size="icon" variant="ghost" className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-all text-muted-foreground hover:text-primary hover:bg-primary/10" onClick={() => setIsEditing(true)}>
