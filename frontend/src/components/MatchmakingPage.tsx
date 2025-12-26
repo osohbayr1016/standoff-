@@ -246,11 +246,30 @@ export default function MatchmakingPage({
               onClick={() => {
                 // If we could access setCurrentPage here we would use it, 
                 // but for now we rely on the header navigation or wait for auto-redirect
-                window.location.reload(); // Quick dirty way to trigger re-eval or we can suggest user use header
+                window.location.reload();
               }}
             >
               RETURN TO LOBBY
             </button>
+
+            <button
+              className="cancel-button"
+              style={{ width: '100%', marginTop: '0.5rem', background: '#ef4444', border: '1px solid #dc2626' }}
+              onClick={() => {
+                if (confirm("Are you sure you want to force leave this match? Use this only if you are stuck.")) {
+                  const user = JSON.parse(localStorage.getItem("user") || "{}");
+                  if (user.id && activeLobbyId) {
+                    sendMessage({ type: "LEAVE_MATCH", userId: user.id, lobbyId: activeLobbyId });
+                    // Also proactively clear local state just in case
+                    localStorage.removeItem("activeLobbyId");
+                    window.location.reload();
+                  }
+                }
+              }}
+            >
+              FORCE LEAVE (STUCK?)
+            </button>
+
             <p style={{ color: '#94a3b8', fontSize: '0.9rem' }}>
               Click "Return to Match" in header/menu
             </p>

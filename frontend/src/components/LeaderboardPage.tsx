@@ -29,6 +29,41 @@ export default function LeaderboardPage() {
   const [activeFilter, setActiveFilter] = useState<FilterType>("elo");
   const { lastMessage, sendMessage, isConnected } = useWebSocket();
 
+  // Move applyFilter declaration up before it is used
+  const applyFilter = useCallback((data: LeaderboardEntry[], filter: FilterType) => {
+    let sorted = [...data];
+
+    switch (filter) {
+      case "elo":
+        sorted.sort((a, b) => b.elo - a.elo);
+        break;
+      case "winrate":
+        sorted.sort((a, b) => {
+          const winrateA =
+            a.wins + a.losses > 0 ? a.wins / (a.wins + a.losses) : 0;
+          const winrateB =
+            b.wins + b.losses > 0 ? b.wins / (b.wins + b.losses) : 0;
+          return winrateB - winrateA;
+        });
+        break;
+      case "matches":
+        sorted.sort((a, b) => {
+          const matchesA = a.wins + a.losses;
+          const matchesB = b.wins + b.losses;
+          return matchesB - matchesA;
+        });
+        break;
+    }
+
+    // Recalculate ranks after sorting
+    const ranked = sorted.map((player, index) => ({
+      ...player,
+      rank: index + 1,
+    }));
+
+    setFilteredLeaderboard(ranked);
+  }, []);
+
   // Load cached data immediately on mount
   useEffect(() => {
     const cachedData = localStorage.getItem(CACHE_KEY);
@@ -96,39 +131,7 @@ export default function LeaderboardPage() {
     }
   };
 
-  const applyFilter = useCallback((data: LeaderboardEntry[], filter: FilterType) => {
-    let sorted = [...data];
 
-    switch (filter) {
-      case "elo":
-        sorted.sort((a, b) => b.elo - a.elo);
-        break;
-      case "winrate":
-        sorted.sort((a, b) => {
-          const winrateA =
-            a.wins + a.losses > 0 ? a.wins / (a.wins + a.losses) : 0;
-          const winrateB =
-            b.wins + b.losses > 0 ? b.wins / (b.wins + b.losses) : 0;
-          return winrateB - winrateA;
-        });
-        break;
-      case "matches":
-        sorted.sort((a, b) => {
-          const matchesA = a.wins + a.losses;
-          const matchesB = b.wins + b.losses;
-          return matchesB - matchesA;
-        });
-        break;
-    }
-
-    // Recalculate ranks after sorting
-    const ranked = sorted.map((player, index) => ({
-      ...player,
-      rank: index + 1,
-    }));
-
-    setFilteredLeaderboard(ranked);
-  }, []);
 
   useEffect(() => {
     if (leaderboard.length > 0) {

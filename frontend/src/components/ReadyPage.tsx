@@ -58,6 +58,13 @@ export default function ReadyPage({ partyMembers, activeLobbyId, selectedMap: in
     return '';
   })();
 
+  // Sync state with props
+  useEffect(() => {
+    if (initialSelectedMap && initialSelectedMap !== 'Unknown') {
+      setSelectedMap(initialSelectedMap);
+    }
+  }, [initialSelectedMap]);
+
   // Debug logging
   useEffect(() => {
     console.log('ReadyPage: Party Members Update', {

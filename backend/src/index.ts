@@ -171,13 +171,11 @@ export class MatchQueueDO {
       // Save state
       await this.saveMatchState();
 
-      // Check if all players are ready
-      const readyPhaseState = lobby.readyPhaseState;
-      const players = lobby.players || [];
-      const allPlayersReady = readyPhaseState.readyPlayers.length >= players.length;
+      // Check if Map Ban is finished (Skip Ready Phase)
+      const mapBanFinished = !lobby.mapBanState?.mapBanPhase;
 
       // Broadcast to LOBBY clients
-      if (allPlayersReady) {
+      if (mapBanFinished) {
         // Match Started
         this.broadcastToLobby(lobby.id, JSON.stringify({
           type: 'MATCH_START',
@@ -358,17 +356,14 @@ export class MatchQueueDO {
                   banState.selectedMap = finalMap;
                   banState.mapBanPhase = false;
 
-                  // Start Ready Phase
-                  if (finalMap) { // Type check
-                    lobby.readyPhaseState.phaseActive = true;
-                    lobby.readyPhaseState.readyPhaseStartTimestamp = Date.now();
-                    lobby.readyPhaseState.readyPhaseTimeout = 30;
-
+                  // Skip Ready Phase -> Go Straight to Match Lobby (Allocating Resources if needed)
+                  if (finalMap) { // Type check (ensure string)
                     this.broadcastToLobby(lobbyId, JSON.stringify({
-                      type: 'READY_PHASE_STARTED',
+                      type: 'MATCH_START',
                       lobbyId: lobbyId,
                       selectedMap: finalMap,
-                      readyPhaseTimeout: 30
+                      matchData: lobby,
+                      serverInfo: lobby.serverInfo // Might be null, processed by UI
                     }));
                   }
                 }
@@ -379,12 +374,37 @@ export class MatchQueueDO {
 
           // B. READY PHASE
           if (readyState?.phaseActive) {
-            const elapsed = (Date.now() - (readyState.readyPhaseStartTimestamp || Date.now())) / 1000;
+            const startTimestamp = readyState.readyPhaseStartTimestamp || Date.now();
+            const elapsed = (Date.now() - startTimestamp) / 1000;
             const playerCount = lobby.players.length;
             const readyCount = readyState.readyPlayers.length;
 
-            if (elapsed > readyState.readyPhaseTimeout && readyCount < playerCount) {
-              console.log(`⏰ [${lobbyId}] Ready timeout. Cancelling.`);
+            // Failsafe: If everyone is ready but match didn't start (rare race condition)
+            if (readyCount >= playerCount && playerCount > 0) {
+              console.log(`⚠️ [${lobbyId}] All players ready but match didn't start. Forcing start...`);
+
+              // Reuse logic from handleServerInfo/handlePlayerReady or mostly just assume create match was sent?
+              // Ideally we call a helper. For now, let's just ensure we don't time out.
+              // Actually, if we are here, it means SERVER_READY/MATCH_START wasn't triggered.
+              // We should trigger the specific logic if possible, or just log for now to see if this is the case.
+
+              // If we have server info, broadcast MATCH_START
+              if (lobby.serverInfo?.matchLink) {
+                this.broadcastToLobby(lobbyId, JSON.stringify({
+                  type: 'MATCH_START',
+                  lobbyId: lobby.id,
+                  selectedMap: lobby.mapBanState?.selectedMap,
+                  matchData: lobby,
+                  serverInfo: lobby.serverInfo
+                }));
+              }
+            }
+
+            // Timeout Check
+            const timeoutLimit = readyState.readyPhaseTimeout || 30;
+            if (elapsed > timeoutLimit && readyCount < playerCount) {
+              console.log(`⏰ [${lobbyId}] Ready timeout (${elapsed.toFixed(1)}s > ${timeoutLimit}s). Cancelling.`);
+
               // Cancel Match
               this.broadcastToLobby(lobbyId, JSON.stringify({
                 type: 'MATCH_CANCELLED',
@@ -398,6 +418,7 @@ export class MatchQueueDO {
                 if (pid) this.playerLobbyMap.delete(pid);
               });
               await this.saveMatchState();
+              console.log(`🗑️ [${lobbyId}] Lobby deleted due to timeout.`);
             }
           }
         } catch (err) {
@@ -438,13 +459,27 @@ export class MatchQueueDO {
   }
 
   getMergedQueue() {
+    // Collect all players currently in active lobbies
+    const activePlayerIds = new Set<string>();
+    for (const lobby of this.activeLobbies.values()) {
+      lobby.players.forEach(p => {
+        if (p.id) activePlayerIds.add(p.id);
+        if (p.discord_id) activePlayerIds.add(p.discord_id);
+      });
+    }
+
     const localPlayers = Array.from(this.localQueue.values());
     const merged = [...this.remoteQueue];
     localPlayers.forEach(lp => {
       const inRemote = merged.find(rp => rp.id === lp.id || rp.discord_id === lp.id);
       if (!inRemote) merged.push(lp);
     });
-    return merged;
+
+    // Filter out players who are playing
+    return merged.filter(p => {
+      const id = p.id || p.discord_id || '';
+      return id && !activePlayerIds.has(id);
+    });
   }
 
   async startMatch(players: QueuePlayer[]) {
@@ -822,6 +857,13 @@ export class MatchQueueDO {
               type: 'LOBBY_UPDATE',
               lobby: lobby
             }));
+          } else {
+            // Lobby not found (expired, cancelled, or reset)
+            ws.send(JSON.stringify({
+              type: 'MATCH_STATE_ERROR',
+              lobbyId: requestedLobbyId,
+              error: 'Lobby not found'
+            }));
           }
         }
 
@@ -871,10 +913,12 @@ export class MatchQueueDO {
                 }));
               }
             } else {
-              // Lobby not found? Maybe already deleted.
-              // Clean up map just in case
-              this.playerLobbyMap.delete(userId);
-              ws.send(JSON.stringify({ type: 'LEAVE_MATCH_SUCCESS' }));
+              // Lobby doesn't exist? Consider it success so frontend can clear state.
+              this.playerLobbyMap.delete(userId); // Ensure map is clean
+              ws.send(JSON.stringify({
+                type: 'LEAVE_MATCH_SUCCESS',
+                lobbyId: lobbyId
+              }));
             }
           }
         }
@@ -908,9 +952,10 @@ export class MatchQueueDO {
           }
         }
         if (msg.type === 'RESET_MATCH') {
-          console.log("⚠️ RESET_MATCH: Clearing all lobbies.");
+          console.log("⚠️ RESET_MATCH: Clearing active lobbies & local queue.");
           this.activeLobbies.clear();
           this.playerLobbyMap.clear();
+          this.localQueue.clear();
           await this.saveMatchState();
           this.broadcastToAll(JSON.stringify({ type: 'MATCH_RESET' }));
           this.broadcastMergedQueue();

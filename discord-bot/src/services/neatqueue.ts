@@ -85,25 +85,35 @@ export class NeatQueueService {
 
     private async waitForMatchCreation(channel: TextChannel): Promise<any> {
         return new Promise((resolve) => {
+            let found = false;
+
+            // Timeout to force stop
             const timeout = setTimeout(() => {
                 collector.stop();
-                resolve(null);
+                // Resolve null if not found by timeout
+                if (!found) resolve(null);
             }, 30000);
 
             const collector = channel.createMessageCollector({
                 filter: (msg: Message) => msg.author.id === this.neatQueueBotId,
-                time: 30000,
-                max: 1
+                time: 30000
             });
 
             collector.on('collect', (message: Message) => {
-                clearTimeout(timeout);
+                this.log(`📩 Analyzing msg from bot: ${message.content.slice(0, 50)} (Embeds: ${message.embeds.length})`);
                 const serverInfo = this.parseMatchMessage(message);
-                resolve(serverInfo);
+                if (serverInfo) {
+                    this.log('✅ Found valid server info in message!');
+                    found = true;
+                    clearTimeout(timeout);
+                    collector.stop();
+                    resolve(serverInfo);
+                }
             });
 
             collector.on('end', () => {
                 clearTimeout(timeout);
+                if (!found) resolve(null);
             });
         });
     }

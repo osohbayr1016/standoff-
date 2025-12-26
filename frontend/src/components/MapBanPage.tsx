@@ -147,14 +147,21 @@ export default function MapBanPage({ partyMembers, onCancel: _onCancel, onMapSel
 
     // Handle READY_PHASE_STARTED - map ban complete, transition to ready phase
     if (lastMessage.type === 'READY_PHASE_STARTED') {
+      console.log("MapBanPage: Received READY_PHASE_STARTED", lastMessage);
+
       if (lastMessage.selectedMap) {
         setSelectedMap(lastMessage.selectedMap);
-        setMapBanPhase(false);
-        setStateInitialized(true);
-        // Trigger navigation to ready page
-        if (onReadyPhaseStart) {
-          onReadyPhaseStart();
-        }
+      } else {
+        console.warn("MapBanPage: READY_PHASE_STARTED missing selectedMap");
+      }
+
+      setMapBanPhase(false);
+      setStateInitialized(true);
+
+      // Trigger navigation to ready page
+      if (onReadyPhaseStart) {
+        console.log("MapBanPage: Calling onReadyPhaseStart()");
+        onReadyPhaseStart();
       }
     }
 

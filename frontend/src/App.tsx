@@ -212,7 +212,7 @@ function AppContent() {
 
     // 3. Ready Phase Started - transition from map ban to ready page
     if (lastMessage.type === "READY_PHASE_STARTED") {
-      console.log("Ready phase started:", lastMessage);
+      console.log("App: Ready phase started event received:", lastMessage);
       // Ready phase is CRITICAL (30s timer). We should force the user there 
       // even if they navigated away, or at least show a toast. 
       // For now, we revert to forcing redirect because ignoring it leads to missed matches.
@@ -220,6 +220,8 @@ function AppContent() {
       if (lastMessage.selectedMap) {
         setSelectedMap(lastMessage.selectedMap);
       }
+
+      console.log("App: Setting current page to 'ready'");
       setCurrentPage("ready");
       // Reset navigation flag so they aren't marked as "away" anymore
       setNavigatedAwayLobbyId(null);
@@ -374,10 +376,12 @@ function AppContent() {
             setSelectedMap(lobby.mapBanState.selectedMap);
           }
 
-          if (navigatedAwayLobbyId !== lobby.id) {
+          if (navigatedAwayLobbyId !== lobby.id || currentPage === "mapban") {
             // Auto-navigate to ready page if we are not already there
             if (currentPage !== "ready" && currentPage !== "matchgame") {
+              console.log("Auto-navigating to READY page (Lobby Phase Active)");
               setCurrentPage("ready");
+              setNavigatedAwayLobbyId(null); // Ensure we clear the away flag
             }
           }
 
@@ -712,7 +716,7 @@ function AppContent() {
             partyMembers={lobbyPartyMembers}
             onCancel={() => handleNavigate("home")}
             activeLobbyId={activeLobbyId}
-            onReadyPhaseStart={() => setCurrentPage("ready")}
+            onReadyPhaseStart={() => setCurrentPage("matchgame")}
           />
         )}
         {currentPage === "ready" && (
