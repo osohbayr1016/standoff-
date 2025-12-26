@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Crosshair, Copy, Shield, Target } from 'lucide-react';
+import { Crosshair, Copy, Shield, Target, CheckCircle2 } from 'lucide-react';
 import { useWebSocket } from './WebSocketContext';
 import './MatchLobbyPage.css';
 
@@ -58,9 +58,12 @@ export default function MatchLobbyPage({ lobby, serverInfo: initialServerInfo }:
     return `https://cdn.discordapp.com/avatars/${player.id}/${player.avatar}.png`;
   };
 
+  const [copied, setCopied] = useState(false);
+
   const handleCopy = (text: string) => {
     navigator.clipboard.writeText(text);
-    // You could add a toast here
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   };
 
   const handleLeaveMatch = () => {
@@ -185,7 +188,8 @@ export default function MatchLobbyPage({ lobby, serverInfo: initialServerInfo }:
                         <Crosshair size={20} /> LAUNCH STANDOFF 2
                       </a>
                       <button className="copy-btn" onClick={() => handleCopy(`connect ${serverInfo.ip}; password ${serverInfo.password}`)}>
-                        <Copy size={16} /> COPY COMMAND
+                        {copied ? <CheckCircle2 size={16} color="#22c55e" /> : <Copy size={16} />}
+                        {copied ? 'COPIED!' : 'COPY COMMAND'}
                       </button>
                     </div>
                   </>

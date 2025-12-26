@@ -41,15 +41,7 @@ export default function MatchmakingPage({
       }
     }
 
-    // Reset queue state when component mounts - user must explicitly join
-    // This prevents automatic queue joining when visiting the page
-    setIsInQueue(false);
-
-    // If user was in queue from elsewhere (Discord bot, previous session), leave it
-    const user = JSON.parse(localStorage.getItem('user') || '{}');
-    if (user.id) {
-      sendMessage({ type: 'LEAVE_QUEUE', userId: user.id });
-    }
+    // NOTE: Removed auto-leave queue to allow persistence
   }, [sendMessage]);
 
   // Listen for WS Updates
@@ -73,9 +65,16 @@ export default function MatchmakingPage({
         // We only show them as filling slots
         setPartyMembers(externalPlayers);
 
-        // Don't automatically sync isInQueue state from QUEUE_UPDATE
-        // User must explicitly click JOIN QUEUE to join
-        // This prevents automatic queue joining when visiting the page
+        // SYNC LOCAL STATE: Check if WE are in this list
+        // This allows user to navigate away and return to "Finding Match" state
+        const user = JSON.parse(localStorage.getItem("user") || "{}");
+        if (user.id) {
+          const amIInQueue = externalPlayers.some(p => String(p.id) === String(user.id) || String(p.username) === String(user.username));
+          setIsInQueue(amIInQueue);
+          if (amIInQueue) {
+            console.log("Synced queue state: User is in queue");
+          }
+        }
       }
     }
 

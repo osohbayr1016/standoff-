@@ -23,6 +23,7 @@ interface MapBanViewProps {
   onBanMap: (mapName: string) => void;
   isTeamLeader: boolean;
   userTeam: 'alpha' | 'bravo' | null;
+  onCancel?: () => void;
 }
 
 const allMaps = [
@@ -49,6 +50,7 @@ export default function MapBanView({
   onBanMap,
   isTeamLeader,
   userTeam,
+  onCancel,
 }: MapBanViewProps) {
   const [isBanning, setIsBanning] = useState<string | null>(null);
 
@@ -92,6 +94,37 @@ export default function MapBanView({
         timeLeft={mapBanData.timeLeft}
         serverInfo={mapBanData.serverInfo}
       />
+
+      {/* Leave Button */}
+      {onCancel && (
+        <div style={{ position: 'absolute', top: '1rem', left: '1rem', zIndex: 100 }}>
+          <button
+            onClick={onCancel}
+            style={{
+              background: 'rgba(239, 68, 68, 0.2)',
+              border: '1px solid rgba(239, 68, 68, 0.5)',
+              color: '#fca5a5',
+              padding: '0.5rem 1rem',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              fontWeight: 600,
+              fontSize: '0.8rem',
+              backdropFilter: 'blur(4px)',
+              transition: 'all 0.2s'
+            }}
+            onMouseOver={(e) => {
+              e.currentTarget.style.background = 'rgba(239, 68, 68, 0.4)';
+              e.currentTarget.style.transform = 'translateY(-1px)';
+            }}
+            onMouseOut={(e) => {
+              e.currentTarget.style.background = 'rgba(239, 68, 68, 0.2)';
+              e.currentTarget.style.transform = 'none';
+            }}
+          >
+            ← LEAVE MATCH
+          </button>
+        </div>
+      )}
 
       <div className="team-leaders-grid">
         <TeamLeaderCard

@@ -58,8 +58,29 @@ export default function ReadyPage({ partyMembers, activeLobbyId, selectedMap: in
     return '';
   })();
 
-  const teamAlpha = partyMembers.slice(0, 5);
-  const teamBravo = partyMembers.slice(5, 10);
+  // Debug logging
+  useEffect(() => {
+    console.log('ReadyPage: Party Members Update', {
+      count: partyMembers.length,
+      members: partyMembers,
+      lobbyId: activeLobbyId
+    });
+  }, [partyMembers, activeLobbyId]);
+
+  // Robust team generation with placeholders
+  const filledPartyMembers = [...partyMembers];
+  // Ensure we have 10 slots filled (or at least enough for visual balance)
+  while (filledPartyMembers.length < 10) {
+    filledPartyMembers.push({
+      id: `placeholder-${filledPartyMembers.length}`,
+      username: 'Searching...',
+      avatar: undefined,
+      elo: 1000
+    });
+  }
+
+  const teamAlpha = filledPartyMembers.slice(0, 5);
+  const teamBravo = filledPartyMembers.slice(5, 10);
   const isCurrentUserReady = readyPlayers.includes(currentUserId);
 
   useEffect(() => {
@@ -75,14 +96,23 @@ export default function ReadyPage({ partyMembers, activeLobbyId, selectedMap: in
 
     if (lastMessage.type === 'LOBBY_UPDATE') {
       const lobby = lastMessage.lobby;
+      const serverTime = lastMessage.serverTime || Date.now();
+      const skew = Date.now() - serverTime;
+
       if (lobby) {
         if (lobby.mapBanState?.selectedMap) setSelectedMap(lobby.mapBanState.selectedMap);
         if (lobby.readyPhaseState && lobby.readyPhaseState.phaseActive) {
           setReadyPlayers(lobby.readyPhaseState.readyPlayers || []);
+
           if (lobby.readyPhaseState.readyPhaseStartTimestamp) {
-            const elapsed = (Date.now() - lobby.readyPhaseState.readyPhaseStartTimestamp) / 1000;
+            const adjustedStart = lobby.readyPhaseState.readyPhaseStartTimestamp + skew;
+            const elapsed = (Date.now() - adjustedStart) / 1000;
+
+            // Only update if significantly different or not set, to avoid jitter
+            if (readyPhaseStartTime === null || Math.abs(readyPhaseStartTime - adjustedStart) > 1000) {
+              setReadyPhaseStartTime(adjustedStart);
+            }
             setTimeRemaining(Math.max(0, Math.floor(lobby.readyPhaseState.readyPhaseTimeout - elapsed)));
-            if (readyPhaseStartTime === null) setReadyPhaseStartTime(lobby.readyPhaseState.readyPhaseStartTimestamp);
           }
           if (lobby.readyPhaseState.readyPlayers.length >= (lobby.players?.length || 10)) setAllReady(true);
         }
@@ -204,13 +234,13 @@ export default function ReadyPage({ partyMembers, activeLobbyId, selectedMap: in
                     {!isCurrentUserReady ? (
                       <button className="mega-ready-btn" onClick={handleReady}>
                         <Zap size={24} className="bolt" />
-                        READY UP
+                        READY UP ({readyPlayers.length}/{partyMembers.length})
                         <div className="btn-glow" />
                       </button>
                     ) : (
                       <div className="user-ready-status">
                         <CheckCircle2 size={32} className="success-icon" />
-                        <span>STAND BY</span>
+                        <span>STAND BY ({readyPlayers.length}/{partyMembers.length})</span>
                       </div>
                     )}
                   </motion.div>

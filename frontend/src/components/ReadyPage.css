@@ -605,6 +605,7 @@
 }
 
 /* Responsive fixes */
+/* Responsive Mobile Styles */
 @media (max-width: 1200px) {
   .top-status-bar {
     padding: 0 2rem;
@@ -616,24 +617,133 @@
   }
 }
 
-@media (max-width: 992px) {
+@media (max-width: 1024px) {
+  .ready-page-premium {
+    height: auto;
+    min-height: 100vh;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .premium-bg-image {
+    position: fixed;
+    /* Keep bg fixed while content scrolls */
+  }
+
+  .top-status-bar {
+    padding: 0 1rem;
+    position: sticky;
+    top: 0;
+    z-index: 50;
+  }
+
   .main-arena {
     flex-direction: column;
-    padding-bottom: 250px;
-    overflow-y: auto;
+    padding: 1rem;
+    gap: 2rem;
+    padding-bottom: 180px;
+    /* Space for fixed action bar */
   }
 
-  .arena-side {
-    width: 100%;
-  }
-
+  /* ORDER: Header (0), Map/Center (1), Alpha (2), Bravo (3) */
   .arena-center {
+    order: 1;
     width: 100%;
-    order: -1;
-    margin-bottom: 3rem;
+    margin-bottom: 0;
   }
 
+  .arena-side.alpha {
+    order: 2;
+    width: 100%;
+  }
+
+  .arena-side.bravo {
+    order: 3;
+    width: 100%;
+    margin-top: 1rem;
+  }
+
+  /* Adjust Map Size */
+  .map-portal {
+    max-width: 100%;
+    aspect-ratio: 16/9;
+  }
+
+  /* Ready Button Position - Fixed Bottom */
   .action-container {
-    bottom: -200px;
+    position: fixed;
+    bottom: 2rem;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 90%;
+    max-width: 400px;
+    z-index: 100;
+  }
+
+  .launch-container {
+    position: fixed;
+    bottom: 2rem;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 90%;
+    z-index: 100;
+  }
+
+  .mega-ready-btn {
+    width: 100%;
+    justify-content: center;
+    padding: 1.2rem;
+    font-size: 1.4rem;
+    box-shadow: 0 5px 20px rgba(0, 0, 0, 0.5);
+  }
+
+  .launch-btn {
+    width: 100%;
+    text-align: center;
+    font-size: 1.5rem;
+    padding: 1.2rem;
+  }
+
+  /* Player Cards Compact */
+  .player-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0.5rem;
+  }
+
+  .premium-player-card {
+    height: 60px;
+  }
+
+  .team-header {
+    font-size: 1.5rem;
+    text-align: center;
+  }
+
+  .team-header.bravo {
+    text-align: center;
+  }
+
+  .vs-glow {
+    width: 60px;
+    height: 60px;
+  }
+
+  .central-vs span {
+    font-size: 2.5rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .timer-display {
+    font-size: 1.2rem;
+  }
+
+  .match-id {
+    display: none;
+  }
+
+  .status-text {
+    font-size: 0.8rem;
   }
 }

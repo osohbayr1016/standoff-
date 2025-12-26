@@ -74,7 +74,12 @@ function AppContent() {
     return saved ? JSON.parse(saved) : null;
   }); // Store match server info
   const [selectedMap, setSelectedMap] = useState<string | undefined>(); // Store selected map for ready page
-  const [userNavigatedAway, setUserNavigatedAway] = useState(false); // Track if user explicitly navigated away from match
+
+  // Track if user explicitly navigated away from a specific lobby
+  // This persists across reloads to prevent auto-redirect loops
+  const [navigatedAwayLobbyId, setNavigatedAwayLobbyId] = useState<string | null>(() => {
+    return localStorage.getItem("navigatedAwayLobbyId");
+  });
 
   const { registerUser, lastMessage, requestMatchState } = useWebSocket();
 
@@ -100,6 +105,15 @@ function AppContent() {
       localStorage.removeItem("matchData");
     }
   }, [matchData]);
+
+  // Save navigatedAwayLobbyId to localStorage
+  useEffect(() => {
+    if (navigatedAwayLobbyId) {
+      localStorage.setItem("navigatedAwayLobbyId", navigatedAwayLobbyId);
+    } else {
+      localStorage.removeItem("navigatedAwayLobbyId");
+    }
+  }, [navigatedAwayLobbyId]);
 
   // Register user on socket when authenticated and request match state if needed
   // 1. Register user on socket when authenticated (and when user changes)
@@ -182,10 +196,14 @@ function AppContent() {
             );
 
             if (isUserInMatch) {
-              console.log("User is in match! Navigating to mapban...");
-              setCurrentPage("mapban");
-              // Also ensure we don't treat this as "navigated away"
-              setUserNavigatedAway(false);
+              if (navigatedAwayLobbyId === lastMessage.lobbyId) {
+                console.log("User previously explicity navigated away from this match. Suppressing auto-redirect.");
+              } else {
+                console.log("User is in match! Navigating to mapban...");
+                setCurrentPage("mapban");
+                // Ensure we reset the suppression if we are entering the flow
+                setNavigatedAwayLobbyId(null);
+              }
             }
           }
         }
@@ -195,10 +213,16 @@ function AppContent() {
     // 3. Ready Phase Started - transition from map ban to ready page
     if (lastMessage.type === "READY_PHASE_STARTED") {
       console.log("Ready phase started:", lastMessage);
+      // Ready phase is CRITICAL (30s timer). We should force the user there 
+      // even if they navigated away, or at least show a toast. 
+      // For now, we revert to forcing redirect because ignoring it leads to missed matches.
+
       if (lastMessage.selectedMap) {
         setSelectedMap(lastMessage.selectedMap);
       }
       setCurrentPage("ready");
+      // Reset navigation flag so they aren't marked as "away" anymore
+      setNavigatedAwayLobbyId(null);
     }
 
     // 4. Lobby Update / Match Start Catch-up (Persistence)
@@ -208,43 +232,45 @@ function AppContent() {
     ) {
       console.log("Persistence Update:", lastMessage.type);
       const lobby = lastMessage.lobby || lastMessage.matchData;
+      const lobbyId = lobby?.id || lastMessage.lobbyId || lastMessage.matchData?.id;
 
+      // START MATCH_START LOGIC
       if (lastMessage.type === "MATCH_START") {
         // Prevent processing the same MATCH_START event multiple times
-        const eventId = lastMessage.lobbyId || lastMessage.matchData?.id;
-        if (eventId && matchData?.lobby?.id === eventId) {
-          console.log("MATCH_START already processed for lobby:", eventId);
+        if (lobbyId && matchData?.lobby?.id === lobbyId) {
+          console.log("MATCH_START already processed for lobby:", lobbyId);
           return;
         }
 
         console.log("MATCH STARTED! Switching to Match View", lastMessage);
         setMatchData(lastMessage);
-        // Only redirect to matchgame if:
-        // 1. User hasn't explicitly navigated away from matchgame, AND
-        // 2. User is currently on a match-related page (mapban, ready, or already on matchgame)
-        // Never force redirect if user is on home/matchmaking/leaderboard/etc
-        if (!userNavigatedAway) {
+
+        // Redirect check
+        if (navigatedAwayLobbyId !== lobbyId) {
           const matchRelatedPages = ["mapban", "ready", "matchgame"];
           if (matchRelatedPages.includes(currentPage)) {
             // User is in match flow or already on matchgame, ensure they're on matchgame
             if (currentPage !== "matchgame") {
               setCurrentPage("matchgame");
             }
+          } else {
+            // User is on non-match page but didn't navigate away (fresh load?), so redirect
+            if (currentPage !== "matchgame") {
+              setCurrentPage("matchgame");
+            }
           }
-          // If user is on other pages (home, matchmaking, leaderboard, etc), don't redirect
         }
-        // If userNavigatedAway is true, just update matchData but don't force navigation
         return;
       }
+      // END MATCH_START LOGIC
 
       // Handle NeatQueue webhook events
       if (lastMessage.type === "NEATQUEUE_MATCH_STARTED") {
         console.log("🔍 NeatQueue Match Started - Full Data:", lastMessage.data);
-        console.log("🔍 Teams Array:", lastMessage.data?.teams);
+        const gameNumber = String(lastMessage.data?.game_number || "unknown");
 
         // Set match data with NeatQueue info
         const neatqueueTeams = lastMessage.data?.teams || [];
-        console.log(`🔍 Number of teams received: ${neatqueueTeams.length}`);
 
         const teamA =
           neatqueueTeams[0]?.players.map((p: any) => ({
@@ -261,12 +287,9 @@ function AppContent() {
             elo: p.rating || 1000,
           })) || [];
 
-        console.log(`🔍 Team A Players: ${teamA.length}`, teamA);
-        console.log(`🔍 Team B Players: ${teamB.length}`, teamB);
-
         const neatqueueMatchData = {
           lobby: {
-            id: lastMessage.data?.game_number || "unknown",
+            id: gameNumber,
             teamA,
             teamB,
             mapBanState: {
@@ -279,10 +302,10 @@ function AppContent() {
         };
 
         setMatchData(neatqueueMatchData);
-        setActiveLobbyId(String(lastMessage.data?.game_number || "unknown"));
+        setActiveLobbyId(gameNumber);
 
         // Auto-navigate to match lobby
-        if (!userNavigatedAway) {
+        if (navigatedAwayLobbyId !== gameNumber) {
           setCurrentPage("matchgame");
         }
       }
@@ -299,21 +322,18 @@ function AppContent() {
         setMatchData(null);
         setLobbyPartyMembers([]);
         setSelectedMap(undefined);
-        setUserNavigatedAway(false);
+        setNavigatedAwayLobbyId(null); // Clear suppression
 
         // Navigate to home page
         setCurrentPage("home");
 
         // Show match results if available
         if (lastMessage.winner || lastMessage.tie) {
-          console.log("Match results:", {
-            winner: lastMessage.winner,
-            tie: lastMessage.tie,
-            teams: lastMessage.teams || lastMessage.data?.teams,
-          });
           // TODO: Show match results modal/page
         }
       }
+
+      // LOBBY UPDATE LOGIC
       if (lobby && lobby.id) {
         // Only update if this is the current active lobby to prevent wrong lobby bug
         if (activeLobbyId && lobby.id !== activeLobbyId) {
@@ -353,11 +373,15 @@ function AppContent() {
           if (lobby.mapBanState?.selectedMap) {
             setSelectedMap(lobby.mapBanState.selectedMap);
           }
-          // Auto-navigate to ready page if we are not already there
-          if (currentPage !== "ready" && currentPage !== "matchgame") {
-            setCurrentPage("ready");
+
+          if (navigatedAwayLobbyId !== lobby.id) {
+            // Auto-navigate to ready page if we are not already there
+            if (currentPage !== "ready" && currentPage !== "matchgame") {
+              setCurrentPage("ready");
+            }
           }
-        } else if (!userNavigatedAway) {
+
+        } else if (navigatedAwayLobbyId !== lobby.id) {
           // If ready phase is NOT active, check for other states if user should be in match
           if (lobby.serverInfo && currentPage !== "matchgame") {
             console.log("Auto-navigating to MATCH GAME due to LOBBY_UPDATE");
@@ -378,6 +402,8 @@ function AppContent() {
       setLobbyPartyMembers([]);
       setSelectedMap(undefined);
       setMatchData(null); // Clear match data
+      setNavigatedAwayLobbyId(null);
+
       // Navigate back to matchmaking or home
       if (
         currentPage === "mapban" ||
@@ -403,10 +429,6 @@ function AppContent() {
             serverInfo: lastMessage.serverInfo,
           };
           setMatchData(updatedMatchData);
-        }
-        // Also update current lobby if we're in a match
-        if (activeLobbyId && lastMessage.lobbyId === activeLobbyId) {
-          // Server info will be included in next LOBBY_UPDATE
         }
       }
     }
@@ -435,12 +457,12 @@ function AppContent() {
       setMatchData(null);
       setLobbyPartyMembers([]);
       setSelectedMap(undefined);
-      setUserNavigatedAway(false);
+      setNavigatedAwayLobbyId(null);
       // Navigate to matchmaking page
       setCurrentPage("matchmaking");
     }
 
-  }, [lastMessage, currentPage]);
+  }, [lastMessage, currentPage, navigatedAwayLobbyId, matchData, activeLobbyId]);
 
   // Discord OAuth callback-ыг шалгах
   useEffect(() => {
@@ -528,14 +550,23 @@ function AppContent() {
 
   // Navigation handler that always works, regardless of current page
   const handleNavigate = (page: string) => {
-    // If user navigates away from matchgame, mark that they explicitly left
-    if (currentPage === "matchgame" && page !== "matchgame") {
-      setUserNavigatedAway(true);
+    // List of match-related pages
+    const matchPages = ["mapban", "ready", "matchgame"];
+
+    // If user is currently in a match page and navigating elsewhere, mark as navigated away
+    if (matchPages.includes(currentPage) && !matchPages.includes(page)) {
+      console.log("User explicitly leaving match flow. Setting navigatedAwayLobbyId.", activeLobbyId);
+      if (activeLobbyId) {
+        setNavigatedAwayLobbyId(activeLobbyId);
+      }
     }
-    // If user navigates back to matchgame, reset the flag
-    if (page === "matchgame") {
-      setUserNavigatedAway(false);
+
+    // If user navigates back to any match page, reset the flag
+    if (matchPages.includes(page)) {
+      console.log("User entering match flow. Resetting navigatedAwayLobbyId.");
+      setNavigatedAwayLobbyId(null);
     }
+
     setCurrentPage(page);
   };
 
@@ -631,8 +662,13 @@ function AppContent() {
         onReturnToMatch={() => {
           if (activeLobbyId) {
             // Reset the flag when user explicitly returns to match
-            setUserNavigatedAway(false);
+            setNavigatedAwayLobbyId(null);
             requestMatchState(activeLobbyId);
+
+            // Navigate based on current state (could simplify to just requesting state and letting LOBBY_UPDATE handle it)
+            // But immediate feedback is good:
+            // logic will be handled by LOBBY_UPDATE anyway likely, but let's try to infer if we know where to go?
+            // Actually, requestMatchState will trigger LOBBY_UPDATE which will trigger redirect because we cleared navigatedAwayLobbyId.
           }
         }}
       />
@@ -674,7 +710,7 @@ function AppContent() {
         {currentPage === "mapban" && (
           <MapBanPage
             partyMembers={lobbyPartyMembers}
-            onCancel={() => setCurrentPage("home")}
+            onCancel={() => handleNavigate("home")}
             activeLobbyId={activeLobbyId}
             onReadyPhaseStart={() => setCurrentPage("ready")}
           />

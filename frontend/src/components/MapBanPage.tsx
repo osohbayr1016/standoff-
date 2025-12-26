@@ -46,7 +46,7 @@ export default function MapBanPage({ partyMembers, onCancel: _onCancel, onMapSel
       // Request match state from server
       setHasRequestedState(true);
       requestMatchState(savedLobbyId);
-      
+
       // Fallback: if we don't receive LOBBY_UPDATE within 3 seconds, initialize with defaults
       const timeout = setTimeout(() => {
         setStateInitialized((prev) => {
@@ -58,7 +58,7 @@ export default function MapBanPage({ partyMembers, onCancel: _onCancel, onMapSel
           return prev;
         });
       }, 3000);
-      
+
       return () => clearTimeout(timeout);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -390,6 +390,7 @@ export default function MapBanPage({ partyMembers, onCancel: _onCancel, onMapSel
         onBanMap={handleBanMap}
         isTeamLeader={isTeamLeader}
         userTeam={userTeam}
+        onCancel={_onCancel}
       />
     </div>
   );

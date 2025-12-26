@@ -420,16 +420,26 @@ export class MatchQueueDO {
   async startMatch(players: QueuePlayer[]) {
     console.log("Starting Match with:", players.length, "players");
 
-    // Select Captains
+    // 1. Sort by Elo (Descending) for Balance
+    players.sort((a, b) => (b.elo || 1000) - (a.elo || 1000));
+
+    // 2. Select Captains (Top 2 Players)
     const captain1 = players[0];
-    const captain2 = players[1] || players[0];
+    const captain2 = players[1] || players[0]; // Fallback if 1 player (debug)
 
     const teamA: QueuePlayer[] = [];
     const teamB: QueuePlayer[] = [];
 
+    // 3. Snake Draft (ABBA) Distribution
+    // Indices: 0(A), 1(B), 2(B), 3(A), 4(A), 5(B)...
+    // This balances high/low skill players naturally.
     for (let i = 0; i < players.length; i++) {
-      if (i % 2 === 0) teamA.push(players[i]);
-      else teamB.push(players[i]);
+      const patternIndex = i % 4;
+      if (patternIndex === 0 || patternIndex === 3) {
+        teamA.push(players[i]);
+      } else {
+        teamB.push(players[i]);
+      }
     }
 
     const sortedPlayers = [...teamA, ...teamB];
@@ -482,6 +492,18 @@ export class MatchQueueDO {
 
     this.broadcastToLobby(lobbyId, message);
 
+    // Notify Discord Bot to Sync NeatQueue (Clear Queue)
+    const botWs = this.userSockets.get('discord-bot');
+    if (botWs && botWs.readyState === WebSocket.READY_STATE_OPEN) {
+      botWs.send(JSON.stringify({
+        type: 'CREATE_MATCH',
+        matchData: {
+          lobbyId: newLobby.id,
+          players: sortedPlayers
+        }
+      }));
+    }
+
     // Cleanup Local Queue
     sortedPlayers.forEach(p => {
       if (this.localQueue.has(p.id)) {
@@ -516,7 +538,8 @@ export class MatchQueueDO {
         await this.saveMatchState();
         this.broadcastToLobby(lobbyId, JSON.stringify({
           type: 'LOBBY_UPDATE',
-          lobby: lobby
+          lobby: lobby,
+          serverTime: Date.now()
         }));
       }
     } else {
@@ -826,7 +849,34 @@ export class MatchQueueDO {
           }
         }
 
-        // 8. RESET_MATCH (Admin)
+
+
+        // 9. SEND_INVITE (Party System)
+        if (msg.type === 'SEND_INVITE') {
+          const { targetId, fromUser, lobbyId } = msg;
+          if (targetId && fromUser) {
+            console.log(`📨 Invite from ${fromUser.username} to ${targetId}`);
+            // Look for target socket
+            // 1. Try key as simple ID
+            let targetWs = this.userSockets.get(targetId);
+
+            // 2. If not found, try searching by discord_id in active players?? 
+            // For now, simpler: map assumes userSockets key is userId.
+
+            if (targetWs && targetWs.readyState === WebSocket.READY_STATE_OPEN) {
+              targetWs.send(JSON.stringify({
+                type: 'INVITE_RECEIVED',
+                fromUser: fromUser,
+                lobbyId: lobbyId || 'global'
+              }));
+              ws.send(JSON.stringify({ type: 'INVITE_SENT', success: true, targetId }));
+            } else {
+              // Try to find via player list? (Access O(N) but safer if key mismatch)
+              // But for now, just report failure
+              ws.send(JSON.stringify({ type: 'INVITE_FAILED', error: 'User not online', targetId }));
+            }
+          }
+        }
         if (msg.type === 'RESET_MATCH') {
           console.log("⚠️ RESET_MATCH: Clearing all lobbies.");
           this.activeLobbies.clear();
@@ -836,7 +886,7 @@ export class MatchQueueDO {
           this.broadcastMergedQueue();
         }
 
-        // 9. FILL_BOTS (Debug)
+        // 10. FILL_BOTS (Debug)
         if (msg.type === 'FILL_BOTS') {
           // Ensure we are not already in a match?
           // With multi-lobby, checking 'this.matchState' is obsolete.
