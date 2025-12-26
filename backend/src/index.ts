@@ -228,6 +228,36 @@ export class MatchQueueDO {
     }
   }
 
+  // Helper: Broadcast Leaderboard Update to All Clients
+  async broadcastLeaderboardUpdate() {
+    try {
+      const result = await this.env.DB.prepare(
+        'SELECT * FROM players ORDER BY mmr DESC LIMIT 500'
+      ).all();
+
+      const leaderboard = (result.results || []).map((player: any, index: number) => ({
+        rank: index + 1,
+        id: player.id,
+        discord_id: player.discord_id,
+        username: player.discord_username,
+        avatar: player.discord_avatar,
+        nickname: player.standoff_nickname,
+        elo: player.mmr,
+        wins: player.wins,
+        losses: player.losses,
+      }));
+
+      this.broadcastToAll(JSON.stringify({
+        type: 'LEADERBOARD_UPDATE',
+        data: leaderboard
+      }));
+
+      console.log('📊 Broadcasted leaderboard update to all clients');
+    } catch (error) {
+      console.error('Error broadcasting leaderboard update:', error);
+    }
+  }
+
   // Multi-Match Architecture State
   activeLobbies: Map<string, Lobby> = new Map();
   playerLobbyMap: Map<string, string> = new Map(); // UserId -> LobbyId
@@ -904,6 +934,39 @@ export class MatchQueueDO {
           }
         }
 
+        // 10. REQUEST_LEADERBOARD
+        if (msg.type === 'REQUEST_LEADERBOARD') {
+          try {
+            // Fetch leaderboard from database
+            const result = await this.env.DB.prepare(
+              'SELECT * FROM players ORDER BY mmr DESC LIMIT 500'
+            ).all();
+
+            const leaderboard = (result.results || []).map((player: any, index: number) => ({
+              rank: index + 1,
+              id: player.id,
+              discord_id: player.discord_id,
+              username: player.discord_username,
+              avatar: player.discord_avatar,
+              nickname: player.standoff_nickname,
+              elo: player.mmr,
+              wins: player.wins,
+              losses: player.losses,
+            }));
+
+            // Send leaderboard to requesting client
+            ws.send(JSON.stringify({
+              type: 'LEADERBOARD_UPDATE',
+              data: leaderboard
+            }));
+          } catch (error) {
+            console.error('Error fetching leaderboard:', error);
+            ws.send(JSON.stringify({
+              type: 'ERROR',
+              message: 'Failed to fetch leaderboard'
+            }));
+          }
+        }
 
       } catch (err) {
         console.error('WS Message Error:', err);
