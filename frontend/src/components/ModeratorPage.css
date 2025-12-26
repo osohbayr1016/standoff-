@@ -1,0 +1,319 @@
+.moderator-container {
+    padding: 2rem;
+    max-width: 1400px;
+    margin: 0 auto;
+    min-height: calc(100vh - 80px);
+}
+
+.moderator-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2rem;
+}
+
+.moderator-title {
+    font-size: 2.5rem;
+    font-weight: 700;
+    background: linear-gradient(135deg, #ff6b35, #ff4500);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.nuclear-btn {
+    padding: 0.75rem 1.5rem;
+    background: linear-gradient(135deg, #dc2626, #991b1b);
+    border: 2px solid #dc2626;
+    border-radius: 8px;
+    color: white;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.3s;
+    font-size: 1rem;
+}
+
+.nuclear-btn:hover {
+    transform: scale(1.05);
+    box-shadow: 0 0 20px rgba(220, 38, 38, 0.5);
+}
+
+.tab-nav {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 2rem;
+    border-bottom: 2px solid #334155;
+    padding-bottom: 0.5rem;
+}
+
+.tab-nav button {
+    padding: 0.75rem 1.5rem;
+    background: transparent;
+    border: none;
+    color: #94a3b8;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s;
+    border-bottom: 3px solid transparent;
+    font-size: 1rem;
+}
+
+.tab-nav button:hover {
+    color: #ff6b35;
+}
+
+.tab-nav button.tab-active {
+    color: #ff6b35;
+    border-bottom-color: #ff6b35;
+}
+
+.tab-content {
+    background: rgba(30, 41, 59, 0.5);
+    border-radius: 12px;
+    padding: 2rem;
+    border: 1px solid #334155;
+    backdrop-filter: blur(10px);
+}
+
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1.5rem;
+}
+
+.stat-card {
+    background: linear-gradient(135deg, rgba(255, 107, 53, 0.1), rgba(30, 41, 59, 0.5));
+    border: 1px solid rgba(255, 107, 53, 0.3);
+    border-radius: 12px;
+    padding: 2rem;
+    text-align: center;
+    transition: all 0.3s;
+}
+
+.stat-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 8px 20px rgba(255, 107, 53, 0.3);
+}
+
+.stat-value {
+    font-size: 3rem;
+    font-weight: 700;
+    color: #ff6b35;
+    margin-bottom: 0.5rem;
+}
+
+.stat-label {
+    font-size: 1rem;
+    color: #94a3b8;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.moderator-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 1rem;
+}
+
+.moderator-table thead {
+    background: rgba(255, 107, 53, 0.1);
+    border-bottom: 2px solid #ff6b35;
+}
+
+.moderator-table th {
+    padding: 1rem;
+    text-align: left;
+    color: #ff6b35;
+    font-weight: 700;
+    text-transform: uppercase;
+    font-size: 0.875rem;
+    letter-spacing: 1px;
+}
+
+.moderator-table td {
+    padding: 1rem;
+    border-bottom: 1px solid #334155;
+    color: #cbd5e1;
+}
+
+.moderator-table tbody tr {
+    transition: all 0.3s;
+}
+
+.moderator-table tbody tr:hover {
+    background: rgba(255, 107, 53, 0.05);
+}
+
+.mono {
+    font-family: 'Courier New', monospace;
+    color: #94a3b8;
+}
+
+.status-badge {
+    padding: 0.25rem 0.75rem;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+}
+
+.status-badge.lobby {
+    background: rgba(59, 130, 246, 0.2);
+    color: #60a5fa;
+    border: 1px solid #60a5fa;
+}
+
+.status-badge.map_ban {
+    background: rgba(245, 158, 11, 0.2);
+    color: #fbbf24;
+    border: 1px solid #fbbf24;
+}
+
+.status-badge.live {
+    background: rgba(34, 197, 94, 0.2);
+    color: #4ade80;
+    border: 1px solid #4ade80;
+}
+
+.danger-btn-small,
+.success-btn-small {
+    padding: 0.5rem 1rem;
+    border-radius: 6px;
+    border: none;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s;
+    font-size: 0.875rem;
+}
+
+.danger-btn-small {
+    background: #dc2626;
+    color: white;
+}
+
+.danger-btn-small:hover {
+    background: #991b1b;
+    transform: scale(1.05);
+}
+
+.success-btn-small {
+    background: #16a34a;
+    color: white;
+}
+
+.success-btn-small:hover {
+    background: #15803d;
+    transform: scale(1.05);
+}
+
+.user-cell {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.user-avatar-small {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    border: 2px solid #ff6b35;
+}
+
+.role-select {
+    padding: 0.5rem;
+    background: rgba(30, 41, 59, 0.8);
+    border: 1px solid #334155;
+    border-radius: 6px;
+    color: #cbd5e1;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.banned-badge,
+.active-badge {
+    padding: 0.25rem 0.75rem;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    font-weight: 700;
+}
+
+.banned-badge {
+    background: rgba(220, 38, 38, 0.2);
+    color: #ef4444;
+    border: 1px solid #ef4444;
+}
+
+.active-badge {
+    background: rgba(34, 197, 94, 0.2);
+    color: #4ade80;
+    border: 1px solid #4ade80;
+}
+
+.banned-row {
+    opacity: 0.6;
+}
+
+.pagination {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 1rem;
+    margin-top: 2rem;
+}
+
+.pagination button {
+    padding: 0.75rem 1.5rem;
+    background: rgba(255, 107, 53, 0.1);
+    border: 1px solid #ff6b35;
+    border-radius: 6px;
+    color: #ff6b35;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+.pagination button:hover:not(:disabled) {
+    background: rgba(255, 107, 53, 0.2);
+    transform: scale(1.05);
+}
+
+.pagination button:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+}
+
+.empty-message {
+    text-align: center;
+    color: #64748b;
+    font-size: 1.125rem;
+    padding: 3rem;
+}
+
+@media (max-width: 768px) {
+    .moderator-container {
+        padding: 1rem;
+    }
+
+    .moderator-header {
+        flex-direction: column;
+        gap: 1rem;
+    }
+
+    .tab-nav {
+        overflow-x: auto;
+        flex-wrap: nowrap;
+    }
+
+    .stats-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .moderator-table {
+        font-size: 0.875rem;
+    }
+
+    .moderator-table th,
+    .moderator-table td {
+        padding: 0.5rem;
+    }
+}

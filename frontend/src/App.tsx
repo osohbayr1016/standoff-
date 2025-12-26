@@ -16,6 +16,7 @@ import MatchLobbyPage from "./components/MatchLobbyPage";
 import AuthPage from "./components/AuthPage";
 import NotFoundPage from "./components/NotFoundPage";
 import JoinGatePage from "./components/JoinGatePage";
+import ModeratorPage from "./components/ModeratorPage";
 import Footer from "./components/Footer";
 import NicknameSetupModal from "./components/NicknameSetupModal";
 import { WebSocketProvider, useWebSocket } from "./components/WebSocketContext";
@@ -396,7 +397,7 @@ function AppContent() {
   const validPages = [
     "home", "profile", "leaderboard", "rewards",
     "friends", "matchmaking", "matchlobby", "mapban",
-    "matchgame", "join_gate"
+    "matchgame", "join_gate", "moderator"
   ];
 
   if (currentPage === "join_gate") {
@@ -466,6 +467,7 @@ function AppContent() {
         {currentPage === "leaderboard" && <LeaderboardPage />}
         {currentPage === "rewards" && <RewardsPage />}
         {currentPage === "friends" && <FriendsPage />}
+        {currentPage === "moderator" && <ModeratorPage />}
         {currentPage === "matchmaking" && (
           <MatchmakingPage
             onCancel={() => { }}

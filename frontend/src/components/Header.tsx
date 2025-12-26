@@ -108,6 +108,14 @@ export default function Header({
           >
             Найзууд
           </button>
+          {(user?.role === 'moderator' || user?.role === 'admin') && (
+            <button
+              className={`nav-link moderator-link ${currentPage === "moderator" ? "active" : ""}`}
+              onClick={() => onNavigate("moderator")}
+            >
+              🛡️ Moderator
+            </button>
+          )}
         </nav>
 
         {/* Mobile Side Drawer */}
@@ -192,6 +200,17 @@ export default function Header({
             >
               Найзууд
             </button>
+            {(user?.role === 'moderator' || user?.role === 'admin') && (
+              <button
+                className={`mobile-nav-link moderator-link ${currentPage === "moderator" ? "active" : ""}`}
+                onClick={() => {
+                  onNavigate("moderator");
+                  setShowDropdown(false);
+                }}
+              >
+                🛡️ Moderator
+              </button>
+            )}
           </div>
 
           {user && (

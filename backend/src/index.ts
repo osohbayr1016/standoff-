@@ -736,9 +736,14 @@ export class MatchQueueDO {
 
             // CRITICAL: Validate User exists in DB (Session Validity Check)
             try {
-              const dbUser = await this.env.DB.prepare('SELECT id FROM players WHERE id = ?').bind(userId).first();
+              const dbUser = await this.env.DB.prepare('SELECT id, banned FROM players WHERE id = ?').bind(userId).first();
               if (!dbUser) {
                 ws.send(JSON.stringify({ type: 'AUTH_ERROR', message: 'Session invalid/expired. Please login again.' }));
+                return;
+              }
+              // Check if user is banned
+              if (dbUser.banned === 1) {
+                ws.send(JSON.stringify({ type: 'BANNED', message: 'You are banned from matchmaking.' }));
                 return;
               }
             } catch (e) {
@@ -1053,6 +1058,217 @@ export class MatchQueueDO {
             }));
           }
         }
+
+        // ============= MODERATOR HANDLERS =============
+        // Helper: Check if user is moderator/admin
+        const isModerator = async (userId: string): Promise<boolean> => {
+          try {
+            const result = await this.env.DB.prepare(
+              'SELECT role FROM players WHERE id = ?'
+            ).bind(userId).first();
+            return result && (result.role === 'moderator' || result.role === 'admin');
+          } catch (e) {
+            console.error('Error checking moderator status:', e);
+            return false;
+          }
+        };
+
+        // 11. GET_ALL_LOBBIES (Moderator Only)
+        if (msg.type === 'GET_ALL_LOBBIES') {
+          if (currentUserId && await isModerator(currentUserId)) {
+            const lobbiesArray = Array.from(this.activeLobbies.entries()).map(([id, lobby]) => ({
+              id,
+              playerCount: lobby.players.length,
+              players: lobby.players.map(p => ({ id: p.id, username: p.username })),
+              status: lobby.serverInfo ? 'LIVE' : lobby.mapBanState.mapBanPhase ? 'MAP_BAN' : 'LOBBY',
+              map: lobby.mapBanState.selectedMap || 'None',
+              createdAt: Date.now() // simplified, ideally track creation time
+            }));
+            ws.send(JSON.stringify({ type: 'ALL_LOBBIES_DATA', lobbies: lobbiesArray }));
+          } else {
+            ws.send(JSON.stringify({ type: 'ERROR', message: 'Unauthorized: Moderator access required' }));
+          }
+        }
+
+        // 12. GET_ALL_USERS (Moderator Only) - Paginated
+        if (msg.type === 'GET_ALL_USERS') {
+          if (currentUserId && await isModerator(currentUserId)) {
+            try {
+              const page = msg.page || 1;
+              const limit = 50;
+              const offset = (page - 1) * limit;
+
+              const result = await this.env.DB.prepare(
+                'SELECT id, discord_username, discord_avatar, role, mmr, wins, losses, banned FROM players LIMIT ? OFFSET ?'
+              ).bind(limit, offset).all();
+
+              const totalResult = await this.env.DB.prepare('SELECT COUNT(*) as count FROM players').first();
+              const total = totalResult?.count || 0;
+
+              ws.send(JSON.stringify({
+                type: 'ALL_USERS_DATA',
+                users: result.results || [],
+                page,
+                total
+              }));
+            } catch (e) {
+              console.error('Error fetching users:', e);
+              ws.send(JSON.stringify({ type: 'ERROR', message: 'Failed to fetch users' }));
+            }
+          } else {
+            ws.send(JSON.stringify({ type: 'ERROR', message: 'Unauthorized: Moderator access required' }));
+          }
+        }
+
+        // 13. FORCE_CANCEL_MATCH (Moderator Only)
+        if (msg.type === 'FORCE_CANCEL_MATCH') {
+          if (currentUserId && await isModerator(currentUserId)) {
+            const { lobbyId } = msg;
+            if (lobbyId && this.activeLobbies.has(lobbyId)) {
+              const lobby = this.activeLobbies.get(lobbyId)!;
+              // Remove all players from lobby map
+              lobby.players.forEach(p => this.playerLobbyMap.delete(p.id));
+              this.activeLobbies.delete(lobbyId);
+              await this.saveMatchState();
+
+              // Broadcast to lobby members
+              this.broadcastToLobby(lobbyId, JSON.stringify({
+                type: 'MATCH_CANCELED',
+                reason: 'Moderator action',
+                lobbyId
+              }));
+
+              ws.send(JSON.stringify({ type: 'CANCEL_MATCH_SUCCESS', lobbyId }));
+              console.log(`🛑 Moderator ${currentUserId} canceled lobby ${lobbyId}`);
+            } else {
+              ws.send(JSON.stringify({ type: 'ERROR', message: 'Lobby not found' }));
+            }
+          } else {
+            ws.send(JSON.stringify({ type: 'ERROR', message: 'Unauthorized: Moderator access required' }));
+          }
+        }
+
+        // 14. BAN_USER (Moderator Only)
+        if (msg.type === 'BAN_USER') {
+          if (currentUserId && await isModerator(currentUserId)) {
+            const { targetUserId } = msg;
+            try {
+              await this.env.DB.prepare(
+                'UPDATE players SET banned = 1 WHERE id = ?'
+              ).bind(targetUserId).run();
+
+              // Remove from queue if present
+              this.localQueue.delete(targetUserId);
+
+              // Kick from active match if in one
+              const lobbyId = this.playerLobbyMap.get(targetUserId);
+              if (lobbyId) {
+                const targetWs = this.userSockets.get(targetUserId);
+                if (targetWs) {
+                  targetWs.send(JSON.stringify({
+                    type: 'BANNED',
+                    reason: 'Banned by moderator'
+                  }));
+                }
+                this.playerLobbyMap.delete(targetUserId);
+              }
+
+              ws.send(JSON.stringify({ type: 'BAN_USER_SUCCESS', userId: targetUserId }));
+              this.broadcastMergedQueue();
+              console.log(`🔨 Moderator ${currentUserId} banned user ${targetUserId}`);
+            } catch (e) {
+              console.error('Error banning user:', e);
+              ws.send(JSON.stringify({ type: 'ERROR', message: 'Failed to ban user' }));
+            }
+          } else {
+            ws.send(JSON.stringify({ type: 'ERROR', message: 'Unauthorized: Moderator access required' }));
+          }
+        }
+
+        // 15. UNBAN_USER (Moderator Only)
+        if (msg.type === 'UNBAN_USER') {
+          if (currentUserId && await isModerator(currentUserId)) {
+            const { targetUserId } = msg;
+            try {
+              await this.env.DB.prepare(
+                'UPDATE players SET banned = 0 WHERE id = ?'
+              ).bind(targetUserId).run();
+
+              ws.send(JSON.stringify({ type: 'UNBAN_USER_SUCCESS', userId: targetUserId }));
+              console.log(`✅ Moderator ${currentUserId} unbanned user ${targetUserId}`);
+            } catch (e) {
+              console.error('Error unbanning user:', e);
+              ws.send(JSON.stringify({ type: 'ERROR', message: 'Failed to unban user' }));
+            }
+          } else {
+            ws.send(JSON.stringify({ type: 'ERROR', message: 'Unauthorized: Moderator access required' }));
+          }
+        }
+
+        // 16. CHANGE_USER_ROLE (Moderator Only)
+        if (msg.type === 'CHANGE_USER_ROLE') {
+          if (currentUserId && await isModerator(currentUserId)) {
+            const { targetUserId, newRole } = msg;
+            if (['user', 'moderator', 'admin'].includes(newRole)) {
+              try {
+                await this.env.DB.prepare(
+                  'UPDATE players SET role = ? WHERE id = ?'
+                ).bind(newRole, targetUserId).run();
+
+                ws.send(JSON.stringify({ type: 'CHANGE_ROLE_SUCCESS', userId: targetUserId, newRole }));
+                console.log(`👑 Moderator ${currentUserId} changed ${targetUserId} role to ${newRole}`);
+              } catch (e) {
+                console.error('Error changing user role:', e);
+                ws.send(JSON.stringify({ type: 'ERROR', message: 'Failed to change role' }));
+              }
+            } else {
+              ws.send(JSON.stringify({ type: 'ERROR', message: 'Invalid role' }));
+            }
+          } else {
+            ws.send(JSON.stringify({ type: 'ERROR', message: 'Unauthorized: Moderator access required' }));
+          }
+        }
+
+        // 17. REMOVE_FROM_QUEUE (Moderator Only)
+        if (msg.type === 'REMOVE_FROM_QUEUE') {
+          if (currentUserId && await isModerator(currentUserId)) {
+            const { targetUserId } = msg;
+            this.localQueue.delete(targetUserId);
+            this.broadcastMergedQueue();
+            ws.send(JSON.stringify({ type: 'REMOVE_QUEUE_SUCCESS', userId: targetUserId }));
+            console.log(`🚫 Moderator ${currentUserId} removed ${targetUserId} from queue`);
+          } else {
+            ws.send(JSON.stringify({ type: 'ERROR', message: 'Unauthorized: Moderator access required' }));
+          }
+        }
+
+        // 18. GET_SYSTEM_STATS (Moderator Only)
+        if (msg.type === 'GET_SYSTEM_STATS') {
+          if (currentUserId && await isModerator(currentUserId)) {
+            try {
+              const totalUsersResult = await this.env.DB.prepare('SELECT COUNT(*) as count FROM players').first();
+              const queueCount = this.getMergedQueue().length;
+              const activeMatches = this.activeLobbies.size;
+
+              ws.send(JSON.stringify({
+                type: 'SYSTEM_STATS_DATA',
+                stats: {
+                  totalUsers: totalUsersResult?.count || 0,
+                  queueCount,
+                  activeMatches,
+                  onlineUsers: this.userSockets.size
+                }
+              }));
+            } catch (e) {
+              console.error('Error fetching system stats:', e);
+              ws.send(JSON.stringify({ type: 'ERROR', message: 'Failed to fetch stats' }));
+            }
+          } else {
+            ws.send(JSON.stringify({ type: 'ERROR', message: 'Unauthorized: Moderator access required' }));
+          }
+        }
+
+
 
       } catch (err) {
         console.error('WS Message Error:', err);
