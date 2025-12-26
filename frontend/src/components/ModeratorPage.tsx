@@ -345,6 +345,16 @@ export default function ModeratorPage({ user, backendUrl }: ModeratorPageProps) 
 
     const alphaPlayers = matchPlayers.filter(p => p.team === 'alpha');
     const bravoPlayers = matchPlayers.filter(p => p.team === 'bravo');
+    
+    // Get team leader names (first player in each team)
+    const alphaLeader = alphaPlayers[0];
+    const bravoLeader = bravoPlayers[0];
+    const alphaTeamName = alphaLeader 
+        ? (alphaLeader.standoff_nickname || alphaLeader.discord_username || 'Team Alpha')
+        : 'Team Alpha';
+    const bravoTeamName = bravoLeader 
+        ? (bravoLeader.standoff_nickname || bravoLeader.discord_username || 'Team Bravo')
+        : 'Team Bravo';
 
     // Sidebar navigation items
     const navItems = [
@@ -769,7 +779,7 @@ export default function ModeratorPage({ user, backendUrl }: ModeratorPageProps) 
                             <div className="grid grid-cols-2 gap-4">
                                 <Card className="border-cyan-500/20 bg-cyan-950/10">
                                     <CardHeader className="py-3 bg-cyan-500/10 border-b border-cyan-500/20">
-                                        <CardTitle className="text-sm font-bold text-cyan-400 uppercase tracking-wider">Team Alpha</CardTitle>
+                                        <CardTitle className="text-sm font-bold text-cyan-400 uppercase tracking-wider truncate">{alphaTeamName}</CardTitle>
                                     </CardHeader>
                                     <CardContent className="py-4">
                                         <div className="space-y-2">
@@ -784,7 +794,7 @@ export default function ModeratorPage({ user, backendUrl }: ModeratorPageProps) 
                                 </Card>
                                 <Card className="border-orange-500/20 bg-orange-950/10">
                                     <CardHeader className="py-3 bg-orange-500/10 border-b border-orange-500/20">
-                                        <CardTitle className="text-sm font-bold text-orange-400 uppercase tracking-wider">Team Bravo</CardTitle>
+                                        <CardTitle className="text-sm font-bold text-orange-400 uppercase tracking-wider truncate">{bravoTeamName}</CardTitle>
                                     </CardHeader>
                                     <CardContent className="py-4">
                                         <div className="space-y-2">
@@ -808,8 +818,8 @@ export default function ModeratorPage({ user, backendUrl }: ModeratorPageProps) 
                                                 <SelectValue />
                                             </SelectTrigger>
                                             <SelectContent className="bg-zinc-800 border-white/10 text-white">
-                                                <SelectItem value="alpha">Team Alpha (Cyan)</SelectItem>
-                                                <SelectItem value="bravo">Team Bravo (Orange)</SelectItem>
+                                                <SelectItem value="alpha">{alphaTeamName} (Cyan)</SelectItem>
+                                                <SelectItem value="bravo">{bravoTeamName} (Orange)</SelectItem>
                                             </SelectContent>
                                         </Select>
                                     </div>

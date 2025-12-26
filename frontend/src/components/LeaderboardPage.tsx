@@ -149,7 +149,7 @@ export default function LeaderboardPage({ onViewProfile }: LeaderboardPageProps)
   }, [activeFilter, leaderboard, applyFilter]);
 
   return (
-    <div className="space-y-6 container mx-auto max-w-7xl animate-fade-in pb-12">
+    <div className="space-y-6 container mx-auto max-w-7xl animate-fade-in pb-12 px-4 md:px-6">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h1 className="text-3xl font-bold font-display tracking-tighter text-white flex items-center gap-2">
@@ -162,31 +162,46 @@ export default function LeaderboardPage({ onViewProfile }: LeaderboardPageProps)
       <Card className="bg-zinc-950/50 backdrop-blur-sm border-white/10 shadow-lg overflow-hidden">
         <CardHeader className="p-4 md:p-6 border-b border-white/10 bg-zinc-900/30">
           <Tabs defaultValue="elo" onValueChange={(v) => setActiveFilter(v as FilterType)} className="w-full">
-            <div className="flex items-center justify-between">
-              <TabsList className="bg-zinc-900 border border-white/5">
-                <TabsTrigger value="elo" className="data-[state=active]:bg-primary data-[state=active]:text-white">
-                  <TrendingUp className="h-4 w-4 mr-2" /> ELO Rating
+            <div className="w-full overflow-x-auto -mx-4 px-4 md:mx-0 md:px-0">
+              <TabsList className="bg-zinc-900 border border-white/5 w-full sm:w-auto min-w-fit flex-shrink-0">
+                <TabsTrigger 
+                  value="elo" 
+                  className="data-[state=active]:bg-primary data-[state=active]:text-white text-[10px] sm:text-xs md:text-sm px-2 sm:px-3 flex-shrink-0 whitespace-nowrap"
+                >
+                  <TrendingUp className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2 flex-shrink-0" /> 
+                  <span className="hidden sm:inline">ELO Rating</span>
+                  <span className="sm:hidden">ELO</span>
                 </TabsTrigger>
-                <TabsTrigger value="winrate" className="data-[state=active]:bg-primary data-[state=active]:text-white">
-                  <Crown className="h-4 w-4 mr-2" /> Win Rate
+                <TabsTrigger 
+                  value="winrate" 
+                  className="data-[state=active]:bg-primary data-[state=active]:text-white text-[10px] sm:text-xs md:text-sm px-2 sm:px-3 flex-shrink-0 whitespace-nowrap"
+                >
+                  <Crown className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2 flex-shrink-0" /> 
+                  <span className="hidden sm:inline">Win Rate</span>
+                  <span className="sm:hidden">Win</span>
                 </TabsTrigger>
-                <TabsTrigger value="matches" className="data-[state=active]:bg-primary data-[state=active]:text-white">
-                  <Gamepad2 className="h-4 w-4 mr-2" /> Matches
+                <TabsTrigger 
+                  value="matches" 
+                  className="data-[state=active]:bg-primary data-[state=active]:text-white text-[10px] sm:text-xs md:text-sm px-2 sm:px-3 flex-shrink-0 whitespace-nowrap"
+                >
+                  <Gamepad2 className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2 flex-shrink-0" /> 
+                  <span className="hidden sm:inline">Matches</span>
+                  <span className="sm:hidden">Match</span>
                 </TabsTrigger>
               </TabsList>
             </div>
           </Tabs>
         </CardHeader>
 
-        <CardContent className="p-0">
-          <Table>
+        <CardContent className="p-0 overflow-x-auto">
+          <Table className="min-w-full">
             <TableHeader className="bg-zinc-900/50 hover:bg-zinc-900/50">
               <TableRow className="border-b border-white/10 hover:bg-transparent">
-                <TableHead className="w-[80px] text-center font-bold text-gray-400">Rank</TableHead>
-                <TableHead className="w-[300px] font-bold text-gray-400">Player</TableHead>
-                <TableHead className="text-center font-bold text-gray-400">ELO</TableHead>
-                <TableHead className="text-center font-bold text-gray-400 mobile-hide">Win Rate</TableHead>
-                <TableHead className="text-center font-bold text-gray-400 mobile-hide">Matches</TableHead>
+                <TableHead className="w-[50px] md:w-[80px] text-center font-bold text-gray-400 text-xs md:text-sm">Rank</TableHead>
+                <TableHead className="min-w-[100px] md:w-[300px] font-bold text-gray-400 text-xs md:text-sm">Player</TableHead>
+                <TableHead className="min-w-[70px] md:min-w-[90px] text-center font-bold text-gray-400 text-xs md:text-sm">ELO</TableHead>
+                <TableHead className="min-w-[70px] text-center font-bold text-gray-400 text-xs md:text-sm">Win Rate</TableHead>
+                <TableHead className="min-w-[60px] text-center font-bold text-gray-400 text-xs md:text-sm">Matches</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -196,8 +211,8 @@ export default function LeaderboardPage({ onViewProfile }: LeaderboardPageProps)
                     <TableCell className="h-16"><div className="h-4 w-8 bg-zinc-800 animate-pulse rounded mx-auto"></div></TableCell>
                     <TableCell><div className="flex items-center gap-3"><div className="h-8 w-8 bg-zinc-800 animate-pulse rounded-full"></div><div className="h-4 w-32 bg-zinc-800 animate-pulse rounded"></div></div></TableCell>
                     <TableCell><div className="h-4 w-12 bg-zinc-800 animate-pulse rounded mx-auto"></div></TableCell>
-                    <TableCell className="mobile-hide"><div className="h-4 w-12 bg-zinc-800 animate-pulse rounded mx-auto"></div></TableCell>
-                    <TableCell className="mobile-hide"><div className="h-4 w-12 bg-zinc-800 animate-pulse rounded mx-auto"></div></TableCell>
+                    <TableCell><div className="h-4 w-12 bg-zinc-800 animate-pulse rounded mx-auto"></div></TableCell>
+                    <TableCell><div className="h-4 w-12 bg-zinc-800 animate-pulse rounded mx-auto"></div></TableCell>
                   </TableRow>
                 ))
               ) : filteredLeaderboard.length === 0 ? (
@@ -221,43 +236,43 @@ export default function LeaderboardPage({ onViewProfile }: LeaderboardPageProps)
                     >
                       <TableCell className="text-center py-4">
                         <div className="flex items-center justify-center">
-                          {player.rank === 1 && <Crown className="h-6 w-6 text-yellow-500 fill-yellow-500/20" />}
-                          {player.rank === 2 && <Medal className="h-6 w-6 text-gray-300 fill-gray-300/20" />}
-                          {player.rank === 3 && <Medal className="h-6 w-6 text-amber-600 fill-amber-600/20" />}
-                          {player.rank > 3 && <span className="text-lg font-mono font-bold text-gray-500 group-hover:text-white transition-colors">#{player.rank}</span>}
+                          {player.rank === 1 && <Crown className="h-5 w-5 md:h-6 md:w-6 text-yellow-500 fill-yellow-500/20" />}
+                          {player.rank === 2 && <Medal className="h-5 w-5 md:h-6 md:w-6 text-gray-300 fill-gray-300/20" />}
+                          {player.rank === 3 && <Medal className="h-5 w-5 md:h-6 md:w-6 text-amber-600 fill-amber-600/20" />}
+                          {player.rank > 3 && <span className="text-sm md:text-lg font-mono font-bold text-gray-500 group-hover:text-white transition-colors">#{player.rank}</span>}
                         </div>
                       </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-3">
-                          <Avatar className={`h-10 w-10 border-2 ${player.rank === 1 ? 'border-yellow-500 shadow-[0_0_10px_rgba(234,179,8,0.3)]' : 'border-zinc-800'}`}>
+                      <TableCell className="min-w-[100px]">
+                        <div className="flex items-center gap-1.5 md:gap-3 min-w-0">
+                          <Avatar className={`h-7 w-7 md:h-10 md:w-10 border-2 flex-shrink-0 ${player.rank === 1 ? 'border-yellow-500 shadow-[0_0_10px_rgba(234,179,8,0.3)]' : 'border-zinc-800'}`}>
                             <AvatarImage src={`https://cdn.discordapp.com/avatars/${player.discord_id}/${player.avatar}.png`} />
-                            <AvatarFallback>{player.username[0]?.toUpperCase()}</AvatarFallback>
+                            <AvatarFallback className="text-xs md:text-sm">{player.username[0]?.toUpperCase()}</AvatarFallback>
                           </Avatar>
-                          <div className="flex flex-col">
-                            <span className={`font-bold flex items-center gap-1.5 ${player.rank === 1 ? 'text-yellow-500' : 'text-white'}`}>
-                              {player.nickname || player.username}
-                              <VerifiedBadge isVerified={player.is_discord_member} showText={false} className="w-3.5 h-3.5" />
+                          <div className="flex flex-col min-w-0 flex-1">
+                            <span className={`font-bold flex items-center gap-1 truncate text-xs md:text-sm ${player.rank === 1 ? 'text-yellow-500' : 'text-white'}`}>
+                              <span className="truncate">{player.nickname || player.username}</span>
+                              <VerifiedBadge isVerified={player.is_discord_member} showText={false} className="w-3 h-3 md:w-3.5 md:h-3.5 flex-shrink-0" />
                             </span>
                             {player.nickname && (
-                              <span className="text-xs text-muted-foreground">@{player.username}</span>
+                              <span className="text-[10px] md:text-xs text-muted-foreground truncate">@{player.username}</span>
                             )}
                           </div>
                         </div>
                       </TableCell>
-                      <TableCell className="text-center">
-                        <div className="flex justify-center">
+                      <TableCell className="text-center min-w-[70px] md:min-w-[90px]">
+                        <div className="flex justify-center items-center">
                           <LevelBadge elo={player.elo} showElo />
                         </div>
                       </TableCell>
-                      <TableCell className="text-center mobile-hide">
-                        <div className="flex flex-col items-center gap-1">
-                          <span className="font-bold text-white">{winRate}%</span>
-                          <div className="w-16 h-1 bg-zinc-800 rounded-full overflow-hidden">
+                      <TableCell className="text-center min-w-[70px]">
+                        <div className="flex flex-col items-center gap-0.5 md:gap-1">
+                          <span className="font-bold text-white text-xs md:text-sm">{winRate}%</span>
+                          <div className="w-12 md:w-16 h-1 bg-zinc-800 rounded-full overflow-hidden hidden md:block">
                             <div className="h-full bg-green-500 transition-all" style={{ width: `${winRate}%` }} />
                           </div>
                         </div>
                       </TableCell>
-                      <TableCell className="text-center mobile-hide font-mono text-gray-400">
+                      <TableCell className="text-center min-w-[60px] font-mono text-gray-400 text-xs md:text-sm">
                         {player.wins + player.losses}
                       </TableCell>
                     </TableRow>
@@ -269,13 +284,6 @@ export default function LeaderboardPage({ onViewProfile }: LeaderboardPageProps)
         </CardContent>
       </Card>
 
-      <style>{`
-        @media (max-width: 768px) {
-          .mobile-hide {
-            display: none;
-          }
-        }
-      `}</style>
     </div>
   );
 }
