@@ -19,7 +19,8 @@ import {
     Crown,
     ExternalLink,
     Loader2,
-    UserPlus
+    UserPlus,
+    ArrowLeft
 } from "lucide-react";
 import InviteFriendModal from './InviteFriendModal';
 
@@ -55,9 +56,11 @@ interface LobbyDetailPageProps {
     } | null;
     backendUrl: string;
     onBack: () => void;
+    previousProfileUserId?: string | null;
+    onNavigateToProfile?: (userId: string) => void;
 }
 
-const LobbyDetailPage: React.FC<LobbyDetailPageProps> = ({ matchId, user, backendUrl, onBack }) => {
+const LobbyDetailPage: React.FC<LobbyDetailPageProps> = ({ matchId, user, backendUrl, onBack, previousProfileUserId, onNavigateToProfile }) => {
     const { lastMessage } = useWebSocket();
     const [match, setMatch] = useState<Match | null>(null);
     const [players, setPlayers] = useState<MatchPlayer[]>([]);
@@ -67,6 +70,7 @@ const LobbyDetailPage: React.FC<LobbyDetailPageProps> = ({ matchId, user, backen
     const [winnerTeam, setWinnerTeam] = useState<'alpha' | 'bravo'>('alpha');
     const [selectedFile, setSelectedFile] = useState<File | null>(null);
     const [showInviteModal, setShowInviteModal] = useState(false);
+    const [lockedTeamNames, setLockedTeamNames] = useState<{ alpha: string | null; bravo: string | null }>({ alpha: null, bravo: null });
 
     // Fetch match details
     const fetchMatchDetails = async () => {
@@ -91,6 +95,34 @@ const LobbyDetailPage: React.FC<LobbyDetailPageProps> = ({ matchId, user, backen
         const interval = setInterval(fetchMatchDetails, 5000);
         return () => clearInterval(interval);
     }, [matchId, backendUrl]);
+
+    // Lock team names when game starts
+    useEffect(() => {
+        if (match?.status === 'in_progress') {
+            // Only lock if not already locked
+            if (!lockedTeamNames.alpha && !lockedTeamNames.bravo) {
+                const alphaPlayers = players.filter(p => p.team === 'alpha');
+                const bravoPlayers = players.filter(p => p.team === 'bravo');
+                
+                const alphaLeader = alphaPlayers[0];
+                const bravoLeader = bravoPlayers[0];
+                
+                const alphaName = alphaLeader 
+                    ? (alphaLeader.standoff_nickname || alphaLeader.discord_username || 'Team Alpha')
+                    : 'Team Alpha';
+                const bravoName = bravoLeader 
+                    ? (bravoLeader.standoff_nickname || bravoLeader.discord_username || 'Team Bravo')
+                    : 'Team Bravo';
+                
+                setLockedTeamNames({ alpha: alphaName, bravo: bravoName });
+            }
+        } else {
+            // Reset locked names when match is not in progress
+            if (lockedTeamNames.alpha || lockedTeamNames.bravo) {
+                setLockedTeamNames({ alpha: null, bravo: null });
+            }
+        }
+    }, [match?.status, players]);
 
     // Handle WebSocket updates
     useEffect(() => {
@@ -209,6 +241,39 @@ const LobbyDetailPage: React.FC<LobbyDetailPageProps> = ({ matchId, user, backen
         }
     };
 
+    // Kick player from lobby (host only)
+    const handleKickPlayer = async (playerId: string) => {
+        if (!user || !match || !isHost) return;
+
+        if (!confirm(`Are you sure you want to kick this player from the lobby?`)) {
+            return;
+        }
+
+        try {
+            const response = await fetch(`${backendUrl}/api/matches/${matchId}/kick`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    player_id: playerId,
+                    host_id: user.id
+                })
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                // Refresh match details to update UI
+                fetchMatchDetails();
+            } else {
+                alert(data.error || 'Failed to kick player');
+            }
+        } catch (err) {
+            alert('Network error');
+        }
+    };
+
     // Invite friend to lobby
     const handleInviteFriend = async (friend: any) => {
         if (!user || !match) return;
@@ -319,13 +384,50 @@ const LobbyDetailPage: React.FC<LobbyDetailPageProps> = ({ matchId, user, backen
     const isInMatch = players.some(p => p.player_id === user?.id);
     const alphaPlayers = players.filter(p => p.team === 'alpha');
     const bravoPlayers = players.filter(p => p.team === 'bravo');
+    
+    // Get team leader (first player) or use locked name if game started
+    const alphaLeader = alphaPlayers[0];
+    const bravoLeader = bravoPlayers[0];
+    
+    const getAlphaTeamName = () => {
+        if (match?.status === 'in_progress' && lockedTeamNames.alpha) {
+            return lockedTeamNames.alpha;
+        }
+        return alphaLeader 
+            ? (alphaLeader.standoff_nickname || alphaLeader.discord_username || 'Team Alpha')
+            : 'Team Alpha';
+    };
+    
+    const getBravoTeamName = () => {
+        if (match?.status === 'in_progress' && lockedTeamNames.bravo) {
+            return lockedTeamNames.bravo;
+        }
+        return bravoLeader 
+            ? (bravoLeader.standoff_nickname || bravoLeader.discord_username || 'Team Bravo')
+            : 'Team Bravo';
+    };
+    
+    const alphaTeamName = getAlphaTeamName();
+    const bravoTeamName = getBravoTeamName();
 
     return (
         <div className="space-y-6 container mx-auto max-w-7xl animate-fade-in pb-12">
             {/* Header Section */}
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-border/50 pb-6">
                 <div className="flex items-center gap-4">
-                    <Button onClick={onBack} variant="ghost" size="icon" className="rounded-full hover:bg-muted">
+                    <Button 
+                        onClick={() => {
+                            if (previousProfileUserId && onNavigateToProfile) {
+                                onNavigateToProfile(previousProfileUserId);
+                            } else {
+                                onBack();
+                            }
+                        }} 
+                        variant="ghost" 
+                        size="icon" 
+                        className="rounded-full hover:bg-muted"
+                        title={previousProfileUserId ? "Back to profile" : "Back"}
+                    >
                         <ArrowLeft className="h-5 w-5" />
                     </Button>
                     <div>
@@ -362,13 +464,15 @@ const LobbyDetailPage: React.FC<LobbyDetailPageProps> = ({ matchId, user, backen
             </div>
 
             {/* Teams Grid */}
-            <div className="grid grid-cols-1 lg:grid-cols-9 gap-6 items-start">
+            <div className="grid grid-cols-1 lg:grid-cols-9 gap-6 items-start lg:max-w-7xl lg:mx-auto">
                 {/* Alpha Team */}
                 <div className="lg:col-span-4 space-y-3">
                     <div className="flex items-center justify-between px-4 lg:px-5 py-3 lg:py-4 bg-[#23252a] rounded-lg border-l-4 border-[#5b9bd5]">
                         <div className="flex items-center gap-2 lg:gap-3">
                             <div className="w-2 h-2 lg:w-3 lg:h-3 rounded-full bg-[#5b9bd5] animate-pulse"></div>
-                            <h2 className="text-sm lg:text-base font-bold uppercase tracking-wider text-[#5b9bd5]">Team Alpha</h2>
+                            <h2 className="text-sm lg:text-base font-bold uppercase tracking-wider text-[#5b9bd5] truncate max-w-[200px]">
+                                {alphaTeamName}
+                            </h2>
                         </div>
                         <Badge variant="secondary" className="bg-[#5b9bd5]/20 text-[#5b9bd5] font-mono text-xs lg:text-sm">
                             {alphaPlayers.length}/5
@@ -377,19 +481,40 @@ const LobbyDetailPage: React.FC<LobbyDetailPageProps> = ({ matchId, user, backen
 
                     <div className="space-y-2 lg:space-y-3">
                         {alphaPlayers.map(player => (
-                            <div key={player.player_id} className="bg-[#1c1e22] hover:bg-[#23252a] transition-all duration-200 rounded-lg border border-[#5b9bd5]/20 p-3 lg:p-4 group">
+                            <div key={player.player_id} className="bg-[#1c1e22] hover:bg-[#23252a] transition-all duration-200 rounded-lg border border-[#5b9bd5]/20 p-3 lg:p-4 group relative">
+                                {isHost && player.player_id !== user?.id && (
+                                    <button
+                                        onClick={() => handleKickPlayer(player.player_id)}
+                                        className="absolute top-2 right-2 p-1.5 rounded-md bg-red-500/20 hover:bg-red-500/40 text-red-400 hover:text-red-300 transition-colors z-10"
+                                        title="Kick player"
+                                    >
+                                        <X className="h-4 w-4" />
+                                    </button>
+                                )}
                                 <div className="flex items-center gap-3 lg:gap-4">
                                     <Avatar className="h-11 w-11 lg:h-14 lg:w-14 border-2 border-[#5b9bd5]/30 group-hover:border-[#5b9bd5]/60 transition-colors">
                                         <AvatarImage src={`https://cdn.discordapp.com/avatars/${player.player_id}/${player.discord_avatar}.png`} />
                                         <AvatarFallback className="bg-[#5b9bd5]/20 text-[#5b9bd5]"><User className="h-5 w-5 lg:h-6 lg:w-6" /></AvatarFallback>
                                     </Avatar>
                                     <div className="flex-1 min-w-0">
-                                        <div className="flex items-center gap-2 mb-1">
-                                            <span className="font-semibold text-white truncate text-sm lg:text-base">
-                                                {player.standoff_nickname || player.discord_username || 'Player'}
-                                            </span>
-                                            {player.role === 'admin' && <Badge className="text-[9px] lg:text-[10px] px-1.5 py-0 bg-[#ff5500] text-white border-0 font-bold">ADMIN</Badge>}
-                                            {player.role === 'moderator' && <Badge className="text-[9px] lg:text-[10px] px-1.5 py-0 bg-[#5b9bd5] text-white border-0 font-bold">MOD</Badge>}
+                                        <div className="flex items-center justify-between gap-2 mb-1">
+                                            <div className="flex items-center gap-2 min-w-0 flex-1">
+                                                <span className="font-semibold text-white truncate text-sm lg:text-base">
+                                                    {player.standoff_nickname || player.discord_username || 'Player'}
+                                                </span>
+                                                {player.role === 'admin' && <Badge className="text-[9px] lg:text-[10px] px-1.5 py-0 bg-[#ff5500] text-white border-0 font-bold">ADMIN</Badge>}
+                                                {player.role === 'moderator' && <Badge className="text-[9px] lg:text-[10px] px-1.5 py-0 bg-[#5b9bd5] text-white border-0 font-bold">MOD</Badge>}
+                                            </div>
+                                            <div className="flex items-center gap-1.5 flex-shrink-0">
+                                                <img 
+                                                    src="https://corp.faceit.com/wp-content/uploads/2018/05/FACEIT_logo_transparent.png" 
+                                                    alt="FACEIT" 
+                                                    className="h-4 w-4 lg:h-5 lg:w-5 object-contain opacity-80"
+                                                />
+                                                <span className="text-[11px] lg:text-xs font-bold text-white/90 font-mono">
+                                                    {player.elo || 1000}
+                                                </span>
+                                            </div>
                                         </div>
                                         <div className="text-[11px] lg:text-xs text-white/40 font-mono">
                                             ELO: <span className="text-white/60 font-semibold">{player.elo || 1000}</span>
@@ -416,7 +541,9 @@ const LobbyDetailPage: React.FC<LobbyDetailPageProps> = ({ matchId, user, backen
                     <div className="flex items-center justify-between px-4 lg:px-5 py-3 lg:py-4 bg-[#23252a] rounded-lg border-r-4 border-[#e74c3c] lg:flex-row-reverse">
                         <div className="flex items-center gap-2 lg:gap-3 lg:flex-row-reverse">
                             <div className="w-2 h-2 lg:w-3 lg:h-3 rounded-full bg-[#e74c3c] animate-pulse"></div>
-                            <h2 className="text-sm lg:text-base font-bold uppercase tracking-wider text-[#e74c3c]">Team Bravo</h2>
+                            <h2 className="text-sm lg:text-base font-bold uppercase tracking-wider text-[#e74c3c] truncate max-w-[200px]">
+                                {bravoTeamName}
+                            </h2>
                         </div>
                         <Badge variant="secondary" className="bg-[#e74c3c]/20 text-[#e74c3c] font-mono text-xs lg:text-sm">
                             {bravoPlayers.length}/5
@@ -425,19 +552,40 @@ const LobbyDetailPage: React.FC<LobbyDetailPageProps> = ({ matchId, user, backen
 
                     <div className="space-y-2 lg:space-y-3">
                         {bravoPlayers.map(player => (
-                            <div key={player.player_id} className="bg-[#1c1e22] hover:bg-[#23252a] transition-all duration-200 rounded-lg border border-[#e74c3c]/20 p-3 lg:p-4 group">
+                            <div key={player.player_id} className="bg-[#1c1e22] hover:bg-[#23252a] transition-all duration-200 rounded-lg border border-[#e74c3c]/20 p-3 lg:p-4 group relative">
+                                {isHost && player.player_id !== user?.id && (
+                                    <button
+                                        onClick={() => handleKickPlayer(player.player_id)}
+                                        className="absolute top-2 right-2 p-1.5 rounded-md bg-red-500/20 hover:bg-red-500/40 text-red-400 hover:text-red-300 transition-colors z-10"
+                                        title="Kick player"
+                                    >
+                                        <X className="h-4 w-4" />
+                                    </button>
+                                )}
                                 <div className="flex items-center gap-3 lg:gap-4">
                                     <Avatar className="h-11 w-11 lg:h-14 lg:w-14 border-2 border-[#e74c3c]/30 group-hover:border-[#e74c3c]/60 transition-colors">
                                         <AvatarImage src={`https://cdn.discordapp.com/avatars/${player.player_id}/${player.discord_avatar}.png`} />
                                         <AvatarFallback className="bg-[#e74c3c]/20 text-[#e74c3c]"><User className="h-5 w-5 lg:h-6 lg:w-6" /></AvatarFallback>
                                     </Avatar>
                                     <div className="flex-1 min-w-0">
-                                        <div className="flex items-center gap-2 mb-1">
-                                            <span className="font-semibold text-white truncate text-sm lg:text-base">
-                                                {player.standoff_nickname || player.discord_username || 'Player'}
-                                            </span>
-                                            {player.role === 'admin' && <Badge className="text-[9px] lg:text-[10px] px-1.5 py-0 bg-[#ff5500] text-white border-0 font-bold">ADMIN</Badge>}
-                                            {player.role === 'moderator' && <Badge className="text-[9px] lg:text-[10px] px-1.5 py-0 bg-[#e74c3c] text-white border-0 font-bold">MOD</Badge>}
+                                        <div className="flex items-center justify-between gap-2 mb-1">
+                                            <div className="flex items-center gap-2 min-w-0 flex-1">
+                                                <span className="font-semibold text-white truncate text-sm lg:text-base">
+                                                    {player.standoff_nickname || player.discord_username || 'Player'}
+                                                </span>
+                                                {player.role === 'admin' && <Badge className="text-[9px] lg:text-[10px] px-1.5 py-0 bg-[#ff5500] text-white border-0 font-bold">ADMIN</Badge>}
+                                                {player.role === 'moderator' && <Badge className="text-[9px] lg:text-[10px] px-1.5 py-0 bg-[#e74c3c] text-white border-0 font-bold">MOD</Badge>}
+                                            </div>
+                                            <div className="flex items-center gap-1.5 flex-shrink-0">
+                                                <img 
+                                                    src="https://corp.faceit.com/wp-content/uploads/2018/05/FACEIT_logo_transparent.png" 
+                                                    alt="FACEIT" 
+                                                    className="h-4 w-4 lg:h-5 lg:w-5 object-contain opacity-80"
+                                                />
+                                                <span className="text-[11px] lg:text-xs font-bold text-white/90 font-mono">
+                                                    {player.elo || 1000}
+                                                </span>
+                                            </div>
                                         </div>
                                         <div className="text-[11px] lg:text-xs text-white/40 font-mono">
                                             ELO: <span className="text-white/60 font-semibold">{player.elo || 1000}</span>
@@ -455,74 +603,79 @@ const LobbyDetailPage: React.FC<LobbyDetailPageProps> = ({ matchId, user, backen
                 </div>
 
                 {/* Action Bar - Positioned after teams */}
-                <div className="mt-6">
-                    <Card className="border border-border bg-card shadow-lg">
-                        <div className="p-4 lg:p-6 flex flex-col md:flex-row items-center justify-between gap-4 lg:gap-6">
+                <div className="mt-6 -mx-4 md:-mx-8 lg:col-span-9 lg:mx-0">
+                    <Card className="border border-border bg-card shadow-lg w-full">
+                        <div className="p-4 lg:p-6 w-full">
                             {match.status === 'waiting' && (
-                                <div className="w-full flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-                                    {/* Mobile-First Grid Layout */}
-                                    <div className="grid grid-cols-2 lg:flex lg:items-center gap-3 lg:gap-4 w-full">
-
-                                        {/* Row 1: Primary Action (Start Match) - Host Only */}
+                                <div className="w-full flex flex-col md:flex-row md:items-center md:justify-between gap-3 md:gap-4">
+                                    {/* Left Side: Primary Actions */}
+                                    <div className="flex flex-col sm:flex-row gap-3 md:gap-4 flex-1 min-w-0">
+                                        {/* Start Match Button - Host Only */}
                                         {isHost && (
-                                            <div className="col-span-2 lg:w-auto flex flex-col gap-2">
-                                                <Button
-                                                    onClick={handleStartMatch}
-                                                    disabled={players.length < 2}
-                                                    className="w-full lg:w-auto h-12 lg:h-11 lg:px-8 bg-[#ff5500] hover:bg-[#e64d00] text-white font-bold shadow-lg uppercase tracking-wide transition-all text-sm"
-                                                >
-                                                    <Play className="mr-2 h-4 w-4 fill-current" />
-                                                    Start Match ({players.length}/10)
-                                                </Button>
-                                                <Button
-                                                    onClick={handleCancelMatch}
-                                                    variant="ghost"
-                                                    className="h-8 text-xs text-red-500 hover:text-red-400 hover:bg-red-500/10 lg:hidden"
-                                                >
-                                                    <X className="mr-1 h-3 w-3" /> Cancel Lobby
-                                                </Button>
-                                            </div>
+                                            <Button
+                                                onClick={handleStartMatch}
+                                                disabled={players.length < 2}
+                                                className="flex-shrink-0 h-12 md:h-11 px-4 md:px-6 lg:px-8 bg-[#ff5500] hover:bg-[#e64d00] text-white font-bold shadow-lg uppercase tracking-wide transition-all text-sm whitespace-nowrap"
+                                            >
+                                                <Play className="mr-2 h-4 w-4 fill-current" />
+                                                Start Match ({players.length}/10)
+                                            </Button>
                                         )}
 
-                                        {/* Row 2: Secondary Primary (Invite) */}
+                                        {/* Invite Friends Button */}
                                         {isInMatch && (
                                             <Button
                                                 onClick={() => setShowInviteModal(true)}
-                                                className={`col-span-2 lg:w-auto h-12 lg:h-11 lg:px-8 bg-[#5b9bd5] hover:bg-[#4a8ac0] text-white font-bold shadow-md uppercase tracking-wide text-sm ${isHost ? 'mt-2 lg:mt-0 lg:ml-auto' : 'lg:ml-auto'}`}
+                                                className="flex-shrink-0 h-12 md:h-11 px-4 md:px-6 lg:px-8 bg-[#5b9bd5] hover:bg-[#4a8ac0] text-white font-bold shadow-md uppercase tracking-wide text-sm whitespace-nowrap"
                                             >
                                                 <UserPlus className="mr-2 h-4 w-4" /> Invite Friends
                                             </Button>
                                         )}
+                                    </div>
 
-                                        {/* Row 3: Management Actions (Switch / Leave) */}
+                                    {/* Right Side: Secondary Actions */}
+                                    <div className="flex flex-col sm:flex-row gap-3 md:gap-4 flex-shrink-0">
+                                        {/* Switch Team & Leave Buttons */}
                                         {isInMatch && (
                                             <>
                                                 <Button
                                                     onClick={handleSwitchTeam}
-                                                    className="col-span-1 lg:w-auto h-12 lg:h-11 lg:px-6 bg-[#18181b] hover:bg-[#27272a] text-white border border-white/5 font-semibold text-sm"
+                                                    className="flex-shrink-0 h-12 md:h-11 px-4 md:px-6 bg-[#18181b] hover:bg-[#27272a] text-white border border-white/5 font-semibold text-sm whitespace-nowrap"
                                                 >
-                                                    <RotateCcw className="mr-2 h-4 w-4" /> Switch
+                                                    <RotateCcw className="mr-2 h-4 w-4" /> Switch Team
                                                 </Button>
 
                                                 <Button
                                                     onClick={handleLeaveLobby}
                                                     variant="outline"
-                                                    className="col-span-1 lg:w-auto h-12 lg:h-11 lg:px-6 border-white/10 text-muted-foreground hover:text-white hover:bg-white/5 font-semibold text-sm bg-transparent"
+                                                    className="flex-shrink-0 h-12 md:h-11 px-4 md:px-6 border-white/10 text-muted-foreground hover:text-white hover:bg-white/5 font-semibold text-sm bg-transparent whitespace-nowrap"
                                                 >
                                                     <LogOut className="mr-2 h-4 w-4" /> Leave
                                                 </Button>
                                             </>
                                         )}
 
-                                        {/* Desktop Only: Host Cancel Button */}
+                                        {/* Cancel Button - Host Only */}
                                         {isHost && (
-                                            <Button
-                                                onClick={handleCancelMatch}
-                                                className="hidden lg:flex h-12 lg:h-11 w-12 lg:w-11 bg-[#ff002b] hover:bg-[#d60024] text-white border-none shadow-lg p-0 rounded-md ml-2"
-                                                title="Cancel Match"
-                                            >
-                                                <X className="h-4 w-4" />
-                                            </Button>
+                                            <>
+                                                {/* Mobile Cancel Button */}
+                                                <Button
+                                                    onClick={handleCancelMatch}
+                                                    variant="ghost"
+                                                    className="sm:hidden h-12 text-sm text-red-500 bg-red-500/20 hover:text-red-400 hover:bg-red-500/30"
+                                                >
+                                                    <X className="mr-1 h-4 w-4" /> Cancel Lobby
+                                                </Button>
+                                                {/* Desktop Cancel Button */}
+                                                <Button
+                                                    onClick={handleCancelMatch}
+                                                    className="hidden sm:flex h-12 md:h-11 px-4 md:px-6 bg-[#ff002b] hover:bg-[#d60024] text-white border-none shadow-lg rounded-md whitespace-nowrap"
+                                                    title="Cancel Match"
+                                                >
+                                                    <X className="h-4 w-4 mr-2" />
+                                                    Cancel
+                                                </Button>
+                                            </>
                                         )}
                                     </div>
                                 </div>
@@ -543,7 +696,7 @@ const LobbyDetailPage: React.FC<LobbyDetailPageProps> = ({ matchId, user, backen
                                                     className={`h-24 flex flex-col items-center justify-center gap-2 border-2 ${winnerTeam === 'alpha' ? 'border-orange-500 bg-orange-500/10 text-orange-500 hover:bg-orange-500/20' : 'hover:bg-muted'}`}
                                                 >
                                                     <span className="text-2xl">🦁</span>
-                                                    <span className="font-bold">Team Alpha</span>
+                                                    <span className="font-bold">{alphaTeamName}</span>
                                                 </Button>
                                                 <Button
                                                     onClick={() => setWinnerTeam('bravo')}
@@ -551,7 +704,7 @@ const LobbyDetailPage: React.FC<LobbyDetailPageProps> = ({ matchId, user, backen
                                                     className={`h-24 flex flex-col items-center justify-center gap-2 border-2 ${winnerTeam === 'bravo' ? 'border-blue-500 bg-blue-500/10 text-blue-500 hover:bg-blue-500/20' : 'hover:bg-muted'}`}
                                                 >
                                                     <span className="text-2xl">🦈</span>
-                                                    <span className="font-bold">Team Bravo</span>
+                                                    <span className="font-bold">{bravoTeamName}</span>
                                                 </Button>
                                             </div>
 
@@ -612,24 +765,5 @@ const LobbyDetailPage: React.FC<LobbyDetailPageProps> = ({ matchId, user, backen
         </div>
     );
 };
-
-// Simple ArrowLeft icon component if not available in lucide-react imports due to version
-const ArrowLeft = ({ className }: { className?: string }) => (
-    <svg
-        xmlns="http://www.w3.org/2000/svg"
-        width="24"
-        height="24"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        className={className}
-    >
-        <path d="m12 19-7-7 7-7" />
-        <path d="M19 12H5" />
-    </svg>
-);
 
 export default LobbyDetailPage;

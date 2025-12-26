@@ -15,9 +15,9 @@ import Footer from "./components/Footer";
 import NicknameSetupModal from "./components/NicknameSetupModal";
 import MatchmakingPage from "./components/MatchmakingPage";
 import { WebSocketProvider, useWebSocket } from "./components/WebSocketContext";
+import RecentMatches from "./components/RecentMatches";
 
 // Placeholder components (to be implemented)
-const RecentMatches = () => <div className="placeholder-card">Recent Matches - Coming Soon</div>;
 const DailyRewards = () => <div className="placeholder-card">Daily Rewards - Coming Soon</div>;
 const RewardsPage = () => <div className="placeholder-page">Rewards Page - Coming Soon</div>;
 const MapBanPage = (_props: any) => <div className="placeholder-page">Map Ban - Coming Soon</div>;
@@ -91,10 +91,32 @@ function AppContent() {
   const { registerUser, lastMessage, requestMatchState } = useWebSocket();
 
   const [viewUserId, setViewUserId] = useState<string | null>(null);
+  const [previousPage, setPreviousPage] = useState<string | null>(null);
 
   const handleViewProfile = (userId: string) => {
+    // Store the current page before navigating to profile
+    setPreviousPage(currentPage);
     setViewUserId(userId);
     setCurrentPage("profile");
+    // Store the profile userId in localStorage so we can navigate back to it
+    localStorage.setItem("previousProfileUserId", userId);
+  };
+
+  const handleProfileBack = () => {
+    // Navigate back to the previous page, or home if no previous page
+    if (previousPage && previousPage !== "profile") {
+      setCurrentPage(previousPage);
+      setPreviousPage(null);
+    } else {
+      // Fallback: check localStorage for previous page
+      const savedPage = localStorage.getItem("currentPage");
+      if (savedPage && savedPage !== "profile") {
+        setCurrentPage(savedPage);
+      } else {
+        setCurrentPage("home");
+      }
+    }
+    setViewUserId(null);
   };
 
   // --- Effects ---
@@ -408,8 +430,16 @@ function AppContent() {
       setNavigatedAwayLobbyId(null);
     }
     if (page === "profile") {
-      // Navigate to OWN profile
+      // Navigate to OWN profile - store previous page
+      if (currentPage !== "profile") {
+        setPreviousPage(currentPage);
+      }
       setViewUserId(null);
+    } else {
+      // Clear previous page when navigating away from profile
+      if (currentPage === "profile") {
+        setPreviousPage(null);
+      }
     }
     setCurrentPage(page);
   };
@@ -491,12 +521,12 @@ function AppContent() {
             />
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-8">
               <Leaderboard />
-              <RecentMatches />
+              <RecentMatches userId={user?.id} backendUrl={import.meta.env.VITE_BACKEND_URL || "http://localhost:8787"} />
               <DailyRewards />
             </div>
           </>
         )}
-        {currentPage === "profile" && <ProfilePage user={user} targetUserId={viewUserId || user?.id} onFindMatch={handleFindMatch} onLogout={handleLogout} />}
+        {currentPage === "profile" && <ProfilePage user={user} targetUserId={viewUserId || user?.id} onFindMatch={handleFindMatch} onLogout={handleLogout} onBack={handleProfileBack} />}
         {currentPage === "leaderboard" && <LeaderboardPage onViewProfile={handleViewProfile} />}
         {currentPage === "rewards" && <RewardsPage />}
         {currentPage === "friends" && <FriendsPage onViewProfile={handleViewProfile} />}
@@ -506,6 +536,7 @@ function AppContent() {
           <MatchmakingPage
             user={user}
             backendUrl={import.meta.env.VITE_BACKEND_URL || "http://localhost:8787"}
+            onViewProfile={handleViewProfile}
           />
         )}
         {currentPage === "mapban" && (

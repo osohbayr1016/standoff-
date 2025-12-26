@@ -403,6 +403,69 @@ matchesRoutes.post('/:id/leave', async (c) => {
     }
 });
 
+// POST /api/matches/:id/kick - Kick a player from match (host only)
+matchesRoutes.post('/:id/kick', async (c) => {
+    const matchId = c.req.param('id');
+
+    try {
+        const body = await c.req.json<{ player_id: string; host_id: string }>();
+
+        if (!body.player_id || !body.host_id) {
+            return c.json({ success: false, error: 'player_id and host_id are required' }, 400);
+        }
+
+        // Verify host
+        const match = await c.env.DB.prepare(
+            'SELECT host_id, status FROM matches WHERE id = ?'
+        ).bind(matchId).first();
+
+        if (!match) {
+            return c.json({ success: false, error: 'Match not found' }, 404);
+        }
+
+        if (match.host_id !== body.host_id) {
+            return c.json({ success: false, error: 'Only the host can kick players' }, 403);
+        }
+
+        if (match.status !== 'waiting') {
+            return c.json({ success: false, error: 'Cannot kick players after match started' }, 400);
+        }
+
+        // Cannot kick host
+        if (match.host_id === body.player_id) {
+            return c.json({ success: false, error: 'Cannot kick the host' }, 400);
+        }
+
+        // Check if player is in match
+        const membership = await c.env.DB.prepare(
+            'SELECT id FROM match_players WHERE match_id = ? AND player_id = ?'
+        ).bind(matchId, body.player_id).first();
+
+        if (!membership) {
+            return c.json({ success: false, error: 'Player not in this match' }, 404);
+        }
+
+        // Remove player
+        await c.env.DB.prepare(
+            'DELETE FROM match_players WHERE match_id = ? AND player_id = ?'
+        ).bind(matchId, body.player_id).run();
+
+        // Update player count
+        await c.env.DB.prepare(`
+            UPDATE matches SET player_count = player_count - 1, updated_at = datetime('now')
+            WHERE id = ?
+        `).bind(matchId).run();
+
+        return c.json({
+            success: true,
+            message: 'Player kicked successfully'
+        });
+    } catch (error: any) {
+        console.error('Error kicking player:', error);
+        return c.json({ success: false, error: error.message }, 500);
+    }
+});
+
 // POST /api/matches/:id/switch-team - Switch between teams
 matchesRoutes.post('/:id/switch-team', async (c) => {
     const matchId = c.req.param('id');

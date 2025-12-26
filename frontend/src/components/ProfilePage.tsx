@@ -13,7 +13,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
-import { LogOut, Swords, Trophy, Target, Pencil, X, Check, Users, ImageIcon } from "lucide-react";
+import { LogOut, Swords, Trophy, Target, Pencil, X, Check, Users, ImageIcon, ArrowLeft } from "lucide-react";
 import LevelBadge from "./LevelBadge";
 import EloProgressBar from "./EloProgressBar";
 import { VerifiedBadge } from "./VerifiedBadge";
@@ -78,6 +78,7 @@ interface ProfilePageProps {
   targetUserId?: string; // Optional: ID of the user to view. If null, use logged-in user.
   onFindMatch: () => void;
   onLogout: () => void;
+  onBack?: () => void;
 }
 
 const MAP_IMAGES: Record<string, string> = {
@@ -97,6 +98,7 @@ export default function ProfilePage({
   targetUserId,
   onFindMatch,
   onLogout,
+  onBack,
 }: ProfilePageProps) {
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -108,6 +110,7 @@ export default function ProfilePage({
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [avatarError, setAvatarError] = useState(false);
   const [selectedMatch, setSelectedMatch] = useState<MatchDetails | null>(null);
+  const [leaderboardRank, setLeaderboardRank] = useState<number | null>(null);
 
   // Determine which user ID to fetch (target or logged-in)
   const profileId = targetUserId || user?.id;
@@ -116,9 +119,29 @@ export default function ProfilePage({
   useEffect(() => {
     if (profileId) {
       fetchProfile(profileId);
+      fetchLeaderboardRank(profileId);
       setAvatarError(false);
     }
   }, [profileId]);
+
+  const fetchLeaderboardRank = async (id: string) => {
+    try {
+      const res = await fetch(
+        `${import.meta.env.VITE_BACKEND_URL || "http://localhost:8787"}/api/leaderboard`
+      );
+      if (res.ok) {
+        const leaderboard = await res.json();
+        const playerIndex = leaderboard.findIndex((p: any) => p.id === id);
+        if (playerIndex !== -1) {
+          setLeaderboardRank(leaderboard[playerIndex].rank);
+        } else {
+          setLeaderboardRank(null);
+        }
+      }
+    } catch (err) {
+      console.error("Error fetching leaderboard rank:", err);
+    }
+  };
 
   const fetchProfile = async (id: string) => {
     setLoading(true);
@@ -250,6 +273,19 @@ export default function ProfilePage({
 
   return (
     <div className="space-y-8 animate-fade-in max-w-5xl mx-auto pb-12">
+      {/* Back Button */}
+      <div className="flex items-center mb-2">
+        <Button
+          onClick={onBack || (() => window.history.back())}
+          variant="ghost"
+          size="icon"
+          className="rounded-full hover:bg-muted h-10 w-10"
+          title="Go back"
+        >
+          <ArrowLeft className="h-5 w-5" />
+        </Button>
+      </div>
+      
       {/* Header Profile Card */}
       <Card className="border-primary/20 bg-card/50 backdrop-blur-sm relative overflow-hidden">
         {/* Background Gradient */}
@@ -354,6 +390,23 @@ export default function ProfilePage({
                 </div>
               )}
             </div>
+
+            {/* Leaderboard Rank Section */}
+            {leaderboardRank !== null && (
+              <div className="flex-shrink-0 text-center md:text-right">
+                <div className="space-y-1">
+                  <div className="text-xs font-bold text-muted-foreground uppercase tracking-widest">
+                    Leaderboard Rank
+                  </div>
+                  <div className="text-4xl md:text-5xl font-black font-display tracking-tighter text-primary">
+                    #{leaderboardRank}
+                  </div>
+                  <div className="text-xs text-muted-foreground font-medium">
+                    Top {Math.round((leaderboardRank / 500) * 100)}%
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="mt-8">

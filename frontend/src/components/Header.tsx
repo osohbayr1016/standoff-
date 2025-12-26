@@ -12,7 +12,8 @@ import {
   Shield,
   LogOut,
   User as UserIcon,
-  ShieldAlert
+  ShieldAlert,
+  MessageCircle
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -167,6 +168,18 @@ export default function Header({
 
         {/* User Menu (Desktop & Mobile) */}
         <div className="flex items-center gap-2">
+          {/* Discord Server Link */}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-10 w-10 rounded-full hover:bg-[#5865F2]/10 hover:text-[#5865F2] transition-colors"
+            onClick={() => window.open('https://discord.gg/4dSXyfWUdq', '_blank', 'noopener,noreferrer')}
+            title="Join our Discord server"
+          >
+            <MessageCircle className="h-5 w-5" />
+            <span className="sr-only">Join Discord Server</span>
+          </Button>
+
           {user ? (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>

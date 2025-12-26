@@ -1,4 +1,4 @@
-import { Instagram } from "lucide-react";
+import { Instagram, MessageCircle } from "lucide-react";
 
 export default function Footer() {
   return (
@@ -15,12 +15,31 @@ export default function Footer() {
             </p>
           </div>
 
-          {/* Developer Links */}
+          {/* Links Section */}
           <div className="flex flex-col md:items-end gap-4">
-            <div className="text-xs text-gray-600 uppercase tracking-widest font-bold">
-              Developed by
-            </div>
+            {/* Discord Server Link */}
             <div className="flex flex-col gap-3">
+              <div className="text-xs text-gray-600 uppercase tracking-widest font-bold">
+                Join Our Community
+              </div>
+              <a
+                href="https://discord.gg/4dSXyfWUdq"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-2 text-sm text-gray-400 hover:text-white transition-colors group"
+              >
+                <div className="p-1.5 rounded-full bg-white/5 group-hover:bg-[#5865F2]/10 transition-colors">
+                  <MessageCircle className="h-4 w-4 text-[#5865F2]" />
+                </div>
+                <span>Discord Server</span>
+              </a>
+            </div>
+            
+            {/* Developer Links */}
+            <div className="flex flex-col gap-3 mt-4">
+              <div className="text-xs text-gray-600 uppercase tracking-widest font-bold">
+                Developed by
+              </div>
               <a
                 href="https://www.instagram.com/not_twissu_/"
                 target="_blank"
