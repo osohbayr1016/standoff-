@@ -867,6 +867,32 @@ export class MatchQueueDO {
           }
         }
 
+
+        // 6.5. SERVER_CREATED (From Bot)
+        if (msg.type === 'SERVER_CREATED') {
+          const { lobbyId, serverInfo } = msg;
+          console.log(`📡 Received SERVER_CREATED from Bot for Lobby ${lobbyId}`, serverInfo);
+          const lobby = this.activeLobbies.get(lobbyId);
+
+          if (lobby) {
+            lobby.serverInfo = serverInfo;
+            // Also store in matchData if needed by frontend schema
+            // this.activeLobbies.set(lobbyId, lobby); // Reference modified in place
+
+            // Broadcast SERVER_READY to players in this lobby
+            this.broadcastToLobby(lobbyId, JSON.stringify({
+              type: 'SERVER_READY',
+              lobbyId: lobbyId,
+              serverInfo: serverInfo
+            }));
+
+            await this.broadcastLobbyUpdate(lobbyId);
+            await this.saveMatchState();
+          } else {
+            console.warn(`SERVER_CREATED received for unknown lobby: ${lobbyId}`);
+          }
+        }
+
         // 7. LEAVE_MATCH
         if (msg.type === 'LEAVE_MATCH') {
           const userId = msg.userId || currentUserId;
