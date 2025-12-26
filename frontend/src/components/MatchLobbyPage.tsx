@@ -134,7 +134,7 @@ export default function MatchLobbyPage({ lobby, serverInfo: initialServerInfo }:
                     {getAvatarUrl(player) ? (
                       <img src={getAvatarUrl(player)!} alt="avatar" className="player-avatar" />
                     ) : (
-                      <div className="player-avatar-placeholder">{player.username[0]}</div>
+                      <div className="player-avatar-placeholder">{(player.username || '?')[0]}</div>
                     )}
                   </div>
                   <div className="player-info">
@@ -249,7 +249,7 @@ export default function MatchLobbyPage({ lobby, serverInfo: initialServerInfo }:
                     {getAvatarUrl(player) ? (
                       <img src={getAvatarUrl(player)!} alt="avatar" className="player-avatar" />
                     ) : (
-                      <div className="player-avatar-placeholder">{player.username[0]}</div>
+                      <div className="player-avatar-placeholder">{(player.username || '?')[0]}</div>
                     )}
                   </div>
                   <div className="player-info">
