@@ -77,9 +77,9 @@ export class NeatQueueService {
                 return {
                     success: true,
                     serverInfo: {
-                        ip: "127.0.0.1:27015",
-                        password: "test-password",
-                        matchLink: "standoff://join/test"
+                        ip: "Check Discord Channel",
+                        password: "See Embed",
+                        matchLink: "https://discord.com/channels/@me"
                     }
                 };
             }
@@ -91,8 +91,8 @@ export class NeatQueueService {
             return {
                 success: true,
                 serverInfo: {
-                    ip: "127.0.0.1:27015",
-                    password: "test-password"
+                    ip: "Check Discord Channel",
+                    password: "See Embed"
                 }
             };
         }

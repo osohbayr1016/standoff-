@@ -723,6 +723,7 @@ export class MatchQueueDO {
           }
         }
 
+
         // 2. JOIN_QUEUE
         if (msg.type === 'JOIN_QUEUE') {
           const userId = msg.userId || currentUserId;
@@ -730,6 +731,20 @@ export class MatchQueueDO {
             // Check if already in match
             if (this.playerLobbyMap.has(userId)) {
               ws.send(JSON.stringify({ type: 'ERROR', message: 'Already in a match' }));
+              return;
+            }
+
+            // CRITICAL: Validate User exists in DB (Session Validity Check)
+            try {
+              const dbUser = await this.env.DB.prepare('SELECT id FROM players WHERE id = ?').bind(userId).first();
+              if (!dbUser) {
+                ws.send(JSON.stringify({ type: 'AUTH_ERROR', message: 'Session invalid/expired. Please login again.' }));
+                return;
+              }
+            } catch (e) {
+              console.error('DB Check Error:', e);
+              // Proceed cautiously or fail open? Fail closed for safety.
+              ws.send(JSON.stringify({ type: 'ERROR', message: 'Database error validating session' }));
               return;
             }
 

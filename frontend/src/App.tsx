@@ -143,6 +143,17 @@ function AppContent() {
   useEffect(() => {
     if (!lastMessage) return;
 
+    if (lastMessage.type === "AUTH_ERROR") {
+      console.error("Auth Error:", lastMessage.message);
+      // alert("Session Expired: " + lastMessage.message); // Alert might be annoying if loop
+      handleLogout();
+      return;
+    }
+
+    if (lastMessage.type === "ERROR") {
+      console.error("Backend Error:", lastMessage.message);
+    }
+
     // 1. Invites
     if (lastMessage.type === "INVITE_RECEIVED") {
       const { fromUser, lobbyId } = lastMessage;
