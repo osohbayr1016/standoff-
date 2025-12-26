@@ -5,7 +5,7 @@ export default function AuthPage() {
     const clientID = "1453495820585533480";
     const backendUrl = import.meta.env.VITE_BACKEND_URL || "http://localhost:8787";
     const redirectUri = encodeURIComponent(`${backendUrl}/api/auth/callback`);
-    const scope = encodeURIComponent("identify email");
+    const scope = encodeURIComponent("identify email guilds.members.read");
 
     // Discord-ын зөвшөөрөл олгох URL (without version)
     window.location.href = `https://discord.com/oauth2/authorize?client_id=${clientID}&redirect_uri=${redirectUri}&response_type=code&scope=${scope}`;

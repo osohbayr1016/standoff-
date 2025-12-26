@@ -1134,6 +1134,29 @@ app.get('/api/auth/callback', async (c) => {
 
     const userData = await userResponse.json() as any;
 
+    // 2.5 Verify Membership in Official Server
+    const requiredGuildId = c.env.DISCORD_SERVER_ID;
+    if (requiredGuildId) {
+      try {
+        const memberResponse = await fetch(`https://discord.com/api/users/@me/guilds/${requiredGuildId}/member`, {
+          headers: {
+            Authorization: `Bearer ${tokens.access_token}`
+          }
+        });
+
+        if (memberResponse.status !== 200) {
+          console.warn(`User ${userData.id} is NOT in the required guild ${requiredGuildId}`);
+          const frontendUrl = c.env.FRONTEND_URL || 'http://localhost:5173';
+          return c.redirect(`${frontendUrl}?error=not_in_server`);
+        }
+      } catch (membErr) {
+        console.error('Error checking guild membership:', membErr);
+        // We might choose to allow or block on error. 
+        // Safer to block if we want strict enforcement, but for now log it.
+        // return c.redirect(`${frontendUrl}?error=membership_check_failed`);
+      }
+    }
+
     // 3. Хэрэглэгчийг Database-д хадгалах bolon info avah
     let player: any = null;
     try {
