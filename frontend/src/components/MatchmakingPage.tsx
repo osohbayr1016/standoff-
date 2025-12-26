@@ -37,9 +37,10 @@ interface MatchmakingPageProps {
         avatar?: string;
     } | null;
     backendUrl: string;
+    onViewProfile?: (userId: string) => void;
 }
 
-const MatchmakingPage: React.FC<MatchmakingPageProps> = ({ user, backendUrl }) => {
+const MatchmakingPage: React.FC<MatchmakingPageProps> = ({ user, backendUrl, onViewProfile }) => {
     const { sendMessage: _sendMessage, lastMessage } = useWebSocket();
     const [matches, setMatches] = useState<Match[]>([]);
     const [loading, setLoading] = useState(true);
@@ -256,6 +257,9 @@ const MatchmakingPage: React.FC<MatchmakingPageProps> = ({ user, backendUrl }) =
 
     // Show lobby detail page if a match is selected
     if (selectedMatchId) {
+        // Get the previous profile userId from localStorage if it exists
+        const previousProfileUserId = localStorage.getItem("previousProfileUserId");
+        
         return (
             <LobbyDetailPage
                 matchId={selectedMatchId}
@@ -265,6 +269,8 @@ const MatchmakingPage: React.FC<MatchmakingPageProps> = ({ user, backendUrl }) =
                     setSelectedMatchId(null);
                     fetchMatches();
                 }}
+                previousProfileUserId={previousProfileUserId}
+                onNavigateToProfile={onViewProfile}
             />
         );
     }
