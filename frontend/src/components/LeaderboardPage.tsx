@@ -1,4 +1,5 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
+import { useWebSocket } from "./WebSocketContext";
 import "./LeaderboardPage.css";
 
 interface LeaderboardEntry {
@@ -15,6 +16,10 @@ interface LeaderboardEntry {
 
 type FilterType = "elo" | "winrate" | "matches";
 
+const CACHE_KEY = "leaderboard_cache";
+const CACHE_TIMESTAMP_KEY = "leaderboard_cache_timestamp";
+const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+
 export default function LeaderboardPage() {
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
   const [filteredLeaderboard, setFilteredLeaderboard] = useState<
@@ -22,21 +27,67 @@ export default function LeaderboardPage() {
   >([]);
   const [loading, setLoading] = useState(true);
   const [activeFilter, setActiveFilter] = useState<FilterType>("elo");
+  const { lastMessage, sendMessage, isConnected } = useWebSocket();
 
+  // Load cached data immediately on mount
   useEffect(() => {
+    const cachedData = localStorage.getItem(CACHE_KEY);
+    const cacheTimestamp = localStorage.getItem(CACHE_TIMESTAMP_KEY);
+
+    if (cachedData && cacheTimestamp) {
+      const age = Date.now() - parseInt(cacheTimestamp);
+      if (age < CACHE_DURATION) {
+        const parsed = JSON.parse(cachedData);
+        setLeaderboard(parsed);
+        applyFilter(parsed, activeFilter);
+        setLoading(false);
+      }
+    }
+
+    // Fetch fresh data via HTTP
     fetchLeaderboard();
+
+    // Request via WebSocket if connected
+    if (isConnected) {
+      sendMessage({ type: 'REQUEST_LEADERBOARD' });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Request leaderboard when WebSocket connects
+  useEffect(() => {
+    if (isConnected) {
+      sendMessage({ type: 'REQUEST_LEADERBOARD' });
+    }
+  }, [isConnected, sendMessage]);
+
+  // Listen for real-time leaderboard updates via WebSocket
+  useEffect(() => {
+    if (lastMessage?.type === "LEADERBOARD_UPDATE") {
+      console.log("Real-time leaderboard update received");
+      const updatedData = lastMessage.data;
+      setLeaderboard(updatedData);
+      applyFilter(updatedData, activeFilter);
+
+      // Update cache
+      localStorage.setItem(CACHE_KEY, JSON.stringify(updatedData));
+      localStorage.setItem(CACHE_TIMESTAMP_KEY, Date.now().toString());
+    }
+  }, [lastMessage, activeFilter, applyFilter]);
 
   const fetchLeaderboard = async () => {
     try {
       const res = await fetch(
-        `${import.meta.env.VITE_BACKEND_URL || "http://localhost:8787"
-        }/api/leaderboard`
+        `${import.meta.env.VITE_BACKEND_URL || "http://localhost:8787"}/api/leaderboard`
       );
       if (res.ok) {
         const data = await res.json();
         setLeaderboard(data);
         applyFilter(data, activeFilter);
+
+        // Cache the data
+        localStorage.setItem(CACHE_KEY, JSON.stringify(data));
+        localStorage.setItem(CACHE_TIMESTAMP_KEY, Date.now().toString());
       }
     } catch (err) {
       console.error("Error fetching leaderboard:", err);
@@ -45,7 +96,7 @@ export default function LeaderboardPage() {
     }
   };
 
-  const applyFilter = (data: LeaderboardEntry[], filter: FilterType) => {
+  const applyFilter = useCallback((data: LeaderboardEntry[], filter: FilterType) => {
     let sorted = [...data];
 
     switch (filter) {
@@ -77,16 +128,15 @@ export default function LeaderboardPage() {
     }));
 
     setFilteredLeaderboard(ranked);
-  };
+  }, []);
 
   useEffect(() => {
     if (leaderboard.length > 0) {
       applyFilter(leaderboard, activeFilter);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeFilter, leaderboard]);
+  }, [activeFilter, leaderboard, applyFilter]);
 
-  if (loading) {
+  if (loading && filteredLeaderboard.length === 0) {
     return (
       <div className="leaderboard-page">
         <div className="loading-container">
@@ -137,22 +187,19 @@ export default function LeaderboardPage() {
           <div className="header-elo">ELO</div>
           <div className="header-stats mobile-hide">Х / Х</div>
           <div className="header-winrate mobile-hide">ХОЖЛЫН ХУВЬ</div>
-        </div >
+        </div>
 
         <div className="leaderboard-list">
           {filteredLeaderboard.map((player) => {
             const winRate =
               player.wins + player.losses > 0
-                ? ((player.wins / (player.wins + player.losses)) * 100).toFixed(
-                  1
-                )
+                ? ((player.wins / (player.wins + player.losses)) * 100).toFixed(1)
                 : "0.0";
 
             return (
               <div
                 key={player.id}
-                className={`leaderboard-row rank-${player.rank <= 3 ? player.rank : "other"
-                  }`}
+                className={`leaderboard-row rank-${player.rank <= 3 ? player.rank : "other"}`}
               >
                 <div className="rank-cell">
                   {player.rank === 1 && (
@@ -190,6 +237,13 @@ export default function LeaderboardPage() {
                   </div>
                 </div>
 
+                <div className="elo-cell">
+                  {player.elo}
+                </div>
+
+                <div className="stats-cell mobile-hide">
+                  <span className="wins">{player.wins}</span> / <span className="losses">{player.losses}</span>
+                </div>
 
                 <div className="winrate-cell mobile-hide">
                   <div className="winrate-bar-bg">
@@ -204,13 +258,11 @@ export default function LeaderboardPage() {
             );
           })}
 
-          {
-            filteredLeaderboard.length === 0 && (
-              <div className="no-data">ЧАНСААНЫ МЭДЭЭЛЭЛ БАЙХГҮЙ</div>
-            )
-          }
-        </div >
-      </div >
-    </div >
+          {filteredLeaderboard.length === 0 && (
+            <div className="no-data">ЧАНСААНЫ МЭДЭЭЛЭЛ БАЙХГҮЙ</div>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
