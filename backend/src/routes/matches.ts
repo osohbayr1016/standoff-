@@ -29,9 +29,42 @@ matchesRoutes.get('/', async (c) => {
             ORDER BY m.created_at DESC
         `).bind(status).all();
 
+        // Fetch players for each match
+        const matchesWithPlayers = await Promise.all(
+            (result.results || []).map(async (match: any) => {
+                const playersResult = await c.env.DB.prepare(`
+                    SELECT 
+                        mp.*,
+                        p.discord_username,
+                        p.discord_avatar,
+                        p.standoff_nickname,
+                        p.elo,
+                        p.standoff_nickname,
+                        p.elo,
+                        p.standoff_nickname,
+                        p.elo,
+                        p.standoff_nickname,
+                        p.elo,
+                        p.discord_id,
+                        p.is_discord_member,
+                        p.is_discord_member,
+                        p.is_discord_member
+                    FROM match_players mp
+                    LEFT JOIN players p ON mp.player_id = p.id
+                    WHERE mp.match_id = ?
+                    ORDER BY mp.team, mp.joined_at
+                `).bind(match.id).all();
+
+                return {
+                    ...match,
+                    players: playersResult.results || []
+                };
+            })
+        );
+
         return c.json({
             success: true,
-            matches: result.results || []
+            matches: matchesWithPlayers
         });
     } catch (error: any) {
         console.error('Error fetching matches:', error);
@@ -67,7 +100,16 @@ matchesRoutes.get('/:id', async (c) => {
                 p.discord_avatar,
                 p.standoff_nickname,
                 p.elo,
-                p.role
+                p.standoff_nickname,
+                p.elo,
+                p.standoff_nickname,
+                p.elo,
+                p.standoff_nickname,
+                p.elo,
+                p.role,
+                p.is_discord_member,
+                p.is_discord_member,
+                p.is_discord_member
             FROM match_players mp
             LEFT JOIN players p ON mp.player_id = p.id
             WHERE mp.match_id = ?
@@ -81,6 +123,31 @@ matchesRoutes.get('/:id', async (c) => {
         });
     } catch (error: any) {
         console.error('Error fetching match:', error);
+        return c.json({ success: false, error: error.message }, 500);
+    }
+});
+
+// GET /api/matches/user/:userId/active - Get user's active match
+matchesRoutes.get('/user/:userId/active', async (c) => {
+    const userId = c.req.param('userId');
+
+    try {
+        const activeMatch = await c.env.DB.prepare(`
+            SELECT DISTINCT m.*
+            FROM matches m
+            JOIN match_players mp ON m.id = mp.match_id
+            WHERE mp.player_id = ? 
+            AND m.status IN ('waiting', 'in_progress')
+            ORDER BY m.created_at DESC
+            LIMIT 1
+        `).bind(userId).first();
+
+        return c.json({
+            success: true,
+            match: activeMatch || null
+        });
+    } catch (error: any) {
+        console.error('Error fetching user active match:', error);
         return c.json({ success: false, error: error.message }, 500);
     }
 });
@@ -119,7 +186,11 @@ matchesRoutes.post('/', async (c) => {
         `).bind(body.host_id).first();
 
         if (existingMatch) {
-            return c.json({ success: false, error: 'You are already in an active match' }, 400);
+            return c.json({
+                success: false,
+                error: 'You are already in an active match',
+                currentMatchId: existingMatch.id
+            }, 400);
         }
 
         const matchId = crypto.randomUUID();
@@ -312,6 +383,66 @@ matchesRoutes.post('/:id/leave', async (c) => {
     }
 });
 
+// POST /api/matches/:id/switch-team - Switch between teams
+matchesRoutes.post('/:id/switch-team', async (c) => {
+    const matchId = c.req.param('id');
+
+    try {
+        const body = await c.req.json<{ player_id: string }>();
+
+        if (!body.player_id) {
+            return c.json({ success: false, error: 'player_id is required' }, 400);
+        }
+
+        // Check if player is in match
+        const membership = await c.env.DB.prepare(
+            'SELECT team FROM match_players WHERE match_id = ? AND player_id = ?'
+        ).bind(matchId, body.player_id).first();
+
+        if (!membership) {
+            return c.json({ success: false, error: 'Not in this match' }, 404);
+        }
+
+        // Check if match is still in waiting status
+        const match = await c.env.DB.prepare(
+            'SELECT status FROM matches WHERE id = ?'
+        ).bind(matchId).first();
+
+        if (!match || match.status !== 'waiting') {
+            return c.json({ success: false, error: 'Cannot switch teams after match started' }, 400);
+        }
+
+        // Get current team and calculate new team
+        const currentTeam = membership.team as string;
+        const newTeam = currentTeam === 'alpha' ? 'bravo' : 'alpha';
+
+        // Check if new team is full (max 5 players per team)
+        const newTeamCount = await c.env.DB.prepare(`
+            SELECT COUNT(*) as count FROM match_players 
+            WHERE match_id = ? AND team = ?
+        `).bind(matchId, newTeam).first();
+
+        if ((newTeamCount?.count as number) >= 5) {
+            return c.json({ success: false, error: `Team ${newTeam} is full (max 5 players)` }, 400);
+        }
+
+        // Update team
+        await c.env.DB.prepare(`
+            UPDATE match_players SET team = ? 
+            WHERE match_id = ? AND player_id = ?
+        `).bind(newTeam, matchId, body.player_id).run();
+
+        return c.json({
+            success: true,
+            newTeam,
+            message: `Switched to team ${newTeam}`
+        });
+    } catch (error: any) {
+        console.error('Error switching team:', error);
+        return c.json({ success: false, error: error.message }, 500);
+    }
+});
+
 // PATCH /api/matches/:id/status - Update match status (host only)
 matchesRoutes.patch('/:id/status', async (c) => {
     const matchId = c.req.param('id');
@@ -344,6 +475,20 @@ matchesRoutes.patch('/:id/status', async (c) => {
         const allowed = validTransitions[match.status as string] || [];
         if (!allowed.includes(body.status)) {
             return c.json({ success: false, error: `Cannot change status from ${match.status} to ${body.status}` }, 400);
+        }
+
+        // If starting match, verify 10 players (5v5)
+        if (body.status === 'in_progress') {
+            const playerCount = await c.env.DB.prepare(
+                'SELECT COUNT(*) as count FROM match_players WHERE match_id = ?'
+            ).bind(matchId).first();
+
+            if ((playerCount?.count as number) < 10) {
+                return c.json({
+                    success: false,
+                    error: `Cannot start match with ${playerCount?.count} players. Need 10 players (5v5)`
+                }, 400);
+            }
         }
 
         await c.env.DB.prepare(

@@ -58,6 +58,31 @@ moderatorRoutes.get('/pending-reviews', async (c) => {
     }
 });
 
+// GET /api/moderator/active-matches - Get active matches
+moderatorRoutes.get('/active-matches', async (c) => {
+    try {
+        const result = await c.env.DB.prepare(`
+            SELECT 
+                m.*,
+                p.discord_username as host_username,
+                p.discord_avatar as host_avatar,
+                (SELECT COUNT(*) FROM match_players WHERE match_id = m.id) as player_count
+            FROM matches m
+            LEFT JOIN players p ON m.host_id = p.id
+            WHERE m.status IN ('in_progress', 'waiting')
+            ORDER BY m.created_at DESC
+        `).all();
+
+        return c.json({
+            success: true,
+            matches: result.results || []
+        });
+    } catch (error: any) {
+        console.error('Error fetching active matches:', error);
+        return c.json({ success: false, error: error.message }, 500);
+    }
+});
+
 // GET /api/moderator/matches/:id - Get full match details for review
 moderatorRoutes.get('/matches/:id', async (c) => {
     const matchId = c.req.param('id');
@@ -116,6 +141,8 @@ moderatorRoutes.post('/matches/:id/review', async (c) => {
         const body = await c.req.json<{
             approved: boolean;
             winner_team?: 'alpha' | 'bravo';
+            alpha_score?: number;
+            bravo_score?: number;
             elo_change?: number;
             notes?: string;
         }>();
@@ -204,12 +231,21 @@ moderatorRoutes.post('/matches/:id/review', async (c) => {
             UPDATE matches 
             SET status = 'completed',
                 winner_team = ?,
+                alpha_score = ?,
+                bravo_score = ?,
                 reviewed_by = ?,
                 reviewed_at = datetime('now'),
                 review_notes = ?,
                 updated_at = datetime('now')
             WHERE id = ?
-        `).bind(winnerTeam, moderatorId, body.notes || null, matchId).run();
+        `).bind(
+            winnerTeam,
+            body.alpha_score || 0,
+            body.bravo_score || 0,
+            moderatorId,
+            body.notes || null,
+            matchId
+        ).run();
 
         return c.json({
             success: true,
@@ -467,6 +503,50 @@ moderatorRoutes.get('/stats', async (c) => {
         });
     } catch (error: any) {
         console.error('Error fetching stats:', error);
+        return c.json({ success: false, error: error.message }, 500);
+    }
+});
+
+// POST /api/moderator/matches/:id/cancel - Cancel a match
+moderatorRoutes.post('/matches/:id/cancel', async (c) => {
+    const matchId = c.req.param('id');
+    const moderatorId = c.req.header('X-User-Id');
+
+    if (!moderatorId) {
+        return c.json({ success: false, error: 'Authentication required' }, 401);
+    }
+
+    try {
+        await c.env.DB.prepare(`
+            UPDATE matches 
+            SET status = 'cancelled', 
+                reviewed_by = ?,
+                updated_at = datetime('now')
+            WHERE id = ?
+        `).bind(moderatorId, matchId).run();
+
+        return c.json({ success: true });
+    } catch (error: any) {
+        console.error('Error cancelling match:', error);
+        return c.json({ success: false, error: error.message }, 500);
+    }
+});
+
+// POST /api/moderator/matches/:id/force-start - Force start a match
+moderatorRoutes.post('/matches/:id/force-start', async (c) => {
+    const matchId = c.req.param('id');
+
+    try {
+        await c.env.DB.prepare(`
+            UPDATE matches 
+            SET status = 'in_progress',
+                updated_at = datetime('now')
+            WHERE id = ?
+        `).bind(matchId).run();
+
+        return c.json({ success: true });
+    } catch (error: any) {
+        console.error('Error force starting match:', error);
         return c.json({ success: false, error: error.message }, 500);
     }
 });

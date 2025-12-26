@@ -1,6 +1,5 @@
 import { useState, useEffect } from "react";
-import "./App.css";
-import "./InviteToast.css";
+import "./InviteToast.css"; // Keeping for now as it handles toast animations specific to invites
 import Header from "./components/Header";
 import Hero from "./components/Hero";
 import Leaderboard from "./components/Leaderboard";
@@ -87,6 +86,13 @@ function AppContent() {
   });
 
   const { registerUser, lastMessage, requestMatchState } = useWebSocket();
+
+  const [viewUserId, setViewUserId] = useState<string | null>(null);
+
+  const handleViewProfile = (userId: string) => {
+    setViewUserId(userId);
+    setCurrentPage("profile");
+  };
 
   // --- Effects ---
 
@@ -364,7 +370,10 @@ function AppContent() {
   };
 
   const handleFindMatch = () => setCurrentPage("matchmaking");
-  const handleGoHome = () => setCurrentPage("home");
+  const handleGoHome = () => {
+    setViewUserId(null);
+    setCurrentPage("home");
+  };
 
   const handleNavigate = (page: string) => {
     const matchPages = ["mapban", "matchgame"];
@@ -373,6 +382,10 @@ function AppContent() {
     }
     if (matchPages.includes(page)) {
       setNavigatedAwayLobbyId(null);
+    }
+    if (page === "profile") {
+      // Navigate to OWN profile
+      setViewUserId(null);
     }
     setCurrentPage(page);
   };
@@ -409,7 +422,7 @@ function AppContent() {
   if (!validPages.includes(currentPage)) return <NotFoundPage onGoHome={handleGoHome} />;
 
   return (
-    <div className="app">
+    <div className="flex flex-col min-h-screen bg-background relative">
       {inviteNotification && (
         <div className="invite-notification-toast">
           <div className="invite-content">
@@ -443,23 +456,32 @@ function AppContent() {
         user={user}
         onNavigate={handleNavigate}
         onLogout={handleLogout}
+        backendUrl={import.meta.env.VITE_BACKEND_URL || "http://localhost:8787"}
       />
 
-      <main className="main-content">
+      <main className="container mx-auto px-4 md:px-8 py-8 flex-1">
         {currentPage === "home" && (
           <>
-            <Hero onFindMatch={handleFindMatch} />
-            <div className="content-grid">
+            <Hero
+              onFindMatch={handleFindMatch}
+              onViewMatch={(matchId) => {
+                console.log('Viewing match:', matchId);
+                handleNavigate('matchmaking');
+              }}
+              userId={user?.id}
+              backendUrl={import.meta.env.VITE_BACKEND_URL || "http://localhost:8787"}
+            />
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-8">
               <Leaderboard />
               <RecentMatches />
               <DailyRewards />
             </div>
           </>
         )}
-        {currentPage === "profile" && <ProfilePage user={user} onFindMatch={handleFindMatch} onLogout={handleLogout} />}
-        {currentPage === "leaderboard" && <LeaderboardPage />}
+        {currentPage === "profile" && <ProfilePage user={user} targetUserId={viewUserId || user?.id} onFindMatch={handleFindMatch} onLogout={handleLogout} />}
+        {currentPage === "leaderboard" && <LeaderboardPage onViewProfile={handleViewProfile} />}
         {currentPage === "rewards" && <RewardsPage />}
-        {currentPage === "friends" && <FriendsPage />}
+        {currentPage === "friends" && <FriendsPage onViewProfile={handleViewProfile} />}
         {currentPage === "moderator" && <ModeratorPage user={user} backendUrl={import.meta.env.VITE_BACKEND_URL || "http://localhost:8787"} />}
         {currentPage === "matchmaking" && (
           <MatchmakingPage

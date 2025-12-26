@@ -20,12 +20,17 @@ export function setupProfileRoutes(app: Hono<any>) {
             // Standardize response
             return c.json({
                 id: user.discord_id,
+                discord_id: user.discord_id,
+                discord_username: user.discord_username,
+                discord_avatar: user.discord_avatar,
                 username: user.discord_username,
                 avatar: user.discord_avatar, // Map to avatar
                 standoff_nickname: user.standoff_nickname,
-                elo: user.mmr || 1000, // Map mmr to elo
+                elo: user.elo || 1000,
                 wins: user.wins || 0,
-                losses: user.losses || 0
+                losses: user.losses || 0,
+                role: user.role || 'user',
+                is_discord_member: user.is_discord_member === 1
             });
         } catch (error) {
             console.error('❌ Profile fetch error:', error);
@@ -136,9 +141,10 @@ export function setupProfileRoutes(app: Hono<any>) {
             const userId = c.req.param('userId');
 
             // Find all matches user participated in
+            // Find all matches user participated in
             const matches = await c.env.DB.prepare(
                 `SELECT 
-                    m.id, 
+                    m.id as match_id, 
                     m.map_name, 
                     m.status, 
                     m.winner_team,
@@ -147,13 +153,15 @@ export function setupProfileRoutes(app: Hono<any>) {
                     mp.team as player_team,
                     mp.joined_at,
                     m.alpha_score,
-                    m.bravo_score
+                    m.bravo_score,
+                    eh.elo_change
                 FROM matches m
                 JOIN match_players mp ON m.id = mp.match_id
+                LEFT JOIN elo_history eh ON m.id = eh.match_id AND eh.user_id = ?
                 WHERE mp.player_id = ? AND m.status IN ('completed', 'pending_review')
                 ORDER BY m.created_at DESC
                 LIMIT 20`
-            ).bind(userId).all();
+            ).bind(userId, userId).all();
 
             return c.json({ matches: matches.results || [] });
         } catch (error) {

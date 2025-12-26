@@ -10,6 +10,8 @@ import { setupAdminRoutes } from './routes/admin';
 import { setupFriendsRoutes } from './routes/friends';
 import { matchesRoutes } from './routes/matches';
 import { moderatorRoutes } from './routes/moderator';
+import { uploadRoutes } from './routes/upload';
+import { lobbyInviteRoutes } from './routes/lobby-invites';
 
 // ============= Type Definitions =============
 interface QueuePlayer {
@@ -61,7 +63,7 @@ interface Lobby {
 }
 
 interface Env {
-  MATCH_QUEUE: DurableObjectNamespace;
+  // MATCH_QUEUE: DurableObjectNamespace;
   DB: D1Database;
   DISCORD_CLIENT_ID: string;
   DISCORD_CLIENT_SECRET: string;
@@ -233,7 +235,7 @@ export class MatchQueueDO {
   async broadcastLeaderboardUpdate() {
     try {
       const result = await this.env.DB.prepare(
-        'SELECT * FROM players ORDER BY mmr DESC LIMIT 500'
+        'SELECT * FROM players ORDER BY elo DESC LIMIT 500'
       ).all();
 
       const leaderboard = (result.results || []).map((player: any, index: number) => ({
@@ -243,7 +245,7 @@ export class MatchQueueDO {
         username: player.discord_username,
         avatar: player.discord_avatar,
         nickname: player.standoff_nickname,
-        elo: player.mmr,
+        elo: player.elo,
         wins: player.wins,
         losses: player.losses,
       }));
@@ -988,7 +990,7 @@ export class MatchQueueDO {
           try {
             // Fetch leaderboard from database
             const result = await this.env.DB.prepare(
-              'SELECT * FROM players ORDER BY mmr DESC LIMIT 500'
+              'SELECT * FROM players ORDER BY elo DESC LIMIT 500'
             ).all();
 
             const leaderboard = (result.results || []).map((player: any, index: number) => ({
@@ -998,7 +1000,7 @@ export class MatchQueueDO {
               username: player.discord_username,
               avatar: player.discord_avatar,
               nickname: player.standoff_nickname,
-              elo: player.mmr,
+              elo: player.elo,
               wins: player.wins,
               losses: player.losses,
             }));
@@ -1057,7 +1059,7 @@ export class MatchQueueDO {
               const offset = (page - 1) * limit;
 
               const result = await this.env.DB.prepare(
-                'SELECT id, discord_username, discord_avatar, role, mmr, wins, losses, banned FROM players LIMIT ? OFFSET ?'
+                'SELECT id, discord_username, discord_avatar, role, elo, wins, losses, banned FROM players LIMIT ? OFFSET ?'
               ).bind(limit, offset).all();
 
               const totalResult = await this.env.DB.prepare('SELECT COUNT(*) as count FROM players').first();
@@ -1262,6 +1264,10 @@ setupLeaderboardRoutes(app);
 setupAdminRoutes(app);
 setupFriendsRoutes(app);
 
+app.route('/api/matches', matchesRoutes);
+app.route('/api/moderator', moderatorRoutes);
+app.route('/api', uploadRoutes);
+
 app.get('/', (c) => c.text('Standoff 2 Platform API is Online!'));
 
 // Debug endpoint to check environment variables (remove in production)
@@ -1336,50 +1342,25 @@ app.get('/api/auth/callback', async (c) => {
 
     const userData = await userResponse.json() as any;
 
-    // 2.5 Verify Membership in Official Server
+    // Check Discord server membership (non-blocking - for badge only)
     const requiredGuildId = c.env.DISCORD_SERVER_ID;
-    let hasModeratorRole = false;
+    let isDiscordMember = false;
 
     if (requiredGuildId) {
       try {
-        const memberResponse = await fetch(`https://discord.com/api/users/@me/guilds/${requiredGuildId}/member`, {
+        const guildsResponse = await fetch('https://discord.com/api/users/@me/guilds', {
           headers: {
             Authorization: `Bearer ${tokens.access_token}`
           }
         });
 
-        if (memberResponse.status !== 200) {
-          console.warn(`User ${userData.id} is NOT in the required guild ${requiredGuildId}`);
-          const frontendUrl = c.env.FRONTEND_URL || 'http://localhost:5173';
-          return c.redirect(`${frontendUrl}?error=not_in_server`);
+        if (guildsResponse.ok) {
+          const guilds = await guildsResponse.json() as any[];
+          isDiscordMember = guilds.some((guild: any) => guild.id === requiredGuildId);
+          console.log(`User ${userData.id} Discord server member: ${isDiscordMember}`);
         }
-
-        // Check if user has moderator role
-        const moderatorRoleId = c.env.MODERATOR_ROLE_ID;
-        if (moderatorRoleId) {
-          const memberData = await memberResponse.json() as any;
-          if (memberData.roles && Array.isArray(memberData.roles)) {
-            hasModeratorRole = memberData.roles.includes(moderatorRoleId);
-            console.log(`User ${userData.id} moderator role check: ${hasModeratorRole} (Expected Role: ${moderatorRoleId}, User Roles: ${JSON.stringify(memberData.roles)})`);
-          } else {
-            console.warn(`User ${userData.id} has no roles or invalid response`, memberData);
-          }
-        } else {
-          console.warn('MODERATOR_ROLE_ID not set in env');
-        }
-
-        // TEMP FIX: Force moderator for nevalast03
-        if (userData.id === '1237067681623052288') {
-          console.log('Force granting moderator/admin to nevalast03');
-          hasModeratorRole = true;
-          // Also force set to admin if needed, but let's stick to moderator logic first
-        }
-
-      } catch (membErr) {
-        console.error('Error checking guild membership:', membErr);
-        // We might choose to allow or block on error. 
-        // Safer to block if we want strict enforcement, but for now log it.
-        // return c.redirect(`${frontendUrl}?error=membership_check_failed`);
+      } catch (err) {
+        console.warn('Could not check Discord server membership:', err);
       }
     }
 
@@ -1387,29 +1368,21 @@ app.get('/api/auth/callback', async (c) => {
     let player: any = null;
     try {
       await c.env.DB.prepare(
-        `INSERT INTO players (id, discord_id, discord_username, discord_avatar) 
-         VALUES (?, ?, ?, ?)
+        `INSERT INTO players (id, discord_id, discord_username, discord_avatar, is_discord_member) 
+         VALUES (?, ?, ?, ?, ?)
          ON CONFLICT(id) DO UPDATE SET
          discord_username = excluded.discord_username,
-         discord_avatar = excluded.discord_avatar`
+         discord_avatar = excluded.discord_avatar,
+         is_discord_member = excluded.is_discord_member`
       ).bind(
         userData.id,
         userData.id,
         userData.username,
-        userData.avatar
+        userData.avatar,
+        isDiscordMember ? 1 : 0
       ).run();
 
-      // Update role based on Discord moderator role
-      if (hasModeratorRole) {
-        await c.env.DB.prepare(
-          `UPDATE players SET role = 'moderator' WHERE id = ? AND (role = 'user' OR role IS NULL)`
-        ).bind(userData.id).run();
-      } else {
-        // If user lost moderator role in Discord, revert to user (but not if they're admin)
-        await c.env.DB.prepare(
-          `UPDATE players SET role = 'user' WHERE id = ? AND role = 'moderator'`
-        ).bind(userData.id).run();
-      }
+      // No automatic role assignment from Discord - roles managed manually
 
       const { results } = await c.env.DB.prepare(
         `SELECT role, elo FROM players WHERE id = ?`
@@ -1504,50 +1477,57 @@ app.get('/api/player-stats/:playerId', async (c) => {
 
 
 // Debug Route
-app.get('/api/debug/queue', async (c) => {
-  const id = c.env.MATCH_QUEUE.idFromName('global-matchmaking-v2');
-  const obj = c.env.MATCH_QUEUE.get(id);
-  // We can't call methods directly on the Stub in Hono without RPC or fetching specific URL
-  // So we'll fetch the DO with a special path
-  return obj.fetch(new Request('http://do/debug', c.req.raw));
-});
+// app.get('/api/debug/queue', async (c) => {
+//   const id = c.env.MATCH_QUEUE.idFromName('global-matchmaking-v2');
+//   const obj = c.env.MATCH_QUEUE.get(id);
+//   // We can't call methods directly on the Stub in Hono without RPC or fetching specific URL
+//   // So we'll fetch the DO with a special path
+//   return obj.fetch(new Request('http://do/debug', c.req.raw));
+// });
 
 app.get('/ws', async (c) => {
-  const id = c.env.MATCH_QUEUE.idFromName('global-matchmaking-v2');
-  const obj = c.env.MATCH_QUEUE.get(id);
-  return obj.fetch(c.req.raw);
+  // app.get('/api/queue/stream', async (c) => {
+  //   if (c.req.header('Upgrade') !== 'websocket') {
+  //     return c.text('Expected Upgrade: websocket', 426);
+  //   }
+  //   const id = c.env.MATCH_QUEUE.idFromName('global-matchmaking-v2');
+  //   const obj = c.env.MATCH_QUEUE.get(id);
+  //   return obj.fetch(c.req.raw);
+  // });
 });
 
 // API endpoint for Discord bot to send server info
-app.post('/api/match/server-info', async (c) => {
-  try {
-    const id = c.env.MATCH_QUEUE.idFromName('global-matchmaking-v2');
-    const obj = c.env.MATCH_QUEUE.get(id);
+// app.post('/api/match/server-info', async (c) => {
+//   try {
+//     const id = c.env.MATCH_QUEUE.idFromName('global-matchmaking-v2');
+//     const obj = c.env.MATCH_QUEUE.get(id);
 
-    // Create a new request to the Durable Object's server-info endpoint
-    const doUrl = new URL(c.req.raw.url);
-    doUrl.pathname = '/server-info';
-    const doRequest = new Request(doUrl.toString(), {
-      method: 'POST',
-      headers: c.req.raw.headers,
-      body: c.req.raw.body
-    });
+//     // Create a new request to the Durable Object's server-info endpoint
+//     const doUrl = new URL(c.req.raw.url);
+//     doUrl.pathname = '/server-info';
+//     const doRequest = new Request(doUrl.toString(), {
+//       method: 'POST',
+//       headers: c.req.raw.headers,
+//       body: c.req.raw.body
+//     });
 
-    return obj.fetch(doRequest);
-  } catch (error: any) {
-    console.error('Error forwarding server info to Durable Object:', error);
-    return c.json({
-      success: false,
-      error: error.message || 'Internal server error'
-    }, 500);
-  }
-});
+//     return obj.fetch(doRequest);
+//   } catch (error: any) {
+//     console.error('Error forwarding server info to Durable Object:', error);
+//     return c.json({
+//       success: false,
+//       error: error.message || 'Internal server error'
+//     }, 500);
+//   }
+// });
 
 // New Manual Matchmaking Routes
 app.route('/api/matches', matchesRoutes);
+app.route('/api/matches', lobbyInviteRoutes);
 app.route('/api/moderator', moderatorRoutes);
+// app.route('/api', uploadRoutes); // R2 permissions missing, temporarily disabled
 
 export default {
   fetch: app.fetch,
-  MatchQueueDO
+  // MatchQueueDO
 };

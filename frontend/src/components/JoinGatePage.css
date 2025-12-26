@@ -11,15 +11,14 @@
 
 .gate-card {
     background-color: #111827;
-    /* gray-900 */
     border: 1px solid #f97316;
-    /* orange-500 */
     padding: 2.5rem;
     border-radius: 0.75rem;
     text-align: center;
     box-shadow: 0 0 20px rgba(255, 140, 0, 0.3);
-    max-width: 24rem;
+    max-width: 28rem;
     width: 100%;
+    position: relative;
 }
 
 .gate-title {
@@ -33,7 +32,6 @@
 
 .gate-message {
     color: #9ca3af;
-    /* gray-400 */
     margin-bottom: 2rem;
     line-height: 1.5;
 }
@@ -60,17 +58,45 @@
 }
 
 .retry-btn {
-    margin-top: 1rem;
-    font-size: 0.75rem;
-    color: #6b7280;
-    /* gray-500 */
-    text-decoration: underline;
-    background: none;
+    margin-top: 1.5rem;
+    padding: 1.25rem 2.5rem;
+    background: linear-gradient(135deg, #FF6B35 0%, #F7931E 100%);
+    color: white;
     border: none;
+    border-radius: 8px;
+    font-size: 1.125rem;
+    font-weight: 700;
     cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 15px rgba(255, 107, 53, 0.3);
     width: 100%;
+    animation: pulse-glow 2s ease-in-out infinite;
 }
 
-.retry-btn:hover {
-    color: white;
+.retry-btn:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 25px rgba(255, 107, 53, 0.6);
+    background: linear-gradient(135deg, #F7931E 0%, #FF6B35 100%);
+}
+
+.retry-btn:active:not(:disabled) {
+    transform: translateY(0);
+}
+
+.retry-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    animation: none;
+}
+
+@keyframes pulse-glow {
+
+    0%,
+    100% {
+        box-shadow: 0 4px 15px rgba(255, 107, 53, 0.3);
+    }
+
+    50% {
+        box-shadow: 0 6px 25px rgba(255, 107, 53, 0.6);
+    }
 }

@@ -12,7 +12,8 @@ export const players = sqliteTable('players', {
     created_at: text('created_at').default('CURRENT_TIMESTAMP'),
     nickname_updated_at: text('nickname_updated_at'),
     role: text('role').default('user').notNull(), // 'user', 'moderator', 'admin'
-    banned: integer('banned').default(0)
+    banned: integer('banned').default(0),
+    is_discord_member: integer('is_discord_member').default(0)
 });
 
 export const friendships = sqliteTable('friendships', {

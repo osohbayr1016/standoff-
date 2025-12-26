@@ -1,5 +1,8 @@
 import { useState, useEffect } from 'react';
-import './Leaderboard.css';
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Trophy, Crown, Medal } from "lucide-react";
 
 interface LeaderboardPlayer {
   rank: number;
@@ -12,8 +15,6 @@ interface LeaderboardPlayer {
   wins: number;
   losses: number;
 }
-
-const RANK_EMOJIS = ['🏆', '⚔️', '🎯', '🔫', '⚡'];
 
 export default function Leaderboard() {
   const [leaderboardData, setLeaderboardData] = useState<LeaderboardPlayer[]>([]);
@@ -32,7 +33,6 @@ export default function Leaderboard() {
         }
 
         const data = await response.json();
-        // Get top 5 players
         const top5 = data.slice(0, 5).map((player: any, index: number) => ({
           rank: index + 1,
           ...player
@@ -62,56 +62,79 @@ export default function Leaderboard() {
 
   if (loading) {
     return (
-      <div className="leaderboard-card">
-        <h3 className="card-title">Live Leaderboard Top 5</h3>
-        <div className="leaderboard-list">
-          <div style={{ padding: '1rem', textAlign: 'center', color: '#94a3b8' }}>
-            Loading...
-          </div>
-        </div>
-      </div>
+      <Card className="border-border/50">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-lg flex items-center gap-2">
+            <Trophy className="h-5 w-5 text-primary" /> Top Players
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="h-[200px] flex items-center justify-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+        </CardContent>
+      </Card>
     );
   }
 
   if (error || leaderboardData.length === 0) {
     return (
-      <div className="leaderboard-card">
-        <h3 className="card-title">Live Leaderboard Top 5</h3>
-        <div className="leaderboard-list">
-          <div style={{ padding: '1rem', textAlign: 'center', color: '#94a3b8' }}>
-            {error || 'No players found'}
-          </div>
-        </div>
-      </div>
+      <Card className="border-border/50">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-lg flex items-center gap-2">
+            <Trophy className="h-5 w-5 text-primary" /> Top Players
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="h-[200px] flex items-center justify-center text-muted-foreground">
+          {error || 'No players found'}
+        </CardContent>
+      </Card>
     );
   }
 
   return (
-    <div className="leaderboard-card">
-      <h3 className="card-title">Шууд Чансаа Дээд 5</h3>
-      <div className="leaderboard-list">
-        {leaderboardData.map((player) => (
-          <div key={player.id} className={`leaderboard-item rank-${player.rank}`}>
-            <div className="player-info">
-              <span className="rank-badge">{player.rank}</span>
-              <span className="player-avatar">
-                {getAvatarUrl(player) ? (
-                  <img
-                    src={getAvatarUrl(player)!}
-                    alt={getDisplayName(player)}
-                    style={{ width: '100%', height: '100%' }}
-                  />
-                ) : (
-                  RANK_EMOJIS[player.rank - 1] || '👤'
-                )}
-              </span>
-              <span className="player-name">{getDisplayName(player)}</span>
-            </div>
-            <span className="player-points">{player.elo} ELO</span>
-          </div>
-        ))}
-      </div>
-    </div>
+    <Card className="border-border/50 bg-card/50 backdrop-blur-sm overflow-hidden animate-fade-in">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-lg font-bold font-display uppercase tracking-wider flex items-center gap-2 text-primary">
+          <Trophy className="h-5 w-5" /> Live Leaderboard
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="p-0">
+        <Table>
+          <TableHeader>
+            <TableRow className="hover:bg-transparent border-b border-white/5">
+              <TableHead className="w-12 text-center">#</TableHead>
+              <TableHead>Player</TableHead>
+              <TableHead className="text-right">ELO</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {leaderboardData.map((player) => (
+              <TableRow key={player.id} className="hover:bg-muted/50 border-b border-white/5 last:border-0 transition-colors">
+                <TableCell className="font-bold text-center">
+                  {player.rank === 1 && <Crown className="h-5 w-5 text-yellow-500 mx-auto" />}
+                  {player.rank === 2 && <Medal className="h-5 w-5 text-gray-400 mx-auto" />}
+                  {player.rank === 3 && <Medal className="h-5 w-5 text-amber-700 mx-auto" />}
+                  {player.rank > 3 && <span className="text-muted-foreground text-lg">{player.rank}</span>}
+                </TableCell>
+                <TableCell>
+                  <div className="flex items-center gap-3">
+                    <Avatar className={`h-8 w-8 ${player.rank === 1 ? 'ring-2 ring-yellow-500' : ''}`}>
+                      <AvatarImage src={getAvatarUrl(player) || undefined} />
+                      <AvatarFallback>{player.username[0].toUpperCase()}</AvatarFallback>
+                    </Avatar>
+                    <span className={`font-medium ${player.rank === 1 ? 'text-yellow-500' : 'text-foreground'}`}>
+                      {getDisplayName(player)}
+                    </span>
+                  </div>
+                </TableCell>
+                <TableCell className="text-right font-mono font-bold text-primary">
+                  {player.elo}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </CardContent>
+    </Card>
   );
 }
 

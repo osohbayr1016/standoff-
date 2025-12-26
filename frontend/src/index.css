@@ -1,177 +1,132 @@
-@import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
+@layer base {
+  :root {
+    /* FACEIT Theme Palette */
+
+    /* Deep Background: #121212 */
+    --background: 0 0% 7.1%;
+    --foreground: 0 0% 100%;
+    /* Pure White */
+
+    /* Cards/Nav: Secondary Background #1E1E1E */
+    --card: 0 0% 11.8%;
+    --card-foreground: 0 0% 100%;
+
+    /* Popovers */
+    --popover: 0 0% 11.8%;
+    --popover-foreground: 0 0% 100%;
+
+    /* Primary: FACEIT Orange #FF5500 */
+    --primary: 20 100% 50%;
+    --primary-foreground: 0 0% 100%;
+
+    /* Secondary: Using Card BG for consistency */
+    --secondary: 0 0% 11.8%;
+    --secondary-foreground: 0 0% 100%;
+
+    /* Muted: Accent Grey #444444 & Secondary Text #B0B0B0 */
+    --muted: 0 0% 26.7%;
+    --muted-foreground: 0 0% 69%;
+
+    /* Accent: Hover states */
+    --accent: 0 0% 15%;
+    /* Slightly lighter than card */
+    --accent-foreground: 0 0% 100%;
+
+    /* Destructive: Error Red #FF0033 */
+    --destructive: 348 100% 50%;
+    --destructive-foreground: 0 0% 100%;
+
+    /* Borders & Inputs: Accent Grey #444444 */
+    --border: 0 0% 26.7%;
+    --input: 0 0% 26.7%;
+    --ring: 20 100% 50%;
+    --radius: 0.5rem;
+
+    /* Chart Colors */
+    --chart-1: 20 100% 50%;
+    /* Orange */
+    --chart-2: 151 100% 50%;
+    /* Success Green #00FF85 */
+    --chart-3: 348 100% 50%;
+    /* Error Red */
+    --chart-4: 280 65% 60%;
+    --chart-5: 160 84% 40%;
+
+    /* Sidebar */
+    --sidebar-background: 0 0% 7.1%;
+    --sidebar-foreground: 0 0% 100%;
+    --sidebar-primary: 20 100% 50%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 0 0% 11.8%;
+    --sidebar-accent-foreground: 0 0% 100%;
+    --sidebar-border: 0 0% 26.7%;
+    --sidebar-ring: 20 100% 50%;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'Inter', sans-serif;
+    background-image:
+      radial-gradient(circle at 50% 0%, hsl(0 0% 15%) 0%, hsl(0 0% 7.1%) 60%);
+    background-attachment: fixed;
+    overflow-x: hidden;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    @apply font-display tracking-tight;
+    font-family: 'Rajdhani', sans-serif;
+  }
 }
 
-:root {
-  font-family: 'Inter', system-ui, -apple-system, sans-serif;
-  line-height: 1.5;
-  font-weight: 400;
-  color-scheme: dark;
-
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-
-  --primary: #ff6b35;
-  /* Neon Orange */
-  --primary-hover: #ff8c61;
-  --secondary: #38bdf8;
-  /* Cyber Blue */
-  --secondary-glow: rgba(56, 189, 248, 0.5);
-
-  --bg-dark: #030712;
-  /* Deep Space */
-  --bg-panel: rgba(17, 24, 39, 0.7);
-
-  --glass-bg: rgba(17, 24, 39, 0.6);
-  --glass-border: rgba(255, 255, 255, 0.08);
-  --glass-highlight: rgba(255, 255, 255, 0.05);
-
-  --text-primary: #ffffff;
-  --text-secondary: #94a3b8;
-
-  --font-display: 'Rajdhani', sans-serif;
-  --font-body: 'Inter', sans-serif;
-}
-
-body {
-  margin: 0;
-  min-width: 320px;
-  min-height: 100vh;
-  background-color: var(--bg-dark);
-  /* Cyber Grid Background */
-  background-image:
-    linear-gradient(rgba(255, 107, 53, 0.03) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 107, 53, 0.03) 1px, transparent 1px),
-    radial-gradient(circle at 50% 0%, #1e1b4b 0%, var(--bg-dark) 60%);
-  background-size: 50px 50px, 50px 50px, 100% 100%;
-  background-attachment: fixed;
-
-  color: var(--text-primary);
-  overflow-x: hidden;
-  font-size: 14px;
-}
-
-/* Premium Scrollbar */
+/* Scrollbar */
 ::-webkit-scrollbar {
   width: 6px;
 }
 
 ::-webkit-scrollbar-track {
-  background: var(--bg-dark);
+  background: hsl(var(--background));
 }
 
 ::-webkit-scrollbar-thumb {
-  background: linear-gradient(180deg, var(--primary), #9a3412);
+  background: hsl(var(--primary) / 0.3);
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--primary-hover);
-}
-
-::selection {
-  background: rgba(255, 107, 53, 0.3);
-  color: #fff;
-}
-
-button {
-  font-family: var(--font-display);
-  /* Use Rajdhani for buttons */
-  letter-spacing: 0.5px;
-  border: none;
-  outline: none;
-  cursor: pointer;
-  -webkit-tap-highlight-color: transparent;
-  text-transform: uppercase;
-}
-
-button:focus-visible {
-  outline: 2px solid var(--secondary);
-  outline-offset: 4px;
-}
-
-h1,
-h2,
-h3,
-h4,
-h5,
-h6 {
-  font-family: var(--font-display);
-  font-weight: 700;
-  letter-spacing: 1px;
-}
-
-a {
-  color: inherit;
-  text-decoration: none;
-  -webkit-tap-highlight-color: transparent;
-}
-
-#root {
-  width: 100%;
-  min-height: 100vh;
-  display: flex;
-  flex-direction: column;
+  background: hsl(var(--primary) / 0.6);
 }
 
 /* Utility Animations */
-@keyframes flicker {
-
-  0%,
-  19.999%,
-  22%,
-  62.999%,
-  64%,
-  64.999%,
-  70%,
-  100% {
-    opacity: 0.99;
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
   }
 
-  20%,
-  21.999%,
-  63%,
-  63.999%,
-  65%,
-  69.999% {
-    opacity: 0.4;
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 
-.scanline {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 5px;
-  background: rgba(56, 189, 248, 0.1);
-  opacity: 0.4;
-  animation: scanline 8s linear infinite;
-  pointer-events: none;
-  z-index: 9999;
+.animate-fade-in {
+  animation: fadeIn 0.5s ease-out forwards;
 }
 
-@keyframes scanline {
-  0% {
-    top: -5%;
-  }
-
-  100% {
-    top: 105%;
-  }
-}
-
-@media (min-width: 768px) {
-  body {
-    font-size: 16px;
-  }
-
-  ::-webkit-scrollbar {
-    width: 8px;
-  }
+/* Glass Utility */
+.glass-panel {
+  @apply bg-black/40 backdrop-blur-md border border-white/5;
 }

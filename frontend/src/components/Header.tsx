@@ -1,5 +1,26 @@
 import { useState } from "react";
-import "./Header.css";
+import { loginWithDiscord } from "../utils/auth";
+import { Sheet, SheetContent, SheetTrigger, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Button } from "@/components/ui/button";
+import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
+import {
+  Menu,
+  Swords,
+  Trophy,
+  Gift,
+  Users,
+  Shield,
+  LogOut,
+  User as UserIcon
+} from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 interface User {
   id: string;
@@ -15,6 +36,7 @@ interface HeaderProps {
   user?: User | null;
   onNavigate: (page: string) => void;
   onLogout: () => void;
+  backendUrl: string;
 }
 
 export default function Header({
@@ -23,7 +45,7 @@ export default function Header({
   onNavigate,
   onLogout,
 }: HeaderProps) {
-  const [showDropdown, setShowDropdown] = useState(false);
+  const [isOpen, setIsOpen] = useState(false);
 
   const getAvatarUrl = () => {
     if (user?.avatar) {
@@ -32,223 +54,157 @@ export default function Header({
     return null;
   };
 
+  const NavItems = ({ mobile = false }: { mobile?: boolean }) => (
+    <>
+      <Button
+        variant={currentPage === "home" ? "secondary" : "ghost"}
+        className={`justify-start ${mobile ? "w-full" : ""}`}
+        onClick={() => {
+          onNavigate("home");
+          if (mobile) setIsOpen(false);
+        }}
+      >
+        <div className="flex items-center gap-2">
+          {/* Home Icon could go here, or just text */}
+          <span className="font-display font-bold">HOME</span>
+        </div>
+      </Button>
+      <Button
+        variant={currentPage === "matchmaking" ? "secondary" : "ghost"}
+        className={`justify-start ${mobile ? "w-full" : ""}`}
+        onClick={() => {
+          onNavigate("matchmaking");
+          if (mobile) setIsOpen(false);
+        }}
+      >
+        <Swords className="mr-2 h-4 w-4" />
+        PLAY
+      </Button>
+      <Button
+        variant={currentPage === "leaderboard" ? "secondary" : "ghost"}
+        className={`justify-start ${mobile ? "w-full" : ""}`}
+        onClick={() => {
+          onNavigate("leaderboard");
+          if (mobile) setIsOpen(false);
+        }}
+      >
+        <Trophy className="mr-2 h-4 w-4" />
+        RANKINGS
+      </Button>
+      <Button
+        variant={currentPage === "rewards" ? "secondary" : "ghost"}
+        className={`justify-start ${mobile ? "w-full" : ""}`}
+        onClick={() => {
+          onNavigate("rewards");
+          if (mobile) setIsOpen(false);
+        }}
+      >
+        <Gift className="mr-2 h-4 w-4" />
+        REWARDS
+      </Button>
+      <Button
+        variant={currentPage === "friends" ? "secondary" : "ghost"}
+        className={`justify-start ${mobile ? "w-full" : ""}`}
+        onClick={() => {
+          onNavigate("friends");
+          if (mobile) setIsOpen(false);
+        }}
+      >
+        <Users className="mr-2 h-4 w-4" />
+        FRIENDS
+      </Button>
+      {(user?.role === 'moderator' || user?.role === 'admin') && (
+        <Button
+          variant={currentPage === "moderator" ? "destructive" : "ghost"}
+          className={`justify-start text-destructive hover:text-destructive-foreground hover:bg-destructive/90 ${mobile ? "w-full" : ""}`}
+          onClick={() => {
+            onNavigate("moderator");
+            if (mobile) setIsOpen(false);
+          }}
+        >
+          <Shield className="mr-2 h-4 w-4" />
+          MOD PANEL
+        </Button>
+      )}
+    </>
+  );
+
   return (
-    <header className="header">
-      <div className="header-container">
-        <div className="logo" onClick={() => onNavigate("home")}>
-          <span className="logo-text">STAN</span>
-          <span className="logo-highlight">D</span>
-          <span className="logo-text">OFF 2</span>
+    <header className="sticky top-0 z-50 w-full border-b bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+      <div className="container flex h-16 items-center justify-between px-4">
+
+        {/* Logo */}
+        <div
+          className="flex items-center gap-1 cursor-pointer select-none"
+          onClick={() => onNavigate("home")}
+        >
+          <span className="font-display text-2xl font-bold tracking-tighter text-foreground">STAN</span>
+          <span className="font-display text-2xl font-bold tracking-tighter text-primary">D</span>
+          <span className="font-display text-2xl font-bold tracking-tighter text-foreground">OFF 2</span>
         </div>
 
-        {/* Mobile Hamburger Button */}
-        <button
-          className="hamburger-btn"
-          onClick={() => setShowDropdown(!showDropdown)} // Re-using showDropdown state for mobile menu toggle to keep simple, or better add new state
-        >
-          <div
-            className={`hamburger-line ${showDropdown ? "active" : ""}`}
-          ></div>
-          <div
-            className={`hamburger-line ${showDropdown ? "active" : ""}`}
-          ></div>
-          <div
-            className={`hamburger-line ${showDropdown ? "active" : ""}`}
-          ></div>
-        </button>
-
         {/* Desktop Nav */}
-        <nav className="nav desktop-nav">
-
-          <button
-            className={`nav-link ${currentPage === "home" ? "active" : ""}`}
-            onClick={() => onNavigate("home")}
-          >
-            Нүүр
-          </button>
-          <button
-            className={`nav-link ${currentPage === "matchmaking" ? "active" : ""
-              }`}
-            onClick={() => onNavigate("matchmaking")}
-          >
-            Тоглох
-          </button>
-          <button
-            className={`nav-link ${currentPage === "leaderboard" ? "active" : ""
-              }`}
-            onClick={() => onNavigate("leaderboard")}
-          >
-            Чансаа
-          </button>
-          <button
-            className={`nav-link ${currentPage === "rewards" ? "active" : ""}`}
-            onClick={() => onNavigate("rewards")}
-          >
-            Урамшуулал
-          </button>
-          <button
-            className={`nav-link ${currentPage === "friends" ? "active" : ""}`}
-            onClick={() => onNavigate("friends")}
-          >
-            Найзууд
-          </button>
-          {(user?.role === 'moderator' || user?.role === 'admin') && (
-            <button
-              className={`nav-link moderator-link ${currentPage === "moderator" ? "active" : ""}`}
-              onClick={() => onNavigate("moderator")}
-            >
-              🛡️ Moderator
-            </button>
-          )}
+        <nav className="hidden md:flex items-center gap-1">
+          <NavItems />
         </nav>
 
-        {/* Mobile Side Drawer */}
-        <div
-          className={`mobile-nav-overlay ${showDropdown ? "active" : ""}`}
-          onClick={() => setShowDropdown(false)}
-        ></div>
-        <nav className={`mobile-nav-drawer ${showDropdown ? "active" : ""}`}>
-          <div className="mobile-nav-header">
-            <span className="mobile-nav-title">ЦЭС</span>
-            <button
-              className="close-nav-btn"
-              onClick={() => setShowDropdown(false)}
-            >
-              ✕
-            </button>
-          </div>
+        {/* User Menu (Desktop & Mobile) */}
+        <div className="flex items-center gap-2">
+          {user ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" className="relative h-10 w-10 rounded-full">
+                  <Avatar className="h-9 w-9 border border-border">
+                    <AvatarImage src={getAvatarUrl() || undefined} alt={user.username} />
+                    <AvatarFallback>{user.username[0]?.toUpperCase()}</AvatarFallback>
+                  </Avatar>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent className="w-56" align="end" forceMount>
+                <DropdownMenuLabel className="font-normal">
+                  <div className="flex flex-col space-y-1">
+                    <p className="text-sm font-medium leading-none">{user.standoff_nickname || user.username}</p>
+                    <p className="text-xs leading-none text-muted-foreground">ELO: {user.elo || 1000}</p>
+                  </div>
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => onNavigate("profile")}>
+                  <UserIcon className="mr-2 h-4 w-4" />
+                  <span>Profile</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={onLogout} className="text-destructive focus:bg-destructive/10">
+                  <LogOut className="mr-2 h-4 w-4" />
+                  <span>Log out</span>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : (
+            <Button onClick={loginWithDiscord}>
+              Login
+            </Button>
+          )}
 
-          <div className="mobile-nav-links">
-
-            <button
-              className={`mobile-nav-link ${currentPage === "home" ? "active" : ""
-                }`}
-              onClick={() => {
-                onNavigate("home");
-                setShowDropdown(false);
-              }}
-            >
-              Нүүр
-            </button>
-            <button
-              className={`mobile-nav-link ${currentPage === "matchmaking" ? "active" : ""
-                }`}
-              onClick={() => {
-                onNavigate("matchmaking");
-                setShowDropdown(false);
-              }}
-            >
-              Тоглолт олох
-            </button>
-            <button
-              className={`mobile-nav-link ${currentPage === "leaderboard" ? "active" : ""
-                }`}
-              onClick={() => {
-                onNavigate("leaderboard");
-                setShowDropdown(false);
-              }}
-            >
-              Чансаа
-            </button>
-            <button
-              className={`mobile-nav-link ${currentPage === "rewards" ? "active" : ""
-                }`}
-              onClick={() => {
-                onNavigate("rewards");
-                setShowDropdown(false);
-              }}
-            >
-              Урамшуулал
-            </button>
-            <button
-              className={`mobile-nav-link ${currentPage === "friends" ? "active" : ""
-                }`}
-              onClick={() => {
-                onNavigate("friends");
-                setShowDropdown(false);
-              }}
-            >
-              Найзууд
-            </button>
-            {(user?.role === 'moderator' || user?.role === 'admin') && (
-              <button
-                className={`mobile-nav-link moderator-link ${currentPage === "moderator" ? "active" : ""}`}
-                onClick={() => {
-                  onNavigate("moderator");
-                  setShowDropdown(false);
-                }}
-              >
-                🛡️ Moderator
-              </button>
-            )}
-          </div>
-
-          {user && (
-            <div className="mobile-user-section">
-              <div
-                className="mobile-user-info"
-                onClick={() => {
-                  onNavigate("profile");
-                  setShowDropdown(false);
-                }}
-              >
-                <div className="user-avatar-frame-header">
-                  {getAvatarUrl() ? (
-                    <img src={getAvatarUrl()!} alt="avatar" />
-                  ) : (
-                    <div className="avatar-fallback-header">
-                      {user.username[0]}
-                    </div>
-                  )}
-                </div>
-                <div className="mobile-user-details">
-                  <span className="mobile-username">
-                    {user.standoff_nickname || user.username}
-                  </span>
-                  <span className="mobile-elo">ELO: {user.elo || 1000}</span>
-                </div >
-              </div >
-              <button
-                className="mobile-logout-btn"
-                onClick={() => {
-                  onLogout();
-                  setShowDropdown(false);
-                }}
-              >
-                Гарах
-              </button>
-            </div >
-          )
-          }
-        </nav >
-
-        {/* Desktop User Info (Hidden on Mobile if Drawer is used for user info too, or keep concise) */}
-        {
-          user && (
-            <div
-              className="user-info desktop-user-info"
-              onClick={() => onNavigate("profile")}
-              style={{ cursor: "pointer" }}
-            >
-              <div className="user-avatar-frame-header">
-                {getAvatarUrl() ? (
-                  <img src={getAvatarUrl()!} alt="avatar" />
-                ) : (
-                  <div className="avatar-fallback-header">{user.username[0]}</div>
-                )}
+          {/* Mobile Menu Trigger */}
+          <Sheet open={isOpen} onOpenChange={setIsOpen}>
+            <SheetTrigger asChild>
+              <Button variant="ghost" size="icon" className="md:hidden">
+                <Menu className="h-6 w-6" />
+                <span className="sr-only">Toggle menu</span>
+              </Button>
+            </SheetTrigger>
+            <SheetContent side="left" className="w-[300px] sm:w-[400px]">
+              <SheetHeader>
+                <SheetTitle className="text-left font-display font-bold text-2xl">
+                  <span>STAN</span><span className="text-primary">D</span><span>OFF 2</span>
+                </SheetTitle>
+              </SheetHeader>
+              <div className="flex flex-col gap-4 py-4 mt-4">
+                <NavItems mobile />
               </div>
-              <div className="user-text-info">
-                <div className="user-top-row">
-                  <span className="user-header-name">{user.standoff_nickname || user.username}</span>
-                  {user.role === 'moderator' && <span className="mod-badge">MOD</span>}
-                  {user.role === 'admin' && <span className="admin-badge">ADMIN</span>}
-                </div>
-                <span className="user-elo">ELO: {user.elo || 1000}</span>
-              </div>
-            </div>
-          )
-        }
-      </div >
-    </header >
+            </SheetContent>
+          </Sheet>
+        </div>
+      </div>
+    </header>
   );
 }

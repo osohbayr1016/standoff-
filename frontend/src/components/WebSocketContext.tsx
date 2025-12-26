@@ -15,16 +15,25 @@ interface WebSocketContextType {
 const WebSocketContext = createContext<WebSocketContextType | undefined>(undefined);
 
 export const WebSocketProvider = ({ children, url }: { children: ReactNode; url: string }) => {
-    const [socket, setSocket] = useState<WebSocket | null>(null);
-    const [lastMessage, setLastMessage] = useState<any>(null);
-    const [messageLog, setMessageLog] = useState<any[]>([]);
-    const [isConnected, setIsConnected] = useState(false);
+    // const [socket, setSocket] = useState<WebSocket | null>(null);
+    const [socket] = useState<WebSocket | null>(null); // Keep socket for context providing
+    // const [lastMessage, setLastMessage] = useState<any>(null);
+    const [lastMessage] = useState<any>(null);
+    // const [messageLog, setMessageLog] = useState<any[]>([]);
+    const [messageLog] = useState<any[]>([]);
+    // const [isConnected, setIsConnected] = useState(false);
+    const [isConnected] = useState(false);
     // use 'any' for timeout ref to avoid NodeJS vs Window timeout type issues
     const reconnectTimeoutRef = useRef<any>(null);
     const socketRef = useRef<WebSocket | null>(null);
     const userIdRef = useRef<string | null>(null);
 
     const connect = useCallback(() => {
+        // WebSocket temporarily disabled due to backend permission issues
+        console.log("WebSocket connection temporarily disabled");
+        return;
+
+        /*
         if (socketRef.current && (socketRef.current.readyState === WebSocket.OPEN || socketRef.current.readyState === WebSocket.CONNECTING)) {
             return;
         }
@@ -80,6 +89,7 @@ export const WebSocketProvider = ({ children, url }: { children: ReactNode; url:
             console.error('WebSocket Error', error);
             ws.close();
         };
+        */
     }, [url]);
 
     useEffect(() => {
@@ -96,10 +106,12 @@ export const WebSocketProvider = ({ children, url }: { children: ReactNode; url:
         if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
             console.log("Sending WS Message:", message); // DEBUG LOG
             socketRef.current.send(JSON.stringify(message));
+            /*
             setMessageLog(prev => {
                 const newLog = [...prev, { direction: 'OUT', data: message, timestamp: new Date().toISOString() }];
                 return newLog.slice(-50);
             });
+            */
         } else {
             console.warn('WebSocket not connected, message dropped:', message);
         }

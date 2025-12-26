@@ -1,10 +1,16 @@
 import { useState, useEffect } from "react";
-import "./FriendsPage.css";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
+import { Search, UserPlus, Check, X, MessageSquare, Users } from "lucide-react";
+import { VerifiedBadge } from "./VerifiedBadge";
 
 interface User {
   id: string;
-  username: string; // discord_username
-  avatar: string; // discord_avatar
+  username: string;
+  avatar: string;
 }
 
 interface Friend {
@@ -14,7 +20,8 @@ interface Friend {
   nickname?: string;
   avatar?: string;
   elo: number;
-  status: string; // 'online' | 'offline' - currently mocked or could be from WS
+  is_discord_member?: boolean;
+  status: string;
 }
 
 interface SearchResult {
@@ -23,9 +30,14 @@ interface SearchResult {
   nickname?: string;
   avatar?: string;
   elo: number;
+  is_discord_member?: boolean;
 }
 
-export default function FriendsPage() {
+interface FriendsPageProps {
+  onViewProfile?: (userId: string) => void;
+}
+
+export default function FriendsPage({ onViewProfile }: FriendsPageProps) {
   const [activeFriends, setActiveFriends] = useState<Friend[]>([]);
   const [pendingRequests, setPendingRequests] = useState<Friend[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
@@ -48,18 +60,16 @@ export default function FriendsPage() {
     setLoading(true);
     try {
       const res = await fetch(
-        `${import.meta.env.VITE_BACKEND_URL || "http://localhost:8787"
-        }/api/friends/${userId}`
+        `${import.meta.env.VITE_BACKEND_URL || "http://localhost:8787"}/api/friends/${userId}`
       );
       if (res.ok) {
         const data = await res.json();
         setActiveFriends(data.friends || []);
         setPendingRequests(data.pendingIncoming || []);
-        setPendingRequests(data.pendingIncoming || []);
       }
     } catch (err) {
       console.error("Failed to fetch friends", err);
-      setError("Найзуудыг ачаалахад алдаа гарлаа");
+      setError("Failed to load friends network");
     } finally {
       setLoading(false);
     }
@@ -71,8 +81,7 @@ export default function FriendsPage() {
     setSearchLoading(true);
     try {
       const res = await fetch(
-        `${import.meta.env.VITE_BACKEND_URL || "http://localhost:8787"
-        }/api/users/search?q=${searchQuery}&userId=${currentUser.id}`
+        `${import.meta.env.VITE_BACKEND_URL || "http://localhost:8787"}/api/users/search?q=${searchQuery}&userId=${currentUser.id}`
       );
       if (res.ok) {
         const data = await res.json();
@@ -90,8 +99,7 @@ export default function FriendsPage() {
 
     try {
       const res = await fetch(
-        `${import.meta.env.VITE_BACKEND_URL || "http://localhost:8787"
-        }/api/friends/request`,
+        `${import.meta.env.VITE_BACKEND_URL || "http://localhost:8787"}/api/friends/request`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -100,17 +108,14 @@ export default function FriendsPage() {
       );
 
       if (res.ok) {
-        // Optimistic update or refresh? Refresh is safer.
-        // Also remove from search results to indicate sent?
         setSearchResults((prev) => prev.filter((r) => r.id !== targetId));
-        alert("Хүсэлт илгээлээ!");
         fetchFriends(currentUser.id);
       } else {
         const data = await res.json();
-        alert(data.error || "Хүсэлт илгээхэд алдаа гарлаа");
+        alert(data.error || "Failed to send request");
       }
     } catch (err) {
-      alert("Сүлжээний алдаа");
+      alert("Network error");
     }
   };
 
@@ -118,8 +123,7 @@ export default function FriendsPage() {
     if (!currentUser) return;
     try {
       const res = await fetch(
-        `${import.meta.env.VITE_BACKEND_URL || "http://localhost:8787"
-        }/api/friends/accept`,
+        `${import.meta.env.VITE_BACKEND_URL || "http://localhost:8787"}/api/friends/accept`,
         {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
@@ -139,8 +143,7 @@ export default function FriendsPage() {
     if (!currentUser) return;
     try {
       const res = await fetch(
-        `${import.meta.env.VITE_BACKEND_URL || "http://localhost:8787"
-        }/api/friends/${requestId}`,
+        `${import.meta.env.VITE_BACKEND_URL || "http://localhost:8787"}/api/friends/${requestId}`,
         {
           method: "DELETE",
         }
@@ -160,172 +163,194 @@ export default function FriendsPage() {
   };
 
   return (
-    <div className="friends-page">
-      <h1 className="friends-page-title">ТОГЛОГЧДЫН СҮЛЖЭЭ</h1>
-      {error && <div className="error-message">{error}</div>}
+    <div className="container mx-auto max-w-7xl space-y-6 pb-12 animate-fade-in">
+      <div className="flex flex-col gap-2">
+        <h1 className="text-3xl font-bold font-display tracking-tighter text-white flex items-center gap-2">
+          <Users className="h-8 w-8 text-primary" /> Player Network
+        </h1>
+        <p className="text-muted-foreground">Manage your connections and find new teammates.</p>
+      </div>
 
-      <div className="friends-content">
-        {/* LEFT COLUMN: ACTIVE FRIENDS */}
-        <div className="active-friends-section">
-          <h2 className="section-title">НАЙЗУУД ({activeFriends.length})</h2>
-
-          {loading ? (
-            <div className="loading-state">СҮЛЖЭЭГ ШАЛГАЖ БАЙНА...</div>
-          ) : activeFriends.length === 0 ? (
-            <div className="empty-state">ХАМТРАГЧ БАЙХГҮЙ</div>
-          ) : (
-            <div className="friends-list">
-              {activeFriends.map((friend) => (
-                <div key={friend.id} className="friend-item">
-                  <div className="friend-info">
-                    <div className="friend-avatar">
-                      {friend.avatar ? (
-                        <img
-                          src={getAvatarUrl(friend.id, friend.avatar) || ""}
-                          alt="avatar"
-                        />
-                      ) : (
-                        <div className="avatar-placeholder">
-                          {friend.username[0]}
-                        </div>
-                      )}
-                    </div>
-                    <div className="friend-details">
-                      <div className="friend-name-status">
-                        <span className="friend-name">
-                          {friend.nickname || friend.username}
-                        </span>
-                      </div>
-                      <span className="status-text online">● ОНЛАЙН</span>
-                      <span className="friend-elo">ELO: {friend.elo}</span>
-                    </div>
-                  </div>
-                  <div className="friend-actions">
-                    <button className="message-btn">ЗУРВАС</button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+      {error && (
+        <div className="bg-destructive/10 text-destructive p-4 rounded-md border border-destructive/20">
+          {error}
         </div>
+      )}
 
-        {/* RIGHT COLUMN: SEARCH & REQUESTS */}
-        <div className="right-column">
-          {/* SEARCH SECTION */}
-          <div className="add-friend-section">
-            <h2 className="section-title">ТОГЛОГЧ УРИХ</h2>
-
-            <div className="search-bar">
-              <input
-                type="text"
-                placeholder="НЭРЭЭР ХАЙХ..."
-                className="search-input"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-              />
-              <button
-                className="search-btn"
-                onClick={handleSearch}
-                disabled={searchLoading}
-              >
-                {searchLoading ? "..." : "🔍"}
-              </button>
-            </div>
-
-            <div className="search-results">
-              {searchResults.map((result) => (
-                <div key={result.id} className="result-item">
-                  <div className="result-left">
-                    <div className="result-avatar-small">
-                      {result.avatar ? (
-                        <img src={getAvatarUrl(result.id, result.avatar)!} />
-                      ) : (
-                        result.username[0]
-                      )}
-                    </div>
-                    <div className="result-info">
-                      <span className="result-name">
-                        {result.nickname || result.username}
-                      </span>
-                      <span className="result-team">ELO: {result.elo}</span>
-                    </div >
-                  </div >
-                  <div className="result-right">
-                    <button
-                      className="send-request-btn"
-                      onClick={() => sendFriendRequest(result.id)}
-                    >
-                      НЭМЭХ +
-                    </button>
-                  </div>
-                </div >
-              ))
-              }
-              {
-                searchResults.length === 0 && searchQuery && !searchLoading && (
-                  <div className="no-results">МЭДЭЭЛЭЛ ОЛДОХГҮЙ</div>
-                )
-              }
-            </div >
-          </div >
-
-          {/* REQESTS SECTION */}
-          < div className="pending-requests-section" >
-            <h2 className="section-title">
-              ИРСЭН ХҮСЭЛТҮҮД ({pendingRequests.length})
-            </h2>
-
-            {
-              pendingRequests.length === 0 ? (
-                <div className="empty-state-small">
-                  ХУЛЭЭГДЭЖ БАЙГАА ХҮСЭЛТ БАЙХГҮЙ
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* LEFT COLUMN: ACTIVE FRIENDS */}
+        <div className="lg:col-span-2 space-y-6">
+          <Card className="bg-zinc-950/50 backdrop-blur-sm border-white/10 shadow-lg h-full">
+            <CardHeader className="border-b border-white/10 bg-zinc-900/30">
+              <CardTitle className="text-xl font-bold flex items-center gap-2">
+                <Users className="h-5 w-5 text-primary" />
+                Your Friends
+                <Badge variant="secondary" className="ml-2 bg-zinc-800 text-gray-300 hover:bg-zinc-700">
+                  {activeFriends.length}
+                </Badge>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-6">
+              {loading ? (
+                <div className="flex items-center justify-center py-12 text-muted-foreground">
+                  Loading network...
+                </div>
+              ) : activeFriends.length === 0 ? (
+                <div className="text-center py-12 text-muted-foreground border-2 border-dashed border-zinc-800 rounded-lg">
+                  <UserPlus className="h-12 w-12 mx-auto mb-3 opacity-20" />
+                  <p>No connections yet.</p>
+                  <p className="text-sm">Search for players to build your team.</p>
                 </div>
               ) : (
-                <div className="requests-list">
-                  {pendingRequests.map((request) => (
-                    <div key={request.id} className="request-item">
-                      <div className="request-left">
-                        <div className="request-avatar">
-                          {request.avatar ? (
-                            <img
-                              src={getAvatarUrl(request.id, request.avatar)!}
-                            />
-                          ) : (
-                            request.username[0]
-                          )}
-                        </div>
-                        <div className="request-info">
-                          <span className="request-name">
-                            {request.nickname || request.username}
-                          </span>
-                          <div className="request-elo">
-                            <span className="elo-label">ELO: {request.elo}</span>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {activeFriends.map((friend) => (
+                    <div
+                      key={friend.id}
+                      className="flex items-center justify-between p-4 rounded-lg bg-zinc-900/50 border border-white/5 hover:border-primary/50 transition-colors group cursor-pointer"
+                      onClick={() => onViewProfile?.(friend.id)}
+                    >
+                      <div className="flex items-center gap-3">
+                        <Avatar className="h-12 w-12 border border-zinc-700">
+                          <AvatarImage src={getAvatarUrl(friend.id, friend.avatar) || undefined} />
+                          <AvatarFallback>{friend.username[0]?.toUpperCase()}</AvatarFallback>
+                        </Avatar>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-white max-w-[120px] truncate flex items-center gap-1.5">
+                              {friend.nickname || friend.username}
+                              <VerifiedBadge isVerified={friend.is_discord_member} showText={false} className="w-3.5 h-3.5" />
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                            <span className="flex items-center gap-1 text-green-500">
+                              <span className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse" />
+                              Online
+                            </span>
+                            <span>•</span>
+                            <span className="font-mono text-primary">ELO {friend.elo}</span>
                           </div>
                         </div>
                       </div>
-                      <div className="request-actions">
-                        <button
-                          className="accept-btn"
-                          onClick={() => acceptRequest(request.friendship_id)}
-                        >
-                          ЗӨВШӨӨРӨХ
-                        </button>
-                        <button
-                          className="decline-btn"
-                          onClick={() => declineRequest(request.friendship_id)}
-                        >
-                          ТАТГАЛАХ
-                        </button>
+                      <Button size="sm" variant="ghost" className="opacity-0 group-hover:opacity-100 transition-opacity">
+                        <MessageSquare className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* RIGHT COLUMN: SEARCH & REQUESTS */}
+        <div className="space-y-6">
+          {/* SEARCH SECTION */}
+          <Card className="bg-zinc-950/50 backdrop-blur-sm border-white/10 shadow-lg">
+            <CardHeader className="border-b border-white/10 bg-zinc-900/30">
+              <CardTitle className="text-lg font-bold flex items-center gap-2">
+                <UserPlus className="h-5 w-5 text-primary" />
+                Add Players
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-4 space-y-4">
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Search by username..."
+                    className="pl-9 bg-zinc-900/50 border-zinc-800"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+                  />
+                </div>
+                <Button onClick={handleSearch} disabled={searchLoading} size="icon">
+                  {searchLoading ? <span className="animate-spin">⌛</span> : <Search className="h-4 w-4" />}
+                </Button>
+              </div>
+
+              <div className="space-y-2">
+                {searchResults.map((result) => (
+                  <div key={result.id} className="flex items-center justify-between p-3 rounded-md bg-zinc-900/30 border border-white/5">
+                    <div className="flex items-center gap-3 cursor-pointer" onClick={() => onViewProfile?.(result.id)}>
+                      <Avatar className="h-8 w-8">
+                        <AvatarImage src={getAvatarUrl(result.id, result.avatar) || undefined} />
+                        <AvatarFallback>{result.username[0]?.toUpperCase()}</AvatarFallback>
+                      </Avatar>
+                      <div className="flex flex-col">
+                        <span className="text-sm font-medium text-white flex items-center gap-1.5">
+                          {result.nickname || result.username}
+                          <VerifiedBadge isVerified={result.is_discord_member} showText={false} className="w-3.5 h-3.5" />
+                        </span>
+                        <span className="text-xs text-primary font-mono">ELO {result.elo}</span>
+                      </div>
+                    </div>
+                    <Button size="sm" variant="secondary" onClick={() => sendFriendRequest(result.id)} className="h-7 text-xs">
+                      Add
+                    </Button>
+                  </div>
+                ))}
+
+                {searchResults.length === 0 && searchQuery && !searchLoading && (
+                  <div className="text-center py-4 text-sm text-muted-foreground">
+                    No players found
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* REQUESTS SECTION */}
+          <Card className="bg-zinc-950/50 backdrop-blur-sm border-white/10 shadow-lg">
+            <CardHeader className="border-b border-white/10 bg-zinc-900/30">
+              <CardTitle className="text-lg font-bold flex items-center gap-2">
+                <Users className="h-5 w-5 text-primary" />
+                Requests
+                {pendingRequests.length > 0 && (
+                  <Badge variant="destructive" className="ml-auto">
+                    {pendingRequests.length}
+                  </Badge>
+                )}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-4">
+              {pendingRequests.length === 0 ? (
+                <div className="text-center py-8 text-sm text-muted-foreground">
+                  No pending requests
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {pendingRequests.map((request) => (
+                    <div key={request.id} className="flex items-center justify-between p-3 rounded-md bg-zinc-900/30 border border-white/5">
+                      <div className="flex items-center gap-3 cursor-pointer" onClick={() => onViewProfile?.(request.id)}>
+                        <Avatar className="h-10 w-10">
+                          <AvatarImage src={getAvatarUrl(request.id, request.avatar) || undefined} />
+                          <AvatarFallback>{request.username[0]?.toUpperCase()}</AvatarFallback>
+                        </Avatar>
+                        <div className="flex flex-col">
+                          <span className="text-sm font-medium text-white flex items-center gap-1.5">
+                            {request.nickname || request.username}
+                            <VerifiedBadge isVerified={request.is_discord_member} showText={false} className="w-3.5 h-3.5" />
+                          </span>
+                          <span className="text-xs text-primary font-mono">ELO {request.elo}</span>
+                        </div>
+                      </div>
+                      <div className="flex gap-1">
+                        <Button size="icon" variant="default" className="h-8 w-8 bg-green-600 hover:bg-green-700" onClick={() => acceptRequest(request.friendship_id)}>
+                          <Check className="h-4 w-4" />
+                        </Button>
+                        <Button size="icon" variant="destructive" className="h-8 w-8" onClick={() => declineRequest(request.friendship_id)}>
+                          <X className="h-4 w-4" />
+                        </Button>
                       </div>
                     </div>
                   ))}
                 </div>
-              )
-            }
-          </div >
-        </div >
-      </div >
-    </div >
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    </div>
   );
 }

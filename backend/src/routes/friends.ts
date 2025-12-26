@@ -24,9 +24,10 @@ export function setupFriendsRoutes(app: Hono<any>) {
                 username: players.discord_username,
                 nickname: players.standoff_nickname,
                 avatar: players.discord_avatar,
-                mmr: players.elo,
+                elo: players.elo,
                 wins: players.wins,
-                losses: players.losses
+                losses: players.losses,
+                is_discord_member: players.is_discord_member
             })
                 .from(players)
                 .where(
@@ -134,7 +135,8 @@ export function setupFriendsRoutes(app: Hono<any>) {
                     username: players.discord_username,
                     nickname: players.standoff_nickname,
                     avatar: players.discord_avatar,
-                    elo: players.elo
+                    elo: players.elo,
+                    is_discord_member: players.is_discord_member
                 }
             })
                 .from(friendships)

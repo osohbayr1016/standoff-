@@ -10,22 +10,28 @@
       "database_id": "61935a7f-d78f-466a-867e-8179b7292a94"
     }
   ],
-  "durable_objects": {
-    "bindings": [
-      {
-        "name": "MATCH_QUEUE",
-        "class_name": "MatchQueueDO"
-      }
-    ]
-  },
-  "migrations": [
+  "r2_buckets": [
     {
-      "tag": "v1",
-      "new_sqlite_classes": [
-        "MatchQueueDO"
-      ]
+      "binding": "IMAGES_BUCKET",
+      "bucket_name": "standoff-images"
     }
   ],
+  //   "durable_objects": {
+  //     "bindings": [
+  //       {
+  //         "name": "MATCH_QUEUE",
+  //         "class_name": "MatchQueueDO"
+  //       }
+  //     ]
+  //   },
+  //   "migrations": [
+  //     {
+  //       "tag": "v1",
+  //       "new_sqlite_classes": [
+  //         "MatchQueueDO"
+  //       ]
+  //     }
+  //   ],
   "vars": {
     "DISCORD_CLIENT_ID": "1453495820585533480",
     "DISCORD_REDIRECT_URI": "https://backend.anandoctane4.workers.dev/api/auth/callback",

@@ -1,6 +1,12 @@
 import { useState, useEffect, useCallback } from "react";
 import { useWebSocket } from "./WebSocketContext";
-import "./LeaderboardPage.css";
+import { Card, CardHeader, CardContent } from "@/components/ui/card";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Trophy, Crown, Medal, TrendingUp, Gamepad2 } from "lucide-react";
+import LevelBadge from "./LevelBadge";
+import { VerifiedBadge } from "./VerifiedBadge";
 
 interface LeaderboardEntry {
   rank: number;
@@ -12,6 +18,7 @@ interface LeaderboardEntry {
   elo: number;
   wins: number;
   losses: number;
+  is_discord_member?: boolean;
 }
 
 type FilterType = "elo" | "winrate" | "matches";
@@ -20,7 +27,11 @@ const CACHE_KEY = "leaderboard_cache";
 const CACHE_TIMESTAMP_KEY = "leaderboard_cache_timestamp";
 const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 
-export default function LeaderboardPage() {
+interface LeaderboardPageProps {
+  onViewProfile?: (userId: string) => void;
+}
+
+export default function LeaderboardPage({ onViewProfile }: LeaderboardPageProps) {
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
   const [filteredLeaderboard, setFilteredLeaderboard] = useState<
     LeaderboardEntry[]
@@ -131,141 +142,140 @@ export default function LeaderboardPage() {
     }
   };
 
-
-
   useEffect(() => {
     if (leaderboard.length > 0) {
       applyFilter(leaderboard, activeFilter);
     }
   }, [activeFilter, leaderboard, applyFilter]);
 
-  if (loading && filteredLeaderboard.length === 0) {
-    return (
-      <div className="leaderboard-page">
-        <div className="loading-container">
-          <div className="cyber-spinner"></div>
-          <div className="loading-text">
-            ЧАНСААНЫ МЭДЭЭЛЛИЙН САНД ХАНДАЖ БАЙНА...
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div className="leaderboard-page">
-      <div className="leaderboard-header">
-        <h1 className="cyber-title">СЕРВЕРИЙН ТОП 500 ТОГЛОГЧ</h1>
-        <div className="cyber-subtitle">СЕРВЕРИЙН ЧАНСАА</div>
-      </div>
-
-      <div className="leaderboard-filters">
-        <button
-          className={`filter-btn ${activeFilter === "elo" ? "active" : ""}`}
-          onClick={() => setActiveFilter("elo")}
-        >
-          <span className="filter-icon">⚡</span>
-          <span className="filter-text">ХАМГИЙН ӨНДӨР ELO</span>
-        </button>
-        <button
-          className={`filter-btn ${activeFilter === "winrate" ? "active" : ""}`}
-          onClick={() => setActiveFilter("winrate")}
-        >
-          <span className="filter-icon">📊</span>
-          <span className="filter-text">ХАМГИЙН ӨНДӨР ХОЖЛЫН ХУВЬ</span>
-        </button>
-        <button
-          className={`filter-btn ${activeFilter === "matches" ? "active" : ""}`}
-          onClick={() => setActiveFilter("matches")}
-        >
-          <span className="filter-icon">🎯</span>
-          <span className="filter-text">ХАМГИЙН ОЛОН ТОГЛОЛТ</span>
-        </button>
-      </div>
-
-      <div className="leaderboard-container">
-        <div className="leaderboard-table-header">
-          <div className="header-rank">БАЙР</div>
-          <div className="header-player">ТОГЛОГЧ</div>
-          <div className="header-elo">ELO</div>
-          <div className="header-stats mobile-hide">Х / Х</div>
-          <div className="header-winrate mobile-hide">ХОЖЛЫН ХУВЬ</div>
-        </div>
-
-        <div className="leaderboard-list">
-          {filteredLeaderboard.map((player) => {
-            const winRate =
-              player.wins + player.losses > 0
-                ? ((player.wins / (player.wins + player.losses)) * 100).toFixed(1)
-                : "0.0";
-
-            return (
-              <div
-                key={player.id}
-                className={`leaderboard-row rank-${player.rank <= 3 ? player.rank : "other"}`}
-              >
-                <div className="rank-cell">
-                  {player.rank === 1 && (
-                    <span className="rank-icon gold">🥇</span>
-                  )}
-                  {player.rank === 2 && (
-                    <span className="rank-icon silver">🥈</span>
-                  )}
-                  {player.rank === 3 && (
-                    <span className="rank-icon bronze">🥉</span>
-                  )}
-                  <span className="rank-number">#{player.rank}</span>
-                </div>
-
-                <div className="player-cell">
-                  <div className="player-avatar">
-                    {player.avatar ? (
-                      <img
-                        src={`https://cdn.discordapp.com/avatars/${player.discord_id}/${player.avatar}.png`}
-                        alt=""
-                      />
-                    ) : (
-                      <div className="avatar-placeholder">
-                        {player.username?.[0]}
-                      </div>
-                    )}
-                  </div>
-                  <div className="player-info">
-                    <div className="player-nickname">
-                      {player.nickname || player.username}
-                    </div>
-                    {player.nickname && (
-                      <div className="player-discord">@{player.username}</div>
-                    )}
-                  </div>
-                </div>
-
-                <div className="elo-cell">
-                  {player.elo}
-                </div>
-
-                <div className="stats-cell mobile-hide">
-                  <span className="wins">{player.wins}</span> / <span className="losses">{player.losses}</span>
-                </div>
-
-                <div className="winrate-cell mobile-hide">
-                  <div className="winrate-bar-bg">
-                    <div
-                      className="winrate-bar-fill"
-                      style={{ width: `${winRate}%` }}
-                    ></div>
-                  </div>
-                  <span className="winrate-text">{winRate}%</span>
-                </div>
-              </div>
-            );
-          })}
-
-          {filteredLeaderboard.length === 0 && (
-            <div className="no-data">ЧАНСААНЫ МЭДЭЭЛЭЛ БАЙХГҮЙ</div>
-          )}
+    <div className="space-y-6 container mx-auto max-w-7xl animate-fade-in pb-12">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <div>
+          <h1 className="text-3xl font-bold font-display tracking-tighter text-white flex items-center gap-2">
+            <Trophy className="h-8 w-8 text-primary" /> Global Rankings
+          </h1>
+          <p className="text-muted-foreground">Top 500 players ranked by specialized matchmaking performance.</p>
         </div>
       </div>
+
+      <Card className="bg-zinc-950/50 backdrop-blur-sm border-white/10 shadow-lg overflow-hidden">
+        <CardHeader className="p-4 md:p-6 border-b border-white/10 bg-zinc-900/30">
+          <Tabs defaultValue="elo" onValueChange={(v) => setActiveFilter(v as FilterType)} className="w-full">
+            <div className="flex items-center justify-between">
+              <TabsList className="bg-zinc-900 border border-white/5">
+                <TabsTrigger value="elo" className="data-[state=active]:bg-primary data-[state=active]:text-white">
+                  <TrendingUp className="h-4 w-4 mr-2" /> ELO Rating
+                </TabsTrigger>
+                <TabsTrigger value="winrate" className="data-[state=active]:bg-primary data-[state=active]:text-white">
+                  <Crown className="h-4 w-4 mr-2" /> Win Rate
+                </TabsTrigger>
+                <TabsTrigger value="matches" className="data-[state=active]:bg-primary data-[state=active]:text-white">
+                  <Gamepad2 className="h-4 w-4 mr-2" /> Matches
+                </TabsTrigger>
+              </TabsList>
+            </div>
+          </Tabs>
+        </CardHeader>
+
+        <CardContent className="p-0">
+          <Table>
+            <TableHeader className="bg-zinc-900/50 hover:bg-zinc-900/50">
+              <TableRow className="border-b border-white/10 hover:bg-transparent">
+                <TableHead className="w-[80px] text-center font-bold text-gray-400">Rank</TableHead>
+                <TableHead className="w-[300px] font-bold text-gray-400">Player</TableHead>
+                <TableHead className="text-center font-bold text-gray-400">ELO</TableHead>
+                <TableHead className="text-center font-bold text-gray-400 mobile-hide">Win Rate</TableHead>
+                <TableHead className="text-center font-bold text-gray-400 mobile-hide">Matches</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {loading ? (
+                Array.from({ length: 10 }).map((_, i) => (
+                  <TableRow key={i} className="border-b border-white/5">
+                    <TableCell className="h-16"><div className="h-4 w-8 bg-zinc-800 animate-pulse rounded mx-auto"></div></TableCell>
+                    <TableCell><div className="flex items-center gap-3"><div className="h-8 w-8 bg-zinc-800 animate-pulse rounded-full"></div><div className="h-4 w-32 bg-zinc-800 animate-pulse rounded"></div></div></TableCell>
+                    <TableCell><div className="h-4 w-12 bg-zinc-800 animate-pulse rounded mx-auto"></div></TableCell>
+                    <TableCell className="mobile-hide"><div className="h-4 w-12 bg-zinc-800 animate-pulse rounded mx-auto"></div></TableCell>
+                    <TableCell className="mobile-hide"><div className="h-4 w-12 bg-zinc-800 animate-pulse rounded mx-auto"></div></TableCell>
+                  </TableRow>
+                ))
+              ) : filteredLeaderboard.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={5} className="h-40 text-center text-muted-foreground">
+                    No players found in the leaderboard.
+                  </TableCell>
+                </TableRow>
+              ) : (
+                filteredLeaderboard.map((player) => {
+                  const winRate =
+                    player.wins + player.losses > 0
+                      ? ((player.wins / (player.wins + player.losses)) * 100).toFixed(1)
+                      : "0.0";
+
+                  return (
+                    <TableRow
+                      key={player.id}
+                      className="border-b border-white/5 hover:bg-white/5 transition-colors group cursor-pointer"
+                      onClick={() => onViewProfile?.(player.id)}
+                    >
+                      <TableCell className="text-center py-4">
+                        <div className="flex items-center justify-center">
+                          {player.rank === 1 && <Crown className="h-6 w-6 text-yellow-500 fill-yellow-500/20" />}
+                          {player.rank === 2 && <Medal className="h-6 w-6 text-gray-300 fill-gray-300/20" />}
+                          {player.rank === 3 && <Medal className="h-6 w-6 text-amber-600 fill-amber-600/20" />}
+                          {player.rank > 3 && <span className="text-lg font-mono font-bold text-gray-500 group-hover:text-white transition-colors">#{player.rank}</span>}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-3">
+                          <Avatar className={`h-10 w-10 border-2 ${player.rank === 1 ? 'border-yellow-500 shadow-[0_0_10px_rgba(234,179,8,0.3)]' : 'border-zinc-800'}`}>
+                            <AvatarImage src={`https://cdn.discordapp.com/avatars/${player.discord_id}/${player.avatar}.png`} />
+                            <AvatarFallback>{player.username[0]?.toUpperCase()}</AvatarFallback>
+                          </Avatar>
+                          <div className="flex flex-col">
+                            <span className={`font-bold flex items-center gap-1.5 ${player.rank === 1 ? 'text-yellow-500' : 'text-white'}`}>
+                              {player.nickname || player.username}
+                              <VerifiedBadge isVerified={player.is_discord_member} showText={false} className="w-3.5 h-3.5" />
+                            </span>
+                            {player.nickname && (
+                              <span className="text-xs text-muted-foreground">@{player.username}</span>
+                            )}
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <div className="flex justify-center">
+                          <LevelBadge elo={player.elo} showElo />
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-center mobile-hide">
+                        <div className="flex flex-col items-center gap-1">
+                          <span className="font-bold text-white">{winRate}%</span>
+                          <div className="w-16 h-1 bg-zinc-800 rounded-full overflow-hidden">
+                            <div className="h-full bg-green-500 transition-all" style={{ width: `${winRate}%` }} />
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-center mobile-hide font-mono text-gray-400">
+                        {player.wins + player.losses}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })
+              )}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+
+      <style>{`
+        @media (max-width: 768px) {
+          .mobile-hide {
+            display: none;
+          }
+        }
+      `}</style>
     </div>
   );
 }

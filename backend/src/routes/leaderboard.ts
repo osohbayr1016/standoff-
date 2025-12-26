@@ -6,7 +6,7 @@ export function setupLeaderboardRoutes(app: Hono<any>) {
         try {
             // Use raw SQL to avoid Drizzle ORM ambiguity
             const result = await c.env.DB.prepare(
-                'SELECT * FROM players ORDER BY mmr DESC LIMIT 500'
+                'SELECT * FROM players ORDER BY elo DESC LIMIT 500'
             ).all();
 
             // Map results to expected format
@@ -18,9 +18,10 @@ export function setupLeaderboardRoutes(app: Hono<any>) {
                 username: player.discord_username,
                 avatar: player.discord_avatar, // Map 'discord_avatar' column to 'avatar' prop
                 nickname: player.standoff_nickname,
-                elo: player.mmr, // Map 'mmr' column to 'elo' prop
+                elo: player.elo,
                 wins: player.wins,
                 losses: player.losses,
+                is_discord_member: player.is_discord_member === 1
             }));
 
             return c.json(leaderboard);
