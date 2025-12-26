@@ -13,7 +13,6 @@ import FriendsPage from "./components/FriendsPage";
 import MatchmakingPage from "./components/MatchmakingPage";
 import MapBanPage from "./components/MapBanPage";
 import MatchLobbyPage from "./components/MatchLobbyPage";
-import ReadyPage from "./components/ReadyPage";
 import AuthPage from "./components/AuthPage";
 import NotFoundPage from "./components/NotFoundPage";
 import Footer from "./components/Footer";
@@ -73,7 +72,6 @@ function AppContent() {
     const saved = localStorage.getItem("matchData");
     return saved ? JSON.parse(saved) : null;
   }); // Store match server info
-  const [selectedMap, setSelectedMap] = useState<string | undefined>(); // Store selected map for ready page
 
   // Track if user explicitly navigated away from a specific lobby
   // This persists across reloads to prevent auto-redirect loops
@@ -217,9 +215,7 @@ function AppContent() {
       // even if they navigated away, or at least show a toast. 
       // For now, we revert to forcing redirect because ignoring it leads to missed matches.
 
-      if (lastMessage.selectedMap) {
-        setSelectedMap(lastMessage.selectedMap);
-      }
+
 
       console.log("App: Setting current page to 'ready'");
       setCurrentPage("ready");
@@ -323,7 +319,7 @@ function AppContent() {
         setActiveLobbyId(undefined);
         setMatchData(null);
         setLobbyPartyMembers([]);
-        setSelectedMap(undefined);
+
         setNavigatedAwayLobbyId(null); // Clear suppression
 
         // Navigate to home page
@@ -372,9 +368,7 @@ function AppContent() {
 
         // Check if ready phase is active
         if (lobby.readyPhaseState?.phaseActive) {
-          if (lobby.mapBanState?.selectedMap) {
-            setSelectedMap(lobby.mapBanState.selectedMap);
-          }
+
 
           if (navigatedAwayLobbyId !== lobby.id || currentPage === "mapban") {
             // Auto-navigate to ready page if we are not already there
@@ -404,7 +398,7 @@ function AppContent() {
       // Clear lobby state
       setActiveLobbyId(undefined);
       setLobbyPartyMembers([]);
-      setSelectedMap(undefined);
+
       setMatchData(null); // Clear match data
       setNavigatedAwayLobbyId(null);
 
@@ -460,7 +454,7 @@ function AppContent() {
       setActiveLobbyId(undefined);
       setMatchData(null);
       setLobbyPartyMembers([]);
-      setSelectedMap(undefined);
+
       setNavigatedAwayLobbyId(null);
       // Navigate to matchmaking page
       setCurrentPage("matchmaking");
@@ -717,18 +711,6 @@ function AppContent() {
             onCancel={() => handleNavigate("home")}
             activeLobbyId={activeLobbyId}
             onReadyPhaseStart={() => setCurrentPage("matchgame")}
-          />
-        )}
-        {currentPage === "ready" && (
-          <ReadyPage
-            partyMembers={lobbyPartyMembers}
-            activeLobbyId={activeLobbyId}
-            selectedMap={selectedMap}
-            onMatchStart={() => {
-              // Match started, navigate to matchgame
-              // The matchData will be set by the MATCH_START handler
-              setCurrentPage("matchgame");
-            }}
           />
         )}
         {currentPage === "matchgame" && (
