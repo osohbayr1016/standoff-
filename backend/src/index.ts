@@ -117,6 +117,19 @@ export class MatchQueueDO {
         }));
       }
 
+      // Handle LOBBY_ACTION relay from Hono routes
+      if (body.type === 'LOBBY_ACTION') {
+        const { userIds, ...msgData } = body.data;
+        if (Array.isArray(userIds)) {
+          userIds.forEach(uid => {
+            const ws = this.userSockets.get(uid);
+            if (ws && ws.readyState === WebSocket.READY_STATE_OPEN) {
+              ws.send(JSON.stringify(msgData));
+            }
+          });
+        }
+      }
+
       return new Response(JSON.stringify({ success: true }), {
         headers: { 'Content-Type': 'application/json' }
       });

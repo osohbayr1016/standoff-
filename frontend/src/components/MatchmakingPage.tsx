@@ -145,14 +145,12 @@ const MatchmakingPage: React.FC<MatchmakingPageProps> = ({ user, backendUrl, onV
     const fetchMyActiveMatch = async () => {
         if (!user) return;
         try {
-            const response = await fetch(`${backendUrl}/api/matches?status=waiting,in_progress`);
+            const response = await fetch(`${backendUrl}/api/matches/user/${user.id}/active`);
             const data = await response.json();
-            if (data.success && data.matches) {
-                // Find match where user is a participant
-                const userMatch = data.matches.find((m: Match) =>
-                    m.host_id === user.id || m.player_count > 0 // This is simplified, ideally check match_players
-                );
-                setMyActiveMatch(userMatch || null);
+            if (data.success && data.match) {
+                setMyActiveMatch(data.match);
+            } else {
+                setMyActiveMatch(null);
             }
         } catch (err) {
             console.error('Error fetching active match:', err);
@@ -216,6 +214,9 @@ const MatchmakingPage: React.FC<MatchmakingPageProps> = ({ user, backendUrl, onV
                 setMatchType('casual');
                 setTurnstileToken(null);
                 fetchMatches();
+                if (data.matchId) {
+                    setSelectedMatchId(data.matchId);
+                }
                 console.log("Lobby Created Successfully!");
             } else {
                 setError(data.error || 'Failed to create lobby');
@@ -247,8 +248,8 @@ const MatchmakingPage: React.FC<MatchmakingPageProps> = ({ user, backendUrl, onV
 
             if (data.success) {
                 fetchMatches();
-                console.log("Joined lobby!");
                 setSelectedMatchId(matchId);
+                console.log("Joined lobby!");
             } else {
                 alert(data.error || 'Failed to join lobby');
             }

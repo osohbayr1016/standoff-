@@ -5,10 +5,59 @@ import { matches, matchPlayers, eloHistory, players } from '../db/schema';
 
 interface Env {
     DB: D1Database;
+    MATCH_QUEUE: DurableObjectNamespace;
     TURNSTILE_SECRET_KEY?: string;
 }
 
 const matchesRoutes = new Hono<{ Bindings: Env }>();
+
+// ============= HELPERS =============
+
+async function notifyLobbyUpdate(matchId: string, env: Env, type: string = 'LOBBY_UPDATED') {
+    try {
+        // Get all players in this match
+        const players = await env.DB.prepare(
+            'SELECT player_id FROM match_players WHERE match_id = ?'
+        ).bind(matchId).all();
+
+        const userIds = (players.results || []).map((p: any) => p.player_id);
+
+        if (userIds.length > 0) {
+            const doId = env.MATCH_QUEUE.idFromName('global');
+            const doStub = env.MATCH_QUEUE.get(doId);
+
+            await doStub.fetch('http://do/broadcast', {
+                method: 'POST',
+                body: JSON.stringify({
+                    type: 'LOBBY_ACTION',
+                    data: {
+                        userIds,
+                        type,
+                        matchId
+                    }
+                })
+            });
+        }
+    } catch (err) {
+        console.error('Error notifying lobby update:', err);
+    }
+}
+
+async function notifyGlobalUpdate(env: Env, type: string = 'NEATQUEUE_LOBBY_CREATED') {
+    try {
+        const doId = env.MATCH_QUEUE.idFromName('global');
+        const doStub = env.MATCH_QUEUE.get(doId);
+        await doStub.fetch('http://do/broadcast', {
+            method: 'POST',
+            body: JSON.stringify({
+                type,
+                data: {}
+            })
+        });
+    } catch (err) {
+        console.error('Error notifying global update:', err);
+    }
+}
 
 // ============= MATCH CRUD =============
 
@@ -161,6 +210,7 @@ matchesRoutes.post('/', async (c) => {
             host_id: string;
             map_name?: string;
             match_type?: 'casual' | 'league';
+            max_players?: number;
         }>();
 
         if (!body.lobby_url || !body.host_id) {
@@ -216,18 +266,22 @@ matchesRoutes.post('/', async (c) => {
         }
 
         const matchId = crypto.randomUUID();
+        const maxPlayers = body.max_players || 10;
 
         // Create match
         await c.env.DB.prepare(`
-            INSERT INTO matches (id, lobby_url, host_id, map_name, match_type, status, player_count, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, 'waiting', 1, datetime('now'), datetime('now'))
-        `).bind(matchId, body.lobby_url, body.host_id, body.map_name || null, matchType).run();
+            INSERT INTO matches (id, lobby_url, host_id, map_name, match_type, status, player_count, max_players, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, 'waiting', 1, ?, datetime('now'), datetime('now'))
+        `).bind(matchId, body.lobby_url, body.host_id, body.map_name || null, matchType, maxPlayers).run();
 
         // Add host as first player (alpha team, captain)
         await c.env.DB.prepare(`
             INSERT INTO match_players (match_id, player_id, team, is_captain, joined_at)
             VALUES (?, ?, 'alpha', 1, datetime('now'))
         `).bind(matchId, body.host_id).run();
+
+        // Notify real-time
+        await notifyGlobalUpdate(c.env);
 
         return c.json({
             success: true,
@@ -328,6 +382,9 @@ matchesRoutes.post('/:id/join', async (c) => {
             WHERE id = ?
         `).bind(matchId).run();
 
+        // Notify real-time
+        await notifyLobbyUpdate(matchId, c.env, 'PLAYER_JOINED');
+
         return c.json({
             success: true,
             team: assignedTeam,
@@ -378,6 +435,7 @@ matchesRoutes.post('/:id/leave', async (c) => {
                 'DELETE FROM match_players WHERE match_id = ?'
             ).bind(matchId).run();
 
+            await notifyLobbyUpdate(matchId, c.env, 'LOBBY_UPDATED');
             return c.json({
                 success: true,
                 message: 'Match cancelled (host left)'
@@ -394,6 +452,9 @@ matchesRoutes.post('/:id/leave', async (c) => {
             UPDATE matches SET player_count = player_count - 1, updated_at = datetime('now')
             WHERE id = ?
         `).bind(matchId).run();
+
+        // Notify real-time
+        await notifyLobbyUpdate(matchId, c.env, 'PLAYER_LEFT');
 
         return c.json({
             success: true,
@@ -458,6 +519,9 @@ matchesRoutes.post('/:id/kick', async (c) => {
             WHERE id = ?
         `).bind(matchId).run();
 
+        // Notify real-time
+        await notifyLobbyUpdate(matchId, c.env, 'PLAYER_KICKED');
+
         return c.json({
             success: true,
             message: 'Player kicked successfully'
@@ -490,7 +554,7 @@ matchesRoutes.post('/:id/switch-team', async (c) => {
 
         // Check if match is still in waiting status
         const match = await c.env.DB.prepare(
-            'SELECT status FROM matches WHERE id = ?'
+            'SELECT status, max_players FROM matches WHERE id = ?'
         ).bind(matchId).first();
 
         if (!match || match.status !== 'waiting') {
@@ -501,14 +565,15 @@ matchesRoutes.post('/:id/switch-team', async (c) => {
         const currentTeam = membership.team as string;
         const newTeam = currentTeam === 'alpha' ? 'bravo' : 'alpha';
 
-        // Check if new team is full (max 5 players per team)
+        // Check if new team is full
         const newTeamCount = await c.env.DB.prepare(`
             SELECT COUNT(*) as count FROM match_players 
             WHERE match_id = ? AND team = ?
         `).bind(matchId, newTeam).first();
 
-        if ((newTeamCount?.count as number) >= 5) {
-            return c.json({ success: false, error: `Team ${newTeam} is full (max 5 players)` }, 400);
+        const maxTeamSize = Math.floor((match.max_players as number || 10) / 2);
+        if ((newTeamCount?.count as number) >= maxTeamSize) {
+            return c.json({ success: false, error: `Team ${newTeam} is full (max ${maxTeamSize} players)` }, 400);
         }
 
         // Update team
@@ -516,6 +581,9 @@ matchesRoutes.post('/:id/switch-team', async (c) => {
             UPDATE match_players SET team = ? 
             WHERE match_id = ? AND player_id = ?
         `).bind(newTeam, matchId, body.player_id).run();
+
+        // Notify real-time
+        await notifyLobbyUpdate(matchId, c.env, 'LOBBY_UPDATED');
 
         return c.json({
             success: true,
@@ -562,16 +630,17 @@ matchesRoutes.patch('/:id/status', async (c) => {
             return c.json({ success: false, error: `Cannot change status from ${match.status} to ${body.status}` }, 400);
         }
 
-        // If starting match, verify 10 players (5v5)
+        // If starting match, verify at least 2 players
         if (body.status === 'in_progress') {
             const playerCount = await c.env.DB.prepare(
                 'SELECT COUNT(*) as count FROM match_players WHERE match_id = ?'
             ).bind(matchId).first();
 
-            if ((playerCount?.count as number) < 10) {
+            const count = playerCount?.count as number || 0;
+            if (count < 2) {
                 return c.json({
                     success: false,
-                    error: `Cannot start match with ${playerCount?.count} players. Need 10 players (5v5)`
+                    error: `Cannot start match with ${count} players. Need at least 2 players.`
                 }, 400);
             }
         }
@@ -579,6 +648,9 @@ matchesRoutes.patch('/:id/status', async (c) => {
         await c.env.DB.prepare(
             'UPDATE matches SET status = ?, updated_at = datetime(\'now\') WHERE id = ?'
         ).bind(body.status, matchId).run();
+
+        // Notify real-time
+        await notifyLobbyUpdate(matchId, c.env, 'LOBBY_UPDATED');
 
         return c.json({
             success: true,
@@ -646,6 +718,9 @@ matchesRoutes.post('/:id/result', async (c) => {
             body.bravo_score || null,
             matchId
         ).run();
+
+        // Notify real-time
+        await notifyLobbyUpdate(matchId, c.env, 'MATCH_COMPLETED');
 
         return c.json({
             success: true,
