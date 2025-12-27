@@ -8,6 +8,7 @@ import { setupProfileRoutes } from './routes/profile';
 import { setupLeaderboardRoutes } from './routes/leaderboard';
 import { setupAdminRoutes } from './routes/admin';
 import { setupFriendsRoutes } from './routes/friends';
+import { setupStatsRoutes } from './routes/stats';
 import { matchesRoutes } from './routes/matches';
 import { moderatorRoutes } from './routes/moderator';
 import { uploadRoutes } from './routes/upload';
@@ -1320,8 +1321,10 @@ setupProfileRoutes(app);
 setupLeaderboardRoutes(app);
 setupAdminRoutes(app);
 setupFriendsRoutes(app);
+setupStatsRoutes(app);
 
 app.route('/api/matches', matchesRoutes);
+app.route('/api/matches', lobbyInviteRoutes);
 app.route('/api/moderator', moderatorRoutes);
 app.route('/api', uploadRoutes);
 
@@ -1685,10 +1688,7 @@ app.post('/api/admin/cleanup-vips', async (c) => {
 });
 
 // New Manual Matchmaking Routes
-app.route('/api/matches', matchesRoutes);
-app.route('/api/matches', lobbyInviteRoutes);
-app.route('/api/moderator', moderatorRoutes);
-// app.route('/api', uploadRoutes); // R2 permissions missing, temporarily disabled
+app.route('/api', uploadRoutes); // R2 permissions missing, temporarily disabled
 
 const handler = {
   async fetch(request: Request, env: Env, ctx: ExecutionContext) {

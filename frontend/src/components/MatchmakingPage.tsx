@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useWebSocket } from './WebSocketContext';
 import LobbyDetailPage from './LobbyDetailPage';
 import { Card, CardHeader, CardContent, CardFooter } from "@/components/ui/card";
@@ -62,59 +62,15 @@ const MatchmakingPage: React.FC<MatchmakingPageProps> = ({ user, backendUrl, onV
         { name: 'Zone 7', image: '/maps/zone7.jpg' }
     ];
     const [creating, setCreating] = useState(false);
-    const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [, setUserMatch] = useState<Match | null>(null);
     const [selectedMatchId, setSelectedMatchId] = useState<string | null>(null);
     const [activeMatchIdError, setActiveMatchIdError] = useState<string | null>(null);
 
-    // Turnstile State
-    const turnstileContainerRef = useRef<HTMLDivElement>(null);
-    const turnstileWidgetId = useRef<string | null>(null);
-
-    // Explicitly render Turnstile when modal opens
+    // Expose nothing for Turnstile
     useEffect(() => {
         if (showCreateModal) {
-            // Reset state
-            setTurnstileToken(null);
             setError(null);
-
-            // Give the DOM a moment to render the container
-            const timer = setTimeout(() => {
-                if (turnstileContainerRef.current && (window as any).turnstile) {
-                    // Start fresh
-                    if (turnstileWidgetId.current) {
-                        try {
-                            (window as any).turnstile.remove(turnstileWidgetId.current);
-                        } catch (e) {
-                            console.warn("Failed to remove old widget", e);
-                        }
-                    }
-
-                    try {
-                        const id = (window as any).turnstile.render(turnstileContainerRef.current, {
-                            sitekey: '1x00000000000000000000AA', // Use actual sitekey in prod if different
-                            theme: 'dark',
-                            callback: (token: string) => {
-                                console.log("Turnstile verified:", token.substring(0, 10));
-                                setTurnstileToken(token);
-                            },
-                            'expired-callback': () => {
-                                console.log("Turnstile expired");
-                                setTurnstileToken(null);
-                            },
-                        });
-                        turnstileWidgetId.current = id;
-                    } catch (err) {
-                        console.error("Turnstile render error:", err);
-                    }
-                }
-            }, 100);
-
-            return () => clearTimeout(timer);
-        } else {
-            // Cleanup when modal closes
-            setTurnstileToken(null);
         }
     }, [showCreateModal]);
     const [myActiveMatch, setMyActiveMatch] = useState<Match | null>(null);
@@ -167,11 +123,13 @@ const MatchmakingPage: React.FC<MatchmakingPageProps> = ({ user, backendUrl, onV
     useEffect(() => {
         if (lastMessage) {
             try {
-                const msg = JSON.parse(lastMessage);
-                if (msg.type === 'LOBBY_CREATED' || msg.type === 'LOBBY_UPDATED' || msg.type === 'PLAYER_JOINED' || msg.type === 'PLAYER_LEFT') {
+                const msg = lastMessage; // Already parsed
+                if (msg.type === 'LOBBY_UPDATED') {
                     fetchMatches();
                 }
-            } catch (e) { }
+            } catch (err) {
+                console.error("Error processing websocket message:", err);
+            }
         }
     }, [lastMessage]);
 
@@ -195,7 +153,6 @@ const MatchmakingPage: React.FC<MatchmakingPageProps> = ({ user, backendUrl, onV
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'cf-turnstile-response': turnstileToken || ''
                 },
                 body: JSON.stringify({
                     lobby_url: lobbyUrl.trim(),
@@ -212,7 +169,6 @@ const MatchmakingPage: React.FC<MatchmakingPageProps> = ({ user, backendUrl, onV
                 setLobbyUrl('');
                 setSelectedMap(null);
                 setMatchType('casual');
-                setTurnstileToken(null);
                 fetchMatches();
                 if (data.matchId) {
                     setSelectedMatchId(data.matchId);
@@ -345,15 +301,6 @@ const MatchmakingPage: React.FC<MatchmakingPageProps> = ({ user, backendUrl, onV
         );
     }
 
-    // Expose Turnstile callback to window
-    useEffect(() => {
-        (window as any).onTurnstileVerify = (token: string) => {
-            setTurnstileToken(token);
-        };
-        return () => {
-            delete (window as any).onTurnstileVerify;
-        };
-    }, []);
 
     return (
         <div className="space-y-6 container mx-auto max-w-7xl animate-fade-in pb-12">
@@ -492,7 +439,7 @@ const MatchmakingPage: React.FC<MatchmakingPageProps> = ({ user, backendUrl, onV
                                             className="w-full flex-1"
                                             variant="default"
                                             onClick={(e) => { e.stopPropagation(); handleStartMatch(match.id); }}
-                                            disabled={(match.current_players || match.player_count) < 2}
+                                            disabled={(match.current_players || match.player_count) < 10}
                                         >
                                             Start
                                         </Button>
@@ -688,19 +635,14 @@ const MatchmakingPage: React.FC<MatchmakingPageProps> = ({ user, backendUrl, onV
                             </div>
                         )}
 
-                        {/* Cloudflare Turnstile Widget */}
-                        <div className="flex justify-center py-2">
-                            <div className="flex justify-center py-2 min-h-[65px]">
-                                <div ref={turnstileContainerRef} />
-                            </div>
-                        </div>
+                        {/* Turnstile removed */}
                     </div>
 
                     <DialogFooter>
                         <Button variant="ghost" onClick={() => setShowCreateModal(false)} className="text-gray-400 hover:text-white">Cancel</Button>
                         <Button
                             onClick={handleCreateLobby}
-                            disabled={creating || !lobbyUrl.trim() || !turnstileToken}
+                            disabled={creating || !lobbyUrl.trim()}
                             className="font-bold shadow-lg shadow-primary/20"
                         >
                             {creating ? (

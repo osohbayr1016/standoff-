@@ -23,7 +23,7 @@ async function notifyLobbyUpdate(matchId: string, env: Env, type: string = 'LOBB
         const userIds = (players.results || []).map((p: any) => p.player_id);
 
         if (userIds.length > 0) {
-            const doId = env.MATCH_QUEUE.idFromName('global');
+            const doId = env.MATCH_QUEUE.idFromName('global-matchmaking-v2');
             const doStub = env.MATCH_QUEUE.get(doId);
 
             await doStub.fetch('http://do/broadcast', {
@@ -45,7 +45,7 @@ async function notifyLobbyUpdate(matchId: string, env: Env, type: string = 'LOBB
 
 async function notifyGlobalUpdate(env: Env, type: string = 'NEATQUEUE_LOBBY_CREATED') {
     try {
-        const doId = env.MATCH_QUEUE.idFromName('global');
+        const doId = env.MATCH_QUEUE.idFromName('global-matchmaking-v2');
         const doStub = env.MATCH_QUEUE.get(doId);
         await doStub.fetch('http://do/broadcast', {
             method: 'POST',
@@ -608,7 +608,7 @@ matchesRoutes.patch('/:id/status', async (c) => {
 
         // Verify host
         const match = await c.env.DB.prepare(
-            'SELECT host_id, status FROM matches WHERE id = ?'
+            'SELECT host_id, status, match_type FROM matches WHERE id = ?'
         ).bind(matchId).first();
 
         if (!match) {
@@ -622,7 +622,7 @@ matchesRoutes.patch('/:id/status', async (c) => {
         // Validate status transition
         const validTransitions: Record<string, string[]> = {
             'waiting': ['in_progress', 'cancelled'],
-            'in_progress': ['pending_review', 'cancelled']
+            'in_progress': match.match_type === 'casual' ? ['completed', 'cancelled'] : ['pending_review', 'cancelled']
         };
 
         const allowed = validTransitions[match.status as string] || [];
@@ -637,10 +637,16 @@ matchesRoutes.patch('/:id/status', async (c) => {
             ).bind(matchId).first();
 
             const count = playerCount?.count as number || 0;
-            if (count < 2) {
+            // Get max_players from match
+            const matchInfo = await c.env.DB.prepare(
+                'SELECT max_players FROM matches WHERE id = ?'
+            ).bind(matchId).first();
+            const maxPlayers = (matchInfo?.max_players as number) || 10;
+
+            if (count < maxPlayers) {
                 return c.json({
                     success: false,
-                    error: `Cannot start match with ${count} players. Need at least 2 players.`
+                    error: `Cannot start match with ${count} players. Need exactly ${maxPlayers} players.`
                 }, 400);
             }
         }

@@ -20,7 +20,8 @@ import {
     ExternalLink,
     Loader2,
     UserPlus,
-    ArrowLeft
+    ArrowLeft,
+    Gamepad2
 } from "lucide-react";
 import InviteFriendModal from './InviteFriendModal';
 
@@ -44,6 +45,7 @@ interface Match {
     player_count: number;
     max_players: number;
     map_name?: string;
+    match_type?: 'casual' | 'league';
     created_at: string;
 }
 
@@ -103,17 +105,17 @@ const LobbyDetailPage: React.FC<LobbyDetailPageProps> = ({ matchId, user, backen
             if (!lockedTeamNames.alpha && !lockedTeamNames.bravo) {
                 const alphaPlayers = players.filter(p => p.team === 'alpha');
                 const bravoPlayers = players.filter(p => p.team === 'bravo');
-                
+
                 const alphaLeader = alphaPlayers[0];
                 const bravoLeader = bravoPlayers[0];
-                
-                const alphaName = alphaLeader 
+
+                const alphaName = alphaLeader
                     ? (alphaLeader.standoff_nickname || alphaLeader.discord_username || 'Team Alpha')
                     : 'Team Alpha';
-                const bravoName = bravoLeader 
+                const bravoName = bravoLeader
                     ? (bravoLeader.standoff_nickname || bravoLeader.discord_username || 'Team Bravo')
                     : 'Team Bravo';
-                
+
                 setLockedTeamNames({ alpha: alphaName, bravo: bravoName });
             }
         } else {
@@ -128,13 +130,37 @@ const LobbyDetailPage: React.FC<LobbyDetailPageProps> = ({ matchId, user, backen
     useEffect(() => {
         if (lastMessage) {
             try {
-                const msg = JSON.parse(lastMessage);
+                const msg = lastMessage; // Already parsed
                 if (msg.type === 'LOBBY_UPDATED' && msg.matchId === matchId) {
                     fetchMatchDetails();
                 }
             } catch (e) { }
         }
     }, [lastMessage]);
+
+    // Join lobby
+    const handleJoinLobby = async () => {
+        if (!user) return;
+
+        try {
+            const response = await fetch(`${backendUrl}/api/matches/${matchId}/join`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    player_id: user.id
+                })
+            });
+
+            const data = await response.json();
+            if (data.success) {
+                fetchMatchDetails();
+            } else {
+                alert(data.error || 'Failed to join lobby');
+            }
+        } catch (err) {
+            alert('Network error');
+        }
+    };
 
     // Leave lobby
     const handleLeaveLobby = async () => {
@@ -302,6 +328,34 @@ const LobbyDetailPage: React.FC<LobbyDetailPageProps> = ({ matchId, user, backen
         }
     };
 
+    // Finish match directly (for casual)
+    const handleFinishMatch = async () => {
+        if (!user || !match) return;
+
+        if (!window.confirm('Are you sure you want to end this casual match?')) return;
+
+        try {
+            const response = await fetch(`${backendUrl}/api/matches/${matchId}/status`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    host_id: user.id,
+                    status: 'completed'
+                })
+            });
+
+            const data = await response.json();
+            if (data.success) {
+                alert('Match ended successfully!');
+                fetchMatchDetails();
+            } else {
+                alert(data.error || 'Failed to end match');
+            }
+        } catch (err) {
+            alert('Network error');
+        }
+    };
+
     // Submit result
     const handleSubmitResult = async () => {
         if (!user || !match) return;
@@ -384,29 +438,29 @@ const LobbyDetailPage: React.FC<LobbyDetailPageProps> = ({ matchId, user, backen
     const isInMatch = players.some(p => p.player_id === user?.id);
     const alphaPlayers = players.filter(p => p.team === 'alpha');
     const bravoPlayers = players.filter(p => p.team === 'bravo');
-    
+
     // Get team leader (first player) or use locked name if game started
     const alphaLeader = alphaPlayers[0];
     const bravoLeader = bravoPlayers[0];
-    
+
     const getAlphaTeamName = () => {
         if (match?.status === 'in_progress' && lockedTeamNames.alpha) {
             return lockedTeamNames.alpha;
         }
-        return alphaLeader 
+        return alphaLeader
             ? (alphaLeader.standoff_nickname || alphaLeader.discord_username || 'Team Alpha')
             : 'Team Alpha';
     };
-    
+
     const getBravoTeamName = () => {
         if (match?.status === 'in_progress' && lockedTeamNames.bravo) {
             return lockedTeamNames.bravo;
         }
-        return bravoLeader 
+        return bravoLeader
             ? (bravoLeader.standoff_nickname || bravoLeader.discord_username || 'Team Bravo')
             : 'Team Bravo';
     };
-    
+
     const alphaTeamName = getAlphaTeamName();
     const bravoTeamName = getBravoTeamName();
 
@@ -415,16 +469,16 @@ const LobbyDetailPage: React.FC<LobbyDetailPageProps> = ({ matchId, user, backen
             {/* Header Section */}
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-border/50 pb-6">
                 <div className="flex items-center gap-4">
-                    <Button 
+                    <Button
                         onClick={() => {
                             if (previousProfileUserId && onNavigateToProfile) {
                                 onNavigateToProfile(previousProfileUserId);
                             } else {
                                 onBack();
                             }
-                        }} 
-                        variant="ghost" 
-                        size="icon" 
+                        }}
+                        variant="ghost"
+                        size="icon"
                         className="rounded-full hover:bg-muted"
                         title={previousProfileUserId ? "Back to profile" : "Back"}
                     >
@@ -432,12 +486,12 @@ const LobbyDetailPage: React.FC<LobbyDetailPageProps> = ({ matchId, user, backen
                     </Button>
                     <div>
                         <h1 className="text-lg md:text-2xl font-bold font-display uppercase tracking-wider flex items-center gap-2 md:gap-3">
-                            Lobby #{match.id.slice(0, 8)}
+                            Lobby #{match.id?.slice(0, 8) || 'Unknown'}
                             <Badge
                                 variant={match.status === 'in_progress' ? 'secondary' : 'outline'}
                                 className={`${match.status === 'in_progress' ? 'animate-pulse' : ''} uppercase tracking-widest text-[9px] md:text-[10px]`}
                             >
-                                {match.status.replace('_', ' ')}
+                                {match.status?.replace('_', ' ') || 'WAITING'}
                             </Badge>
                         </h1>
                         <div className="flex flex-wrap items-center gap-2 md:gap-4 text-xs md:text-sm text-muted-foreground mt-1">
@@ -506,9 +560,9 @@ const LobbyDetailPage: React.FC<LobbyDetailPageProps> = ({ matchId, user, backen
                                                 {player.role === 'moderator' && <Badge className="text-[9px] lg:text-[10px] px-1.5 py-0 bg-[#5b9bd5] text-white border-0 font-bold">MOD</Badge>}
                                             </div>
                                             <div className="flex items-center gap-1.5 flex-shrink-0">
-                                                <img 
-                                                    src="https://corp.faceit.com/wp-content/uploads/2018/05/FACEIT_logo_transparent.png" 
-                                                    alt="FACEIT" 
+                                                <img
+                                                    src="https://corp.faceit.com/wp-content/uploads/2018/05/FACEIT_logo_transparent.png"
+                                                    alt="FACEIT"
                                                     className="h-4 w-4 lg:h-5 lg:w-5 object-contain opacity-80"
                                                 />
                                                 <span className="text-[11px] lg:text-xs font-bold text-white/90 font-mono">
@@ -577,9 +631,9 @@ const LobbyDetailPage: React.FC<LobbyDetailPageProps> = ({ matchId, user, backen
                                                 {player.role === 'moderator' && <Badge className="text-[9px] lg:text-[10px] px-1.5 py-0 bg-[#e74c3c] text-white border-0 font-bold">MOD</Badge>}
                                             </div>
                                             <div className="flex items-center gap-1.5 flex-shrink-0">
-                                                <img 
-                                                    src="https://corp.faceit.com/wp-content/uploads/2018/05/FACEIT_logo_transparent.png" 
-                                                    alt="FACEIT" 
+                                                <img
+                                                    src="https://corp.faceit.com/wp-content/uploads/2018/05/FACEIT_logo_transparent.png"
+                                                    alt="FACEIT"
                                                     className="h-4 w-4 lg:h-5 lg:w-5 object-contain opacity-80"
                                                 />
                                                 <span className="text-[11px] lg:text-xs font-bold text-white/90 font-mono">
@@ -635,6 +689,18 @@ const LobbyDetailPage: React.FC<LobbyDetailPageProps> = ({ matchId, user, backen
 
                                     {/* Right Side: Secondary Actions */}
                                     <div className="flex flex-col sm:flex-row gap-3 md:gap-4 flex-shrink-0">
+                                        {/* Join Match Button for Non-Participants */}
+                                        {!isInMatch && match.status === 'waiting' && (
+                                            <Button
+                                                onClick={handleJoinLobby}
+                                                disabled={players.length >= match.max_players}
+                                                className="flex-shrink-0 h-12 md:h-11 px-4 md:px-6 bg-green-600 hover:bg-green-700 text-white font-bold shadow-md uppercase tracking-wide text-sm whitespace-nowrap"
+                                            >
+                                                <UserPlus className="mr-2 h-4 w-4" />
+                                                {players.length >= match.max_players ? 'Full Lobby' : 'Join Match'}
+                                            </Button>
+                                        )}
+
                                         {/* Switch Team & Leave Buttons */}
                                         {isInMatch && (
                                             <>
@@ -684,68 +750,94 @@ const LobbyDetailPage: React.FC<LobbyDetailPageProps> = ({ matchId, user, backen
                             {match.status === 'in_progress' && isHost && (
                                 <div className="w-full flex flex-col md:flex-row items-center gap-4">
                                     <div className="flex-1 w-full p-4 bg-muted/30 rounded-lg border border-border/50">
-                                        <h3 className="text-sm font-black uppercase tracking-widest mb-4 flex items-center gap-2 text-primary">
-                                            <Trophy className="h-4 w-4" /> Submit Match Result
-                                        </h3>
+                                        {match.match_type === 'league' ? (
+                                            <>
+                                                <h3 className="text-sm font-black uppercase tracking-widest mb-4 flex items-center gap-2 text-primary">
+                                                    <Trophy className="h-4 w-4" /> Submit Match Result
+                                                </h3>
 
-                                        <div className="grid gap-4">
-                                            <div className="grid grid-cols-2 gap-4">
-                                                <Button
-                                                    onClick={() => setWinnerTeam('alpha')}
-                                                    variant={winnerTeam === 'alpha' ? 'default' : 'outline'}
-                                                    className={`h-24 flex flex-col items-center justify-center gap-2 border-2 ${winnerTeam === 'alpha' ? 'border-orange-500 bg-orange-500/10 text-orange-500 hover:bg-orange-500/20' : 'hover:bg-muted'}`}
-                                                >
-                                                    <span className="text-2xl">🦁</span>
-                                                    <span className="font-bold">{alphaTeamName}</span>
-                                                </Button>
-                                                <Button
-                                                    onClick={() => setWinnerTeam('bravo')}
-                                                    variant={winnerTeam === 'bravo' ? 'default' : 'outline'}
-                                                    className={`h-24 flex flex-col items-center justify-center gap-2 border-2 ${winnerTeam === 'bravo' ? 'border-blue-500 bg-blue-500/10 text-blue-500 hover:bg-blue-500/20' : 'hover:bg-muted'}`}
-                                                >
-                                                    <span className="text-2xl">🦈</span>
-                                                    <span className="font-bold">{bravoTeamName}</span>
-                                                </Button>
-                                            </div>
+                                                <div className="grid gap-4">
+                                                    <div className="grid grid-cols-2 gap-4">
+                                                        <Button
+                                                            onClick={() => setWinnerTeam('alpha')}
+                                                            variant={winnerTeam === 'alpha' ? 'default' : 'outline'}
+                                                            className={`h-24 flex flex-col items-center justify-center gap-2 border-2 ${winnerTeam === 'alpha' ? 'border-orange-500 bg-orange-500/10 text-orange-500 hover:bg-orange-500/20' : 'hover:bg-muted'}`}
+                                                        >
+                                                            <span className="text-2xl">🦁</span>
+                                                            <span className="font-bold">{alphaTeamName}</span>
+                                                        </Button>
+                                                        <Button
+                                                            onClick={() => setWinnerTeam('bravo')}
+                                                            variant={winnerTeam === 'bravo' ? 'default' : 'outline'}
+                                                            className={`h-24 flex flex-col items-center justify-center gap-2 border-2 ${winnerTeam === 'bravo' ? 'border-blue-500 bg-blue-500/10 text-blue-500 hover:bg-blue-500/20' : 'hover:bg-muted'}`}
+                                                        >
+                                                            <span className="text-2xl">🦈</span>
+                                                            <span className="font-bold">{bravoTeamName}</span>
+                                                        </Button>
+                                                    </div>
 
-                                            <div className="space-y-2">
-                                                <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">Proof of Victory (Screenshot)</label>
-                                                <div className="flex gap-2">
-                                                    <Input
-                                                        type="file"
-                                                        accept="image/*"
-                                                        onChange={e => setSelectedFile(e.target.files?.[0] || null)}
-                                                        className="hidden"
-                                                        id="screenshot-upload"
-                                                    />
-                                                    <label
-                                                        htmlFor="screenshot-upload"
-                                                        className="flex-1 flex items-center justify-center border-2 border-dashed border-muted-foreground/30 rounded-md p-4 cursor-pointer hover:bg-muted/50 hover:border-primary/50 transition-all"
+                                                    <div className="space-y-2">
+                                                        <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">Proof of Victory (Screenshot)</label>
+                                                        <div className="flex gap-2">
+                                                            <Input
+                                                                type="file"
+                                                                accept="image/*"
+                                                                onChange={e => setSelectedFile(e.target.files?.[0] || null)}
+                                                                className="hidden"
+                                                                id="screenshot-upload"
+                                                            />
+                                                            <label
+                                                                htmlFor="screenshot-upload"
+                                                                className="flex-1 flex items-center justify-center border-2 border-dashed border-muted-foreground/30 rounded-md p-4 cursor-pointer hover:bg-muted/50 hover:border-primary/50 transition-all"
+                                                            >
+                                                                {selectedFile ? (
+                                                                    <span className="text-green-500 flex items-center gap-2 font-medium"><Check className="h-5 w-5" /> {selectedFile.name}</span>
+                                                                ) : (
+                                                                    <span className="text-muted-foreground flex items-center gap-2"><Upload className="h-5 w-5" /> Click to upload screenshot</span>
+                                                                )}
+                                                            </label>
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="flex justify-end gap-2 pt-2">
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            className="text-muted-foreground hover:text-destructive text-xs"
+                                                            onClick={handleCancelMatch}
+                                                        >
+                                                            Cancel Match (Trolled)
+                                                        </Button>
+                                                        <Button onClick={handleSubmitResult} disabled={submittingResult} className="font-bold">
+                                                            {submittingResult && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                                            Submit Result
+                                                        </Button>
+                                                    </div>
+                                                </div>
+                                            </>
+                                        ) : (
+                                            <div className="flex flex-col items-center justify-center py-6 gap-4">
+                                                <div className="bg-primary/10 p-4 rounded-full">
+                                                    <Gamepad2 className="h-8 w-8 text-primary" />
+                                                </div>
+                                                <div className="text-center">
+                                                    <h3 className="text-lg font-bold">Casual Match in Progress</h3>
+                                                    <p className="text-muted-foreground text-sm max-w-xs">Casual matches do not requiring result submission or moderator review.</p>
+                                                </div>
+                                                <div className="flex gap-3">
+                                                    <Button
+                                                        variant="outline"
+                                                        onClick={handleCancelMatch}
+                                                        className="border-destructive/50 text-destructive hover:bg-destructive hover:text-white"
                                                     >
-                                                        {selectedFile ? (
-                                                            <span className="text-green-500 flex items-center gap-2 font-medium"><Check className="h-5 w-5" /> {selectedFile.name}</span>
-                                                        ) : (
-                                                            <span className="text-muted-foreground flex items-center gap-2"><Upload className="h-5 w-5" /> Click to upload screenshot</span>
-                                                        )}
-                                                    </label>
+                                                        <X className="mr-2 h-4 w-4" /> Cancel
+                                                    </Button>
+                                                    <Button onClick={handleFinishMatch} className="bg-green-600 hover:bg-green-700 font-bold px-8">
+                                                        <Check className="mr-2 h-4 w-4" /> FINISH MATCH
+                                                    </Button>
                                                 </div>
                                             </div>
-
-                                            <div className="flex justify-end gap-2 pt-2">
-                                                <Button
-                                                    variant="ghost"
-                                                    size="sm"
-                                                    className="text-muted-foreground hover:text-destructive text-xs"
-                                                    onClick={handleCancelMatch}
-                                                >
-                                                    Cancel Match (Trolled)
-                                                </Button>
-                                                <Button onClick={handleSubmitResult} disabled={submittingResult} className="font-bold">
-                                                    {submittingResult && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                                                    Submit Result
-                                                </Button>
-                                            </div>
-                                        </div>
+                                        )}
                                     </div>
                                 </div>
                             )}
