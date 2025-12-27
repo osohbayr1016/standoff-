@@ -27,6 +27,7 @@ interface MatchHistoryItem {
 interface RecentMatchesProps {
   userId?: string | null;
   backendUrl: string;
+  onNavigate?: (page: string) => void;
 }
 
 const MAP_IMAGES: Record<string, string> = {
@@ -41,7 +42,7 @@ const MAP_IMAGES: Record<string, string> = {
   'Provence': '/maps/breeze.png',
 };
 
-export default function RecentMatches({ userId, backendUrl }: RecentMatchesProps) {
+export default function RecentMatches({ userId, backendUrl, onNavigate }: RecentMatchesProps) {
   const [matches, setMatches] = useState<MatchHistoryItem[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -55,13 +56,13 @@ export default function RecentMatches({ userId, backendUrl }: RecentMatchesProps
 
   const fetchMatches = async () => {
     if (!userId) return;
-    
+
     setLoading(true);
     try {
       const res = await fetch(
         `${backendUrl}/api/profile/${userId}/matches`
       );
-      
+
       if (res.ok) {
         const data = await res.json();
         // Get last 5 matches for the home page
@@ -120,14 +121,15 @@ export default function RecentMatches({ userId, backendUrl }: RecentMatchesProps
             <TableBody>
               {matches.map((match) => {
                 const isWinner = match.winner_team === match.player_team;
-                const mapImage = match.map_name && MAP_IMAGES[match.map_name] 
-                  ? MAP_IMAGES[match.map_name] 
+                const mapImage = match.map_name && MAP_IMAGES[match.map_name]
+                  ? MAP_IMAGES[match.map_name]
                   : '/maps/sandstone.png';
 
                 return (
                   <TableRow
                     key={match.match_id || Math.random().toString()}
-                    className="border-white/5 hover:bg-white/5 transition-colors"
+                    className={`border-white/5 hover:bg-white/5 transition-colors ${onNavigate ? 'cursor-pointer' : ''}`}
+                    onClick={() => onNavigate && onNavigate('matchmaking')}
                   >
                     {/* Map Image Column */}
                     <TableCell className="p-2">
@@ -147,8 +149,8 @@ export default function RecentMatches({ userId, backendUrl }: RecentMatchesProps
 
                     {/* Result Badge */}
                     <TableCell className="text-center">
-                      <Badge 
-                        variant={isWinner ? "default" : "destructive"} 
+                      <Badge
+                        variant={isWinner ? "default" : "destructive"}
                         className={`
                           ${isWinner
                             ? "bg-green-500/10 text-green-500 border-green-500/20 hover:bg-green-500/20"

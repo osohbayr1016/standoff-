@@ -518,10 +518,12 @@ function AppContent() {
           <>
             <Hero
               backendUrl={import.meta.env.VITE_BACKEND_URL || "http://localhost:8787"}
+              onNavigate={handleNavigate}
+              onViewProfile={handleViewProfile}
             />
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-8">
               <Leaderboard />
-              <RecentMatches userId={user?.id} backendUrl={import.meta.env.VITE_BACKEND_URL || "http://localhost:8787"} />
+              <RecentMatches userId={user?.id} backendUrl={import.meta.env.VITE_BACKEND_URL || "http://localhost:8787"} onNavigate={handleNavigate} />
               <DailyRewards />
             </div>
           </>

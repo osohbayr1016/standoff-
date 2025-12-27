@@ -232,10 +232,10 @@ export default function Header({
                 <span className="sr-only">Toggle menu</span>
               </Button>
             </SheetTrigger>
-            <SheetContent side="left" className="w-[300px] sm:w-[400px]">
+            <SheetContent side="left" className="w-[85vw] sm:w-[400px]">
               <SheetHeader>
-                <SheetTitle className="text-left font-display font-bold text-2xl">
-                  <span>STAN</span><span className="text-primary">D</span><span>OFF 2</span>
+                <SheetTitle className="text-left font-display font-bold text-2xl flex items-center gap-1">
+                  <span>STAND</span><span className="text-primary">OFF 2</span>
                 </SheetTitle>
               </SheetHeader>
               <div className="flex flex-col gap-4 py-4 mt-4">

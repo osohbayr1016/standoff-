@@ -63,7 +63,7 @@ interface Lobby {
 }
 
 interface Env {
-  // MATCH_QUEUE: DurableObjectNamespace;
+  MATCH_QUEUE: DurableObjectNamespace;
   DB: D1Database;
   DISCORD_CLIENT_ID: string;
   DISCORD_CLIENT_SECRET: string;
@@ -76,6 +76,7 @@ interface Env {
   DISCORD_BOT_TOKEN?: string;
   NEATQUEUE_WEBHOOK_SECRET?: string;
   ADMIN_SECRET?: string;
+  TURNSTILE_SECRET_KEY?: string;
 }
 
 interface WebhookData {
@@ -89,6 +90,8 @@ export class MatchQueueDO {
   userSockets: Map<string, WebSocket> = new Map();
   localQueue: Map<string, QueuePlayer> = new Map();
   remoteQueue: QueuePlayer[] = [];
+  activeLobbies: Map<string, Lobby> = new Map();
+  playerLobbyMap: Map<string, string> = new Map(); // UserId -> LobbyId
 
   constructor(public state: DurableObjectState, public env: Env) { }
 
@@ -261,10 +264,6 @@ export class MatchQueueDO {
       console.error('Error broadcasting leaderboard update:', error);
     }
   }
-
-  // Multi-Match Architecture State
-  activeLobbies: Map<string, Lobby> = new Map();
-  playerLobbyMap: Map<string, string> = new Map(); // UserId -> LobbyId
 
   // Legacy/Global state (Removed/Deprecated)
   // matchState: 'IDLE' | 'LOBBY' | 'GAME' = 'IDLE'; 
@@ -1576,40 +1575,38 @@ app.get('/api/player-stats/:playerId', async (c) => {
 // });
 
 app.get('/ws', async (c) => {
-  // app.get('/api/queue/stream', async (c) => {
-  //   if (c.req.header('Upgrade') !== 'websocket') {
-  //     return c.text('Expected Upgrade: websocket', 426);
-  //   }
-  //   const id = c.env.MATCH_QUEUE.idFromName('global-matchmaking-v2');
-  //   const obj = c.env.MATCH_QUEUE.get(id);
-  //   return obj.fetch(c.req.raw);
-  // });
+  if (c.req.header('Upgrade') !== 'websocket') {
+    return c.text('Expected Upgrade: websocket', 426);
+  }
+  const id = c.env.MATCH_QUEUE.idFromName('global-matchmaking-v2');
+  const obj = c.env.MATCH_QUEUE.get(id);
+  return obj.fetch(c.req.raw);
 });
 
 // API endpoint for Discord bot to send server info
-// app.post('/api/match/server-info', async (c) => {
-//   try {
-//     const id = c.env.MATCH_QUEUE.idFromName('global-matchmaking-v2');
-//     const obj = c.env.MATCH_QUEUE.get(id);
+app.post('/api/match/server-info', async (c) => {
+  try {
+    const id = c.env.MATCH_QUEUE.idFromName('global-matchmaking-v2');
+    const obj = c.env.MATCH_QUEUE.get(id);
 
-//     // Create a new request to the Durable Object's server-info endpoint
-//     const doUrl = new URL(c.req.raw.url);
-//     doUrl.pathname = '/server-info';
-//     const doRequest = new Request(doUrl.toString(), {
-//       method: 'POST',
-//       headers: c.req.raw.headers,
-//       body: c.req.raw.body
-//     });
+    // Create a new request to the Durable Object's server-info endpoint
+    const doUrl = new URL(c.req.raw.url);
+    doUrl.pathname = '/server-info';
+    const doRequest = new Request(doUrl.toString(), {
+      method: 'POST',
+      headers: c.req.raw.headers,
+      body: c.req.raw.body
+    });
 
-//     return obj.fetch(doRequest);
-//   } catch (error: any) {
-//     console.error('Error forwarding server info to Durable Object:', error);
-//     return c.json({
-//       success: false,
-//       error: error.message || 'Internal server error'
-//     }, 500);
-//   }
-// });
+    return obj.fetch(doRequest);
+  } catch (error: any) {
+    console.error('Error forwarding server info to Durable Object:', error);
+    return c.json({
+      success: false,
+      error: error.message || 'Internal server error'
+    }, 500);
+  }
+});
 
 // Debug Discord Roles
 app.get('/api/admin/debug-discord/:userId', async (c) => {

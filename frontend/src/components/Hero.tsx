@@ -20,14 +20,21 @@ interface PlatformStats {
   active_players: number;
   popular_map: string;
   avg_duration_minutes: number;
+  ongoing_matches_by_rank?: {
+    bronze: number;
+    silver: number;
+    gold: number;
+  };
 }
 
 interface HeroProps {
   userId?: string;
   backendUrl: string;
+  onNavigate: (page: string) => void;
+  onViewProfile: (userId: string) => void;
 }
 
-export default function Hero({ backendUrl }: HeroProps) {
+export default function Hero({ backendUrl, onNavigate, onViewProfile }: HeroProps) {
   const [leaderboard, setLeaderboard] = useState<LeaderboardPlayer[]>([]);
   const [stats, setStats] = useState<PlatformStats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -71,10 +78,9 @@ export default function Hero({ backendUrl }: HeroProps) {
     <section className="container px-4 py-8 md:py-12 space-y-8 animate-fade-in">
       {/* Hero Title Area */}
       <div className="text-center space-y-2">
-        <h1 className="flex items-center justify-center gap-1 text-4xl md:text-6xl font-display font-bold tracking-tighter">
-          <span className="text-foreground">STAN</span>
-          <span className="text-primary">D</span>
-          <span className="text-foreground">OFF 2</span>
+        <h1 className="flex flex-wrap items-center justify-center gap-1 text-4xl md:text-6xl font-display font-bold tracking-tighter">
+          <span className="text-foreground">STAND</span>
+          <span className="text-primary">OFF 2</span>
         </h1>
         <p className="text-muted-foreground max-w-[600px] mx-auto text-sm md:text-base">
           Join active lobbies or create your own custom match. Competitive 5v5 gameplay.
@@ -86,9 +92,13 @@ export default function Hero({ backendUrl }: HeroProps) {
         {/* Leaderboard - Takes 2 columns on desktop */}
         <Card className="lg:col-span-2 border-border bg-card/50 backdrop-blur">
           <CardHeader className="border-b border-border/50">
-            <CardTitle className="flex items-center gap-2 text-xl font-bold">
+            <CardTitle
+              className="flex items-center gap-2 text-xl font-bold cursor-pointer hover:text-primary transition-colors"
+              onClick={() => onNavigate('leaderboard')}
+            >
               <Trophy className="h-5 w-5 text-primary" />
               Top Players
+              <span className="text-xs text-muted-foreground font-normal ml-auto">View All</span>
             </CardTitle>
           </CardHeader>
           <CardContent className="p-0">
@@ -101,7 +111,8 @@ export default function Hero({ backendUrl }: HeroProps) {
                 {leaderboard.map((player) => (
                   <div
                     key={player.discord_id}
-                    className="flex items-center gap-4 p-4 hover:bg-muted/30 transition-colors"
+                    className="flex items-center gap-4 p-4 hover:bg-muted/30 transition-colors cursor-pointer"
+                    onClick={() => onViewProfile(player.discord_id)}
                   >
                     {/* Rank */}
                     <div className="text-2xl font-bold w-12 text-center">
@@ -120,7 +131,7 @@ export default function Hero({ backendUrl }: HeroProps) {
                     <div className="flex-1 min-w-0">
                       <div className="font-semibold text-foreground truncate">{player.username}</div>
                       <div className="text-xs text-muted-foreground">
-                        {player.wins}W - {player.losses}L ({player.win_rate}% WR)
+                        {player.wins}W - {player.losses}L ({Math.round((player.wins / (player.wins + player.losses || 1)) * 100)}% WR)
                       </div>
                     </div>
 
@@ -151,7 +162,10 @@ export default function Hero({ backendUrl }: HeroProps) {
               ) : (
                 <>
                   {/* Matches Today */}
-                  <div className="flex items-center justify-between p-3 rounded-lg bg-muted/30">
+                  <div
+                    className="flex items-center justify-between p-3 rounded-lg bg-muted/30 hover:bg-muted/50 transition-colors cursor-pointer"
+                    onClick={() => onNavigate('matchmaking')}
+                  >
                     <div className="flex items-center gap-3">
                       <div className="h-10 w-10 rounded-full bg-primary/20 flex items-center justify-center">
                         <Gamepad2 className="h-5 w-5 text-primary" />
@@ -165,7 +179,10 @@ export default function Hero({ backendUrl }: HeroProps) {
                   </div>
 
                   {/* Matches This Week */}
-                  <div className="flex items-center justify-between p-3 rounded-lg bg-muted/30">
+                  <div
+                    className="flex items-center justify-between p-3 rounded-lg bg-muted/30 hover:bg-muted/50 transition-colors cursor-pointer"
+                    onClick={() => onNavigate('matchmaking')}
+                  >
                     <div className="flex items-center gap-3">
                       <div className="h-10 w-10 rounded-full bg-blue-500/20 flex items-center justify-center">
                         <Gamepad2 className="h-5 w-5 text-blue-500" />
@@ -179,7 +196,10 @@ export default function Hero({ backendUrl }: HeroProps) {
                   </div>
 
                   {/* Active Players */}
-                  <div className="flex items-center justify-between p-3 rounded-lg bg-muted/30">
+                  <div
+                    className="flex items-center justify-between p-3 rounded-lg bg-muted/30 hover:bg-muted/50 transition-colors cursor-pointer"
+                    onClick={() => onNavigate('matchmaking')}
+                  >
                     <div className="flex items-center gap-3">
                       <div className="h-10 w-10 rounded-full bg-green-500/20 flex items-center justify-center">
                         <Users className="h-5 w-5 text-green-500" />
@@ -192,8 +212,33 @@ export default function Hero({ backendUrl }: HeroProps) {
                     <div className="text-2xl font-bold text-green-500">{stats.active_players}</div>
                   </div>
 
+                  {/* Rank Stats: Bronze, Silver, Gold */}
+                  <div className="pt-2 pb-2">
+                    <div className="text-xs text-muted-foreground mb-2 font-semibold uppercase tracking-wider">Ongoing Matches</div>
+                    <div className="grid grid-cols-3 gap-2">
+                      {/* Bronze */}
+                      <div className="bg-muted/30 rounded-lg p-2 flex flex-col items-center justify-center cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => onNavigate('matchmaking')}>
+                        <img src="/ranks/stats/bronze_stat.png" alt="Bronze" className="w-8 h-8 object-contain mb-1" />
+                        <div className="text-lg font-bold text-[#cd7f32]">{stats.ongoing_matches_by_rank?.bronze || 0}</div>
+                      </div>
+                      {/* Silver */}
+                      <div className="bg-muted/30 rounded-lg p-2 flex flex-col items-center justify-center cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => onNavigate('matchmaking')}>
+                        <img src="/ranks/stats/silver_stat.png" alt="Silver" className="w-8 h-8 object-contain mb-1" />
+                        <div className="text-lg font-bold text-gray-300">{stats.ongoing_matches_by_rank?.silver || 0}</div>
+                      </div>
+                      {/* Gold */}
+                      <div className="bg-muted/30 rounded-lg p-2 flex flex-col items-center justify-center cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => onNavigate('matchmaking')}>
+                        <img src="/ranks/stats/gold_stat.png" alt="Gold" className="w-8 h-8 object-contain mb-1" />
+                        <div className="text-lg font-bold text-yellow-400">{stats.ongoing_matches_by_rank?.gold || 0}</div>
+                      </div>
+                    </div>
+                  </div>
+
                   {/* Popular Map */}
-                  <div className="flex items-center justify-between p-3 rounded-lg bg-muted/30">
+                  <div
+                    className="flex items-center justify-between p-3 rounded-lg bg-muted/30 hover:bg-muted/50 transition-colors cursor-pointer"
+                    onClick={() => onNavigate('matchmaking')}
+                  >
                     <div className="flex items-center gap-3">
                       <div className="h-10 w-10 rounded-full bg-purple-500/20 flex items-center justify-center">
                         <MapPin className="h-5 w-5 text-purple-500" />

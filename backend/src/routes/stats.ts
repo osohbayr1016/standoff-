@@ -49,6 +49,43 @@ export function setupStatsRoutes(app: Hono<any>) {
                 AND created_at >= DATE('now', '-7 days')
             `).first();
 
+            // Get Ongoing Matches by Rank (Bronze, Silver, Gold)
+            // Using a simplified logic: 
+            // Bronze: Avg ELO < 1000
+            // Silver: Avg ELO 1000 - 1499
+            // Gold: Avg ELO >= 1500
+            // We need to join with players to get ELOs, or assume based on some other metric.
+            // Since calculating live avg elo is complex in SQL without stored avg, we will fetch active matches and their players' avg ELO.
+            // OR simpler: Just count total active matches and distribute them randomly for demo if data is sparse, 
+            // BUT let's try to be real. We will fetch active matches and calculate in JS for flexibility.
+
+            const activeMatches = await db.prepare(`
+                SELECT m.id, AVG(p.elo) as avg_elo
+                FROM matches m
+                JOIN match_players mp ON m.id = mp.match_id
+                JOIN players p ON mp.player_id = p.id
+                WHERE m.status IN ('in_progress', 'ready')
+                GROUP BY m.id
+            `).all();
+
+            const ongoingByRank = {
+                bronze: 0,
+                silver: 0,
+                gold: 0
+            };
+
+            if (activeMatches.results) {
+                activeMatches.results.forEach((m: any) => {
+                    const elo = m.avg_elo || 1000;
+                    // Bronze: Level 1-3 (Max 900)
+                    if (elo <= 900) ongoingByRank.bronze++;
+                    // Silver: Level 4-7 (Max 1530)
+                    else if (elo <= 1530) ongoingByRank.silver++;
+                    // Gold: Level 8-10 (1531+)
+                    else ongoingByRank.gold++;
+                });
+            }
+
             return c.json({
                 success: true,
                 stats: {
@@ -56,7 +93,8 @@ export function setupStatsRoutes(app: Hono<any>) {
                     matches_week: matchesWeek?.count || 0,
                     active_players: activePlayers?.count || 0,
                     popular_map: popularMap?.map_name || 'N/A',
-                    avg_duration_minutes: Math.round(avgDuration?.avg_minutes || 0)
+                    avg_duration_minutes: Math.round(avgDuration?.avg_minutes || 0),
+                    ongoing_matches_by_rank: ongoingByRank
                 }
             });
         } catch (error) {

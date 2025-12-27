@@ -285,112 +285,131 @@ export default function ProfilePage({
           <ArrowLeft className="h-5 w-5" />
         </Button>
       </div>
-      
-      {/* Header Profile Card */}
-      <Card className="border-primary/20 bg-card/50 backdrop-blur-sm relative overflow-hidden">
-        {/* Background Gradient */}
-        <div className="absolute inset-0 bg-gradient-to-r from-background via-background/80 to-primary/5 z-0" />
 
-        <CardContent className="p-6 md:p-8 relative z-10">
-          <div className="flex flex-col md:flex-row gap-6 items-center md:items-start">
+      {/* Glass Header Profile Card */}
+      <div className="relative overflow-hidden rounded-2xl shadow-2xl border border-white/10 group">
+        {/* Blurred Avatar Background */}
+        <div
+          className="absolute inset-0 bg-cover bg-center opacity-30 blur-2xl scale-110 transition-transform duration-700 group-hover:scale-105"
+          style={{
+            backgroundImage: !avatarError && profile?.discord_avatar
+              ? `url('https://cdn.discordapp.com/avatars/${profile?.discord_id}/${profile?.discord_avatar}.png')`
+              : undefined
+          }}
+        />
+        <div className="absolute inset-0 bg-gradient-to-t from-[#121418] via-[#121418]/80 to-transparent" />
+        <div className="absolute inset-0 bg-black/40" />
 
-            {/* Avatar Section */}
-            <div className="relative group">
-              <Avatar className="h-32 w-32 border-4 border-background ring-2 ring-primary shadow-xl">
+        <div className="relative z-10 p-8 md:p-12 flex flex-col md:flex-row gap-8 items-center md:items-start">
+
+          {/* Main Avatar with Verified Overlay */}
+          <div className="relative shrink-0">
+            <div className="relative h-40 w-40 md:h-48 md:w-48 rounded-full overflow-hidden shadow-[0_0_40px_rgba(0,0,0,0.5)] border-4 border-white/5 group-hover:border-[#ff5500]/30 transition-colors duration-500">
+              <Avatar className="h-full w-full rounded-full">
                 <AvatarImage
                   src={!avatarError && profile?.discord_avatar
                     ? `https://cdn.discordapp.com/avatars/${profile?.discord_id}/${profile?.discord_avatar}.png`
                     : undefined}
                   onError={() => setAvatarError(true)}
+                  className="object-cover h-full w-full"
                 />
-                <AvatarFallback className="text-4xl bg-secondary text-primary font-bold">
+                <AvatarFallback className="text-6xl bg-[#1a1c20] text-white/20 font-black rounded-full">
                   {profile?.standoff_nickname?.[0]?.toUpperCase() || profile?.discord_username?.[0]?.toUpperCase()}
                 </AvatarFallback>
               </Avatar>
-              <div className="absolute bottom-2 right-2 h-5 w-5 bg-green-500 rounded-full border-2 border-background ring-1 ring-green-500/50 shadow-[0_0_10px_theme(colors.green.500)]"></div>
             </div>
 
-            {/* Info Section */}
-            <div className="flex-1 text-center md:text-left space-y-4">
-              <div className="space-y-1">
-                <div className="flex items-center justify-center md:justify-start gap-2">
-                  <h2 className="text-sm font-bold font-display uppercase tracking-widest text-primary/80">Player Profile</h2>
+            {/* Verified Badge - Now purely an icon overlay */}
+            {profile?.is_discord_member && (
+              <div className="absolute -bottom-3 -right-3 bg-[#5865F2] text-white p-1.5 rounded-full border-4 border-[#121418] shadow-lg">
+                <Check className="w-5 h-5 stroke-[4px]" />
+              </div>
+            )}
+
+            {/* Online Indicator */}
+            <div className="absolute top-4 right-4 h-4 w-4 bg-green-500 rounded-full border-2 border-[#1a1c20] shadow-[0_0_15px_theme(colors.green.500)] animate-pulse"></div>
+          </div>
+
+          {/* Profile Info */}
+          <div className="flex-1 text-center md:text-left space-y-4 pt-2">
+            <div className="space-y-2">
+              {/* Identity Chips */}
+              <div className="flex flex-wrap items-center justify-center md:justify-start gap-3">
+                <div className="bg-white/5 hover:bg-white/10 transition-colors border border-white/5 rounded px-2 py-1 text-[10px] font-bold uppercase tracking-widest text-[#888] flex items-center gap-2">
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#5865F2]" />
+                  ID: {profile?.id.substring(0, 8)}
                 </div>
-
-                {isEditing && isOwnProfile ? (
-                  <div className="flex items-center gap-2 max-w-xs mx-auto md:mx-0">
-                    <Input
-                      value={newNickname}
-                      onChange={(e) => setNewNickname(e.target.value)}
-                      className="h-9 bg-background/50 border-input"
-                      placeholder="Enter Standoff 2 Nickname"
-                    />
-                    <Button size="icon" variant="ghost" className="h-9 w-9 text-green-500 hover:text-green-400 hover:bg-green-500/10" onClick={handleSaveNickname} disabled={saving}>
-                      <Check className="h-4 w-4" />
-                    </Button>
-                    <Button size="icon" variant="ghost" className="h-9 w-9 text-destructive hover:text-destructive/80 hover:bg-destructive/10" onClick={() => setIsEditing(false)}>
-                      <X className="h-4 w-4" />
-                    </Button>
-                  </div>
-                ) : (
-                  <div className="flex items-center justify-center md:justify-start gap-3 group">
-                    <h1 className="text-3xl md:text-5xl font-black font-display tracking-tighter text-white drop-shadow-sm flex items-center gap-3">
-                      {profile?.standoff_nickname || profile?.discord_username || "Unknown Player"}
-                      {profile?.is_vip === 1 && (
-                        <div className="relative group/vip">
-                          <Badge className="bg-gradient-to-r from-yellow-400 via-yellow-200 to-yellow-600 text-black border-none font-black text-[10px] md:text-xs py-0.5 px-2 shadow-[0_0_15px_rgba(250,204,21,0.4)] animate-pulse">
-                            VIP
-                          </Badge>
-                          {profile.vip_until && (
-                            <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 py-1 px-2 bg-black border border-yellow-500/20 rounded text-[10px] text-yellow-500 opacity-0 group-hover/vip:opacity-100 transition-opacity whitespace-nowrap z-50">
-                              Member until {new Date(profile.vip_until).toLocaleDateString()}
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </h1>
-                    {isOwnProfile && (
-                      <Button size="icon" variant="ghost" className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-all text-muted-foreground hover:text-primary hover:bg-primary/10" onClick={() => setIsEditing(true)}>
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                    )}
-                  </div>
-                )}
-
-                <p className="text-muted-foreground flex items-center justify-center md:justify-start gap-1.5 text-sm font-medium flex-wrap">
-                  <span className="w-2 h-2 rounded-full bg-[#5865F2]"></span>
-                  @{profile?.discord_username}
-                  {profile?.is_discord_member && (
-                    <span className="inline-flex items-center gap-0.5 bg-[#5865F2]/20 text-[#5865F2] px-1.5 py-0.5 rounded text-xs font-bold border border-[#5865F2]/30" title="Discord Server Member">
-                      <svg className="w-3 h-3" viewBox="0 0 16 16" fill="currentColor">
-                        <path d="M10.067.87a2.89 2.89 0 0 0-4.134 0l-.622.638-.89-.011a2.89 2.89 0 0 0-2.924 2.924l.01.89-.636.622a2.89 2.89 0 0 0 0 4.134l.637.622-.011.89a2.89 2.89 0 0 0 2.924 2.924l.89-.01.622.636a2.89 2.89 0 0 0 4.134 0l.622-.637.89.011a2.89 2.89 0 0 0 2.924-2.924l-.01-.89.636-.622a2.89 2.89 0 0 0 0-4.134l-.637-.622.011-.89a2.89 2.89 0 0 0-2.924-2.924l-.89.01-.622-.636zm.287 5.984-3 3a.5.5 0 0 1-.708 0l-1.5-1.5a.5.5 0 1 1 .708-.708L7 8.793l2.646-2.647a.5.5 0 0 1 .708.708z" />
-                      </svg>
-                      VERIFIED
-                    </span>
-                  )}
-                  {profile && <LevelBadge elo={profile.elo || 1000} className="ml-1" />}
-                  {profile?.standoff_nickname && (
-                    <span className="text-xs bg-secondary px-1.5 py-0.5 rounded text-white/50">ID: {profile.id.substring(0, 8)}...</span>
-                  )}
-                </p>
-
-                {error && <p className="text-xs text-destructive font-bold animate-pulse">{error}</p>}
-                {successMsg && <p className="text-xs text-green-500 font-bold">{successMsg}</p>}
               </div>
 
-              {/* Actions - Only shown for own profile */}
-              {isOwnProfile && (
-                <div className="flex flex-wrap gap-3 justify-center md:justify-start pt-2">
-                  <Button onClick={onFindMatch} className="shadow-lg shadow-primary/20 hover:shadow-primary/40 transition-all font-bold">
-                    <Swords className="mr-2 h-4 w-4" /> FIND MATCH
+              {isEditing && isOwnProfile ? (
+                <div className="flex items-center gap-2 max-w-sm mx-auto md:mx-0 p-2 bg-black/40 rounded-xl backdrop-blur-md border border-white/10">
+                  <Input
+                    value={newNickname}
+                    onChange={(e) => setNewNickname(e.target.value)}
+                    className="bg-transparent border-0 text-2xl font-black text-white focus-visible:ring-0 placeholder:text-white/20"
+                    placeholder="Enter Standoff 2 Nickname"
+                    autoFocus
+                  />
+                  <Button size="icon" variant="ghost" className="h-10 w-10 text-green-500 hover:bg-green-500/20 rounded-lg" onClick={handleSaveNickname} disabled={saving}>
+                    <Check className="h-6 w-6" />
                   </Button>
-                  <Button variant="outline" className="text-destructive border-destructive/20 hover:bg-destructive/10 hover:text-destructive hover:border-destructive/50" onClick={() => setShowLogoutConfirm(true)}>
-                    <LogOut className="mr-2 h-4 w-4" /> LOG OUT
+                  <Button size="icon" variant="ghost" className="h-10 w-10 text-red-500 hover:bg-red-500/20 rounded-lg" onClick={() => setIsEditing(false)}>
+                    <X className="h-6 w-6" />
                   </Button>
                 </div>
-              )}
-            </div>
+              ) : (
+                <div className="group/name relative inline-block">
+                  <h1 className="text-5xl md:text-7xl font-black font-display tracking-tighter text-white drop-shadow-2xl flex items-center gap-4 flex-wrap">
+                    {profile?.standoff_nickname || profile?.discord_username || "Unknown Player"}
 
+                    {/* VIP Badge After Name */}
+                    {profile?.is_vip === 1 && (
+                      <div className="flex flex-col items-start gap-0.5">
+                        <div className="bg-gradient-to-r from-yellow-500 via-amber-400 to-yellow-600 text-black px-3 py-1 rounded text-xs font-black uppercase tracking-wider shadow-[0_0_20px_rgba(234,179,8,0.4)] flex items-center gap-1.5 animate-pulse transform skew-x-[-10deg]">
+                          <Trophy className="w-3 h-3 fill-black" />
+                          <span className="skew-x-[10deg]">VIP</span>
+                        </div>
+                        {profile.vip_until && (
+                          <span className="text-[10px] text-yellow-500/80 font-bold uppercase tracking-widest ml-1">
+                            Expires: {new Date(profile.vip_until).toLocaleDateString()}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </h1>
+                  {isOwnProfile && (
+                    <button
+                      onClick={() => setIsEditing(true)}
+                      className="absolute -right-8 top-2 opacity-0 group-hover/name:opacity-100 transition-all text-white/20 hover:text-[#ff5500]"
+                    >
+                      <Pencil className="w-6 h-6" />
+                    </button>
+                  )}
+                </div>
+              )}
+
+              <div className="flex items-center justify-center md:justify-start gap-4 text-sm font-medium text-[#888]">
+                <span className="flex items-center gap-1.5 hover:text-[#5865F2] transition-colors cursor-default">
+                  <span className="w-5 h-5 flex items-center justify-center bg-[#5865F2] rounded-full text-white text-[10px] font-black">D</span>
+                  @{profile?.discord_username}
+                </span>
+                {profile?.standoff_nickname && (
+                  <>
+                    <span className="w-1 h-1 rounded-full bg-white/10" />
+                    <span className="hover:text-white transition-colors cursor-default">
+                      Standoff 2 ID
+                    </span>
+                  </>
+                )}
+              </div>
+
+              {error && <p className="text-sm text-red-500 font-bold animate-pulse bg-red-500/10 px-3 py-1 rounded inline-block">{error}</p>}
+              {successMsg && <p className="text-sm text-green-500 font-bold bg-green-500/10 px-3 py-1 rounded inline-block">{successMsg}</p>}
+            </div>
+          </div>
+
+          {/* Actions & Rank */}
+          <div className="flex flex-col gap-6 items-center md:items-end">
             {/* Leaderboard Rank Section */}
             {leaderboardRank !== null && (
               <div className="flex-shrink-0 text-center md:text-right">
@@ -404,16 +423,37 @@ export default function ProfilePage({
                   <div className="text-xs text-muted-foreground font-medium">
                     Top {Math.round((leaderboardRank / 500) * 100)}%
                   </div>
+                  <div className="flex justify-end pt-2">
+                    <LevelBadge elo={profile?.elo || 1000} className="scale-75 origin-right" />
+                  </div>
                 </div>
               </div>
             )}
-          </div>
 
-          <div className="mt-8">
-            <EloProgressBar elo={profile?.elo || 1000} />
+            {/* Fallback for when no leaderboard rank - show Level Badge */}
+            {leaderboardRank === null && (
+              <div className="hidden md:block">
+                <LevelBadge elo={profile?.elo || 1000} />
+              </div>
+            )}
+
+            {isOwnProfile && (
+              <div className="flex gap-3">
+                <Button onClick={onFindMatch} className="h-12 px-6 bg-[#ff5500] hover:bg-[#ff5500]/90 text-white font-black uppercase tracking-wider text-sm shadow-xl shadow-[#ff5500]/20 rounded-xl transition-all hover:scale-105 active:scale-95">
+                  <Swords className="mr-2 h-4 w-4" /> Play
+                </Button>
+                <Button variant="outline" className="h-12 w-12 rounded-xl border-white/10 bg-white/5 hover:bg-red-500/10 hover:border-red-500/50 hover:text-red-500 p-0" onClick={() => setShowLogoutConfirm(true)}>
+                  <LogOut className="h-5 w-5" />
+                </Button>
+              </div>
+            )}
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
+
+      <div className="mt-8">
+        <EloProgressBar elo={profile?.elo || 1000} />
+      </div>
 
       {/* Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

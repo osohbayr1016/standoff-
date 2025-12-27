@@ -1,4 +1,3 @@
-import React from 'react';
 import { ELO_THRESHOLDS, getLevelFromElo } from './LevelBadge';
 import { cn } from "@/lib/utils";
 
@@ -9,209 +8,188 @@ interface EloProgressBarProps {
 
 const EloProgressBar: React.FC<EloProgressBarProps> = ({ elo, className }) => {
     const currentLevel = getLevelFromElo(elo);
-    const currentThreshold = ELO_THRESHOLDS.find(t => t.level === currentLevel) || ELO_THRESHOLDS[0];
     const nextThreshold = ELO_THRESHOLDS.find(t => t.level === currentLevel + 1);
 
     // Calculate ELO needed for next rank
     const eloNeeded = nextThreshold ? Math.max(0, nextThreshold.min - elo) : 0;
 
-    // Calculate progress within current level (0 to 1)
-    let levelProgress = 0;
-    if (nextThreshold) {
-        const range = nextThreshold.min - currentThreshold.min;
-        const progress = elo - currentThreshold.min;
-        levelProgress = Math.max(0, Math.min(1, progress / range));
-    } else {
-        levelProgress = 1; // Max level
-    }
-
-    // Calculate total progress for horizontal bar (from 100 to 2001)
-    const minElo = 100;
-    const maxElo = 2001;
-    const totalProgress = Math.min(100, Math.max(0, ((elo - minElo) / (maxElo - minElo)) * 100));
-
-    // Get color for rank segments
-    const getRankColor = (level: number): string => {
-        if (level <= 3) return '#22c55e'; // Green
-        if (level <= 5) return '#eab308'; // Yellow
-        if (level <= 9) return '#f97316'; // Orange
-        return '#ef4444'; // Red
-    };
-
-    // Calculate position percentage for each threshold (equal spacing)
-    const getPosition = (index: number): number => {
-        // Equal spacing: divide 100% by number of thresholds
-        return (index / (ELO_THRESHOLDS.length - 1)) * 100;
-    };
-
-    // Calculate line and gap dimensions for 10 lines with gaps - All exactly the same size
-    const gapWidth = 0.3; // Small black gap between lines (in %)
-    const totalGapWidth = gapWidth * (ELO_THRESHOLDS.length - 1); // Total width of all gaps (9 gaps = 2.7%)
-    const availableWidth = 100 - totalGapWidth; // Available width for lines (97.3%)
-    const lineWidth = availableWidth / ELO_THRESHOLDS.length; // Width of each line - All 10 lines exactly same size (9.73%)
+    // Calculate overall progress across all levels (0 to 100%)
+    // This is for the continuous bar if we wanted one, but for segmented we just light up segments
+    // However, the user wants a segmented bar.
 
     return (
-        <div className={cn("w-full bg-[#1e1e1e] rounded-xl border border-white/5 p-4 sm:p-6 md:p-8", className)}>
-            {/* Top Section: Rank Circle, ELO, and ELO Needed */}
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 sm:gap-6 mb-6 sm:mb-8 md:mb-12">
-                {/* Left Side: Rank Circle + ELO Number */}
-                <div className="flex items-center gap-4 sm:gap-6 md:gap-8 flex-1 min-w-0">
-                    {/* Large Rank Image */}
-                    <div className="relative flex-shrink-0">
-                        <img
-                            src={`/ranks/${currentLevel}.png`}
-                            alt={`Rank ${currentLevel}`}
-                            className="h-20 w-20 sm:h-24 sm:w-24 md:h-28 md:w-28 lg:h-32 lg:w-32 object-contain"
-                        />
+        <div className={cn("w-full bg-[#1e2024] rounded-xl overflow-hidden shadow-2xl font-sans", className)}>
+            {/* Top Section: Main Stats */}
+            <div className="p-8 md:p-10 flex flex-col md:flex-row items-center justify-between gap-10 relative overflow-hidden">
+                {/* Background ambient glow */}
+                <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-[#ff5500]/5 via-transparent to-transparent pointer-events-none" />
+
+                {/* Left: Skill Level Circular Indicator */}
+                <div className="flex items-center gap-8 relative z-10">
+                    <div className="relative">
+                        {/* Circular Progress Gauge (Static full ring for aesthetic, could be dynamic) */}
+                        <div className="w-32 h-32 md:w-36 md:h-36 rounded-full border-4 border-[#2d2f33] relative flex items-center justify-center bg-[#181a1e]">
+                            <svg className="absolute inset-0 w-full h-full -rotate-90 text-[#ff5500]" viewBox="0 0 100 100">
+                                <circle
+                                    className="text-[#2d2f33]"
+                                    strokeWidth="4"
+                                    stroke="currentColor"
+                                    fill="transparent"
+                                    r="46"
+                                    cx="50"
+                                    cy="50"
+                                />
+                                <circle
+                                    className="text-[#ff5500] drop-shadow-[0_0_10px_rgba(255,85,0,0.5)]"
+                                    strokeWidth="4"
+                                    strokeDasharray={`${(elo / 3000) * 289} 289`}
+                                    strokeLinecap="round"
+                                    stroke="currentColor"
+                                    fill="transparent"
+                                    r="46"
+                                    cx="50"
+                                    cy="50"
+                                />
+                            </svg>
+
+                            {/* Rank Image */}
+                            <img
+                                src={`/ranks/${currentLevel}.png`}
+                                alt={`Level ${currentLevel}`}
+                                className="w-20 h-20 md:w-24 md:h-24 object-contain drop-shadow-2xl z-10"
+                            />
+                        </div>
+
+                        {/* Level Badge Overlay */}
+                        <div className="absolute -bottom-2 -right-2 bg-[#ff5500] text-black w-10 h-10 flex items-center justify-center rounded-sm skew-x-[-10deg] shadow-[0_4px_10px_rgba(0,0,0,0.5)] z-20">
+                            <span className="font-black text-xl skew-x-[10deg]">{currentLevel}</span>
+                        </div>
                     </div>
 
-                    {/* Large ELO Number */}
-                    <div className="min-w-0">
-                        <div className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl xl:text-7xl font-black font-display tracking-tighter text-white">
-                            {elo.toLocaleString()}
-                        </div>
+                    <div className="flex flex-col">
+                        <span className="text-[#9ca3af] font-bold tracking-widest text-xs uppercase mb-1">Skill Level</span>
+                        <span className="text-white font-black text-5xl md:text-6xl italic tracking-tighter">
+                            LEVEL {currentLevel}
+                        </span>
                     </div>
                 </div>
 
-                {/* Right Side: ELO Needed */}
-                {nextThreshold ? (
-                    <div className="text-left sm:text-right flex-shrink-0">
-                        <div className="text-2xl sm:text-3xl md:text-4xl font-bold font-display text-white mb-1">
-                            {eloNeeded}
+                {/* Right: Massive ELO Score */}
+                <div className="text-center md:text-right relative z-10">
+                    <div className="flex flex-col items-center md:items-end">
+                        <div className="flex items-baseline gap-2">
+                            <span className="text-7xl md:text-8xl font-black text-white tracking-tighter drop-shadow-lg">
+                                {elo.toLocaleString()}
+                            </span>
+                            <span className="text-2xl font-black text-[#ff5500] uppercase italic tracking-tighter self-start mt-4">
+                                ELO
+                            </span>
                         </div>
-                        <div className="text-[9px] sm:text-[10px] md:text-xs text-[#888] uppercase tracking-widest font-bold leading-tight">
-                            Elo needed to next skill rank
-                        </div>
+
+                        {nextThreshold ? (
+                            <div className="bg-[#121418] px-4 py-2 rounded flex items-center gap-3 mt-2 border border-white/5">
+                                <span className="text-[#9ca3af] text-[10px] font-bold uppercase tracking-widest">
+                                    Elo needed for next rank
+                                </span>
+                                <span className="text-[#ff5500] font-black text-xl">{eloNeeded}</span>
+                            </div>
+                        ) : (
+                            <div className="bg-[#121418] px-4 py-2 rounded flex items-center gap-3 mt-2 border border-white/5">
+                                <span className="text-[#ff5500] text-[10px] font-bold uppercase tracking-widest">
+                                    Maximum Rank Achieved
+                                </span>
+                            </div>
+                        )}
                     </div>
-                ) : (
-                    <div className="text-left sm:text-right flex-shrink-0">
-                        <div className="text-xl sm:text-2xl md:text-3xl font-black font-display text-[#ef4444]">
-                            MAX RANK
-                        </div>
-                        <div className="text-[9px] sm:text-[10px] md:text-xs text-[#ef4444]/60 uppercase tracking-widest font-bold mt-1">
-                            TOP REGION
-                        </div>
-                    </div>
-                )}
+                </div>
             </div>
 
-            {/* Bottom Section: Rank Progression Bar with Dashed Lines */}
-            <div className="relative w-full overflow-hidden">
-                <div className="relative w-full px-2 sm:px-4" style={{ paddingTop: '20px', paddingBottom: '40px', minHeight: '120px' }}>
-                        {/* Rank Images - Placed Above Dashed Line */}
-                        <div className="relative flex justify-between items-start w-full" style={{ marginBottom: '15px' }}>
-                            {ELO_THRESHOLDS.map((threshold, index) => {
-                                const isCurrent = threshold.level === currentLevel;
-                                const position = getPosition(index);
+            {/* Bottom Section: Segmented Progress Bar & Stats */}
+            <div className="bg-[#181a1e] px-8 py-6 border-t border-white/5">
 
-                                return (
+                {/* Segmented Bar */}
+                <div className="flex gap-1 h-3 w-full mb-12 mt-4">
+                    {ELO_THRESHOLDS.map((threshold) => {
+                        const isReached = elo >= threshold.min;
+                        // Logic for current segment fill
+                        let fillPercentage = 0;
+
+                        if (currentLevel > threshold.level) {
+                            fillPercentage = 100;
+                        } else if (currentLevel === threshold.level) {
+                            if (nextThreshold) {
+                                const range = nextThreshold.min - threshold.min;
+                                const progress = elo - threshold.min;
+                                fillPercentage = (progress / range) * 100;
+                            } else {
+                                fillPercentage = 100;
+                            }
+                        }
+
+                        return (
+                            <div key={threshold.level} className="flex-1 relative group">
+                                {/* Rank Image Above */}
+                                <div className={cn(
+                                    "absolute -top-10 left-1/2 -translate-x-1/2 transition-all duration-300",
+                                    currentLevel === threshold.level ? "scale-125 opacity-100 z-10" : "scale-100 opacity-50 grayscale group-hover:grayscale-0 group-hover:opacity-100"
+                                )}>
+                                    <img
+                                        src={`/ranks/${threshold.level}.png`}
+                                        alt={`Lvl ${threshold.level}`}
+                                        className="w-8 h-8 object-contain drop-shadow-md"
+                                    />
+                                </div>
+
+                                {/* Segment Bar */}
+                                <div className="h-full bg-[#2d2f33] rounded-sm overflow-hidden relative">
+                                    {/* Fill */}
                                     <div
-                                        key={threshold.level}
-                                        className="absolute flex flex-col items-center"
-                                        style={{ 
-                                            left: `${position}%`, 
-                                            transform: 'translateX(-50%)',
-                                            top: '0px'
+                                        className={cn("h-full transition-all duration-500 ease-out",
+                                            isReached ? "bg-[#ff5500]" : "bg-transparent"
+                                        )}
+                                        style={{
+                                            width: currentLevel === threshold.level ? `${fillPercentage}%` : (currentLevel > threshold.level ? '100%' : '0%')
                                         }}
                                     >
-                                        {/* Rank Image - Full Color, No Filters, No Progress Circle - All Exactly Same Size */}
-                                        <div className="relative mb-2 flex items-center justify-center" style={{ width: '48px', height: '48px', flexShrink: 0 }}>
-                                            <img
-                                                src={`/ranks/${threshold.level}.png`}
-                                                alt={`Rank ${threshold.level}`}
-                                                className="object-contain"
-                                                style={{ 
-                                                    width: '48px', 
-                                                    height: '48px',
-                                                    display: 'block',
-                                                    flexShrink: 0
-                                                }}
-                                            />
-                                        </div>
-
-                                        {/* ELO Threshold Number Below Image */}
-                                        <span 
-                                            className={cn(
-                                                "font-bold font-mono whitespace-nowrap transition-colors",
-                                                "text-[10px] sm:text-xs md:text-sm",
-                                                "mt-1",
-                                                isCurrent 
-                                                    ? "text-white scale-110" 
-                                                    : "text-[#888]"
-                                            )}
-                                        >
-                                            {threshold.min}
-                                        </span>
+                                        {currentLevel === threshold.level && (
+                                            <div className="absolute right-0 top-0 h-full w-2 bg-white/50 blur-[2px]" />
+                                        )}
                                     </div>
-                                );
-                            })}
-                        </div>
+                                </div>
 
-                        {/* 10 Individual Lines with Gaps - Each Line Centered on Rank Image - All Same Size */}
-                        <div className="absolute left-0 right-0" style={{ top: '70px' }}>
-                            <div className="relative w-full h-0.5 sm:h-1">
-                                {ELO_THRESHOLDS.map((threshold, index) => {
-                                    const isPast = threshold.level < currentLevel;
-                                    const isCurrent = threshold.level === currentLevel;
-                                    const rankPosition = getPosition(index);
-                                    const segmentColor = getRankColor(threshold.level);
-                                    
-                                    // Calculate line start position (centered on rank image) - All lines same size
-                                    const lineStart = rankPosition - (lineWidth / 2);
-                                    
-                                    // Calculate filled width for current segment
-                                    let filledWidth = 0;
-                                    if (isPast) {
-                                        filledWidth = lineWidth; // Fully filled
-                                    } else if (isCurrent) {
-                                        const nextThresh = ELO_THRESHOLDS[index + 1];
-                                        if (nextThresh) {
-                                            const progressInSegment = (elo - threshold.min) / (nextThresh.min - threshold.min);
-                                            filledWidth = lineWidth * Math.max(0, Math.min(1, progressInSegment));
-                                        }
-                                    }
-                                    
-                                    return (
-                                        <React.Fragment key={threshold.level}>
-                                            {/* Base solid line (background) - All exactly same size */}
-                                            <div
-                                                className="absolute h-full bg-[#2a2a2a]"
-                                                style={{
-                                                    left: `${lineStart}%`,
-                                                    width: `${lineWidth}%`,
-                                                    minWidth: 0,
-                                                    maxWidth: 'none'
-                                                }}
-                                            />
-                                            {/* Colored progress line */}
-                                            {filledWidth > 0 && (
-                                                <div
-                                                    className="absolute h-full bg-[currentColor] transition-all duration-1000"
-                                                    style={{
-                                                        left: `${lineStart}%`,
-                                                        width: `${filledWidth}%`,
-                                                        color: segmentColor,
-                                                    }}
-                                                />
-                                            )}
-                                            {/* Gap after line (except for last one) */}
-                                            {index < ELO_THRESHOLDS.length - 1 && (
-                                                <div
-                                                    className="absolute h-full bg-[#1e1e1e]"
-                                                    style={{
-                                                        left: `${lineStart + lineWidth}%`,
-                                                        width: `${gapWidth}%`,
-                                                    }}
-                                                />
-                                            )}
-                                        </React.Fragment>
-                                    );
-                                })}
+                                {/* Label below (absolute positioned to be consistent) */}
+                                <div className={cn(
+                                    "absolute top-5 left-1/2 -translate-x-1/2 text-[10px] font-bold transition-colors duration-300",
+                                    currentLevel === threshold.level ? "text-white" : "text-[#555]"
+                                )}>
+                                    {threshold.min}
+                                </div>
+
                             </div>
-                        </div>
+                        );
+                    })}
+                </div>
+
+                {/* Footer Stats */}
+                <div className="flex flex-wrap gap-8 items-center pt-2">
+                    <div className="flex items-center gap-3">
+                        <div className="w-2 h-2 rounded-full bg-[#ff5500] shadow-[0_0_8px_#ff5500]" />
+                        <span className="text-[#9ca3af] text-[10px] font-bold uppercase tracking-widest">Regional Average:</span>
+                        <span className="text-white text-sm font-black italic">1,245 ELO</span>
                     </div>
+
+                    <div className="flex items-center gap-3">
+                        <div className="w-2 h-2 rounded-full bg-[#5b9bd5]" />
+                        <span className="text-[#9ca3af] text-[10px] font-bold uppercase tracking-widest">Total Matches:</span>
+                        <span className="text-white text-sm font-black italic">24,512</span>
+                    </div>
+
+                    <div className="ml-auto opacity-20 hover:opacity-100 transition-opacity">
+                        <span className="text-[9px] font-black text-white uppercase tracking-[0.5em]">PRECISION MATCHMAKING</span>
+                    </div>
+                </div>
             </div>
-        </div>
+        </div >
     );
 };
 

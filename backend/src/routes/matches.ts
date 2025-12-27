@@ -5,6 +5,7 @@ import { matches, matchPlayers, eloHistory, players } from '../db/schema';
 
 interface Env {
     DB: D1Database;
+    TURNSTILE_SECRET_KEY?: string;
 }
 
 const matchesRoutes = new Hono<{ Bindings: Env }>();
@@ -165,6 +166,7 @@ matchesRoutes.post('/', async (c) => {
         if (!body.lobby_url || !body.host_id) {
             return c.json({ success: false, error: 'lobby_url and host_id are required' }, 400);
         }
+
 
         // Check if host exists
         const host = await c.env.DB.prepare(

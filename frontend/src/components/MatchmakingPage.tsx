@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useWebSocket } from './WebSocketContext';
 import LobbyDetailPage from './LobbyDetailPage';
 import { Card, CardHeader, CardContent, CardFooter } from "@/components/ui/card";
@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Gamepad2, Plus, Users, Map as MapIcon, Loader2, Trophy, AlertTriangle, ExternalLink, Check, ShieldAlert } from "lucide-react";
+import { Gamepad2, Plus, Users, Map as MapIcon, Loader2, Trophy, AlertTriangle, ExternalLink, Check, ShieldAlert, Swords } from "lucide-react";
 import {
     Carousel,
     CarouselContent,
@@ -62,10 +62,61 @@ const MatchmakingPage: React.FC<MatchmakingPageProps> = ({ user, backendUrl, onV
         { name: 'Zone 7', image: '/maps/zone7.jpg' }
     ];
     const [creating, setCreating] = useState(false);
+    const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [, setUserMatch] = useState<Match | null>(null);
     const [selectedMatchId, setSelectedMatchId] = useState<string | null>(null);
     const [activeMatchIdError, setActiveMatchIdError] = useState<string | null>(null);
+
+    // Turnstile State
+    const turnstileContainerRef = useRef<HTMLDivElement>(null);
+    const turnstileWidgetId = useRef<string | null>(null);
+
+    // Explicitly render Turnstile when modal opens
+    useEffect(() => {
+        if (showCreateModal) {
+            // Reset state
+            setTurnstileToken(null);
+            setError(null);
+
+            // Give the DOM a moment to render the container
+            const timer = setTimeout(() => {
+                if (turnstileContainerRef.current && (window as any).turnstile) {
+                    // Start fresh
+                    if (turnstileWidgetId.current) {
+                        try {
+                            (window as any).turnstile.remove(turnstileWidgetId.current);
+                        } catch (e) {
+                            console.warn("Failed to remove old widget", e);
+                        }
+                    }
+
+                    try {
+                        const id = (window as any).turnstile.render(turnstileContainerRef.current, {
+                            sitekey: '1x00000000000000000000AA', // Use actual sitekey in prod if different
+                            theme: 'dark',
+                            callback: (token: string) => {
+                                console.log("Turnstile verified:", token.substring(0, 10));
+                                setTurnstileToken(token);
+                            },
+                            'expired-callback': () => {
+                                console.log("Turnstile expired");
+                                setTurnstileToken(null);
+                            },
+                        });
+                        turnstileWidgetId.current = id;
+                    } catch (err) {
+                        console.error("Turnstile render error:", err);
+                    }
+                }
+            }, 100);
+
+            return () => clearTimeout(timer);
+        } else {
+            // Cleanup when modal closes
+            setTurnstileToken(null);
+        }
+    }, [showCreateModal]);
     const [myActiveMatch, setMyActiveMatch] = useState<Match | null>(null);
 
     // Fetch matches
@@ -130,13 +181,24 @@ const MatchmakingPage: React.FC<MatchmakingPageProps> = ({ user, backendUrl, onV
     const handleCreateLobby = async () => {
         if (!user || !lobbyUrl.trim()) return;
 
+        /*
+        if (!turnstileToken) {
+            setError("Please wait for the security check to complete.");
+            return;
+        }
+        */
+
+        console.log("Creating lobby...");
         setCreating(true);
         setError(null);
 
         try {
             const response = await fetch(`${backendUrl}/api/matches`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'cf-turnstile-response': turnstileToken || ''
+                },
                 body: JSON.stringify({
                     lobby_url: lobbyUrl.trim(),
                     host_id: user.id,
@@ -152,6 +214,7 @@ const MatchmakingPage: React.FC<MatchmakingPageProps> = ({ user, backendUrl, onV
                 setLobbyUrl('');
                 setSelectedMap(null);
                 setMatchType('casual');
+                setTurnstileToken(null);
                 fetchMatches();
                 console.log("Lobby Created Successfully!");
             } else {
@@ -265,7 +328,7 @@ const MatchmakingPage: React.FC<MatchmakingPageProps> = ({ user, backendUrl, onV
     if (selectedMatchId) {
         // Get the previous profile userId from localStorage if it exists
         const previousProfileUserId = localStorage.getItem("previousProfileUserId");
-        
+
         return (
             <LobbyDetailPage
                 matchId={selectedMatchId}
@@ -280,6 +343,16 @@ const MatchmakingPage: React.FC<MatchmakingPageProps> = ({ user, backendUrl, onV
             />
         );
     }
+
+    // Expose Turnstile callback to window
+    useEffect(() => {
+        (window as any).onTurnstileVerify = (token: string) => {
+            setTurnstileToken(token);
+        };
+        return () => {
+            delete (window as any).onTurnstileVerify;
+        };
+    }, []);
 
     return (
         <div className="space-y-6 container mx-auto max-w-7xl animate-fade-in pb-12">
@@ -339,7 +412,7 @@ const MatchmakingPage: React.FC<MatchmakingPageProps> = ({ user, backendUrl, onV
                     ))}
                 </div>
             ) : matches.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-20 border-2 border-dashed border-border/50 rounded-xl bg-card/20 text-center">
+                <div className="flex flex-col items-center justify-center py-12 md:py-20 border-2 border-dashed border-border/50 rounded-xl bg-card/20 text-center">
                     <div className="bg-muted/30 p-6 rounded-full mb-4">
                         <Trophy className="h-10 w-10 text-muted-foreground" />
                     </div>
@@ -448,7 +521,7 @@ const MatchmakingPage: React.FC<MatchmakingPageProps> = ({ user, backendUrl, onV
 
             {/* Create Lobby Dialog */}
             <Dialog open={showCreateModal} onOpenChange={setShowCreateModal}>
-                <DialogContent className="sm:max-w-md bg-zinc-900 border-white/10 text-white z-[100]">
+                <DialogContent className="w-[95vw] sm:max-w-md bg-zinc-900 border-white/10 text-white z-[100]">
                     <DialogHeader>
                         <DialogTitle className="text-2xl font-display uppercase tracking-tight text-white">Create New Lobby</DialogTitle>
                         <DialogDescription className="text-gray-400">
@@ -613,17 +686,32 @@ const MatchmakingPage: React.FC<MatchmakingPageProps> = ({ user, backendUrl, onV
                                 </div>
                             </div>
                         )}
+
+                        {/* Cloudflare Turnstile Widget */}
+                        <div className="flex justify-center py-2">
+                            <div className="flex justify-center py-2 min-h-[65px]">
+                                <div ref={turnstileContainerRef} />
+                            </div>
+                        </div>
                     </div>
 
                     <DialogFooter>
                         <Button variant="ghost" onClick={() => setShowCreateModal(false)} className="text-gray-400 hover:text-white">Cancel</Button>
                         <Button
                             onClick={handleCreateLobby}
-                            disabled={creating || !lobbyUrl.trim() || !selectedMap}
-                            className="bg-primary text-white hover:bg-primary/90 font-bold"
+                            disabled={creating || !lobbyUrl.trim() || !turnstileToken}
+                            className="font-bold shadow-lg shadow-primary/20"
                         >
-                            {creating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                            Create Lobby
+                            {creating ? (
+                                <>
+                                    <div className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin mr-2" />
+                                    CREATING...
+                                </>
+                            ) : (
+                                <>
+                                    <Swords className="mr-2 h-4 w-4" /> CREATE LOBBY
+                                </>
+                            )}
                         </Button>
                     </DialogFooter>
                 </DialogContent>
