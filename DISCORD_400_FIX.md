@@ -79,3 +79,5 @@ window.location.href = `https://discord.com/oauth2/authorize?client_id=${clientI
 
 This is correct! The issue is likely browser cache.
 
+
+

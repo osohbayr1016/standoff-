@@ -25,3 +25,5 @@ export default function RankImage({ elo, size = 'medium', className = '' }: Rank
   );
 }
 
+
+

@@ -354,3 +354,5 @@ export default function FriendsPage({ onViewProfile }: FriendsPageProps) {
     </div>
   );
 }
+
+

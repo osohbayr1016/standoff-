@@ -42,3 +42,5 @@ export function getRankImagePathFromElo(elo: number): string {
   return getRankImagePath(rank);
 }
 
+
+
