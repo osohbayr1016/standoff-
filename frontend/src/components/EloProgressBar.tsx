@@ -4,9 +4,11 @@ import { cn } from "@/lib/utils";
 interface EloProgressBarProps {
     elo: number;
     className?: string;
+    averageElo?: number;
+    totalMatches?: number;
 }
 
-const EloProgressBar: React.FC<EloProgressBarProps> = ({ elo, className }) => {
+const EloProgressBar: React.FC<EloProgressBarProps> = ({ elo, className, averageElo = 1245, totalMatches = 0 }) => {
     const currentLevel = getLevelFromElo(elo);
     const nextThreshold = ELO_THRESHOLDS.find(t => t.level === currentLevel + 1);
 
@@ -175,20 +177,20 @@ const EloProgressBar: React.FC<EloProgressBarProps> = ({ elo, className }) => {
                     <div className="flex items-center gap-3">
                         <div className="w-2 h-2 rounded-full bg-[#ff5500] shadow-[0_0_8px_#ff5500]" />
                         <span className="text-[#9ca3af] text-[10px] font-bold uppercase tracking-widest">Regional Average:</span>
-                        <span className="text-white text-sm font-black italic">1,245 ELO</span>
+                        <span className="text-white text-sm font-black italic">{averageElo.toLocaleString()} ELO</span>
                     </div>
 
                     <div className="flex items-center gap-3">
                         <div className="w-2 h-2 rounded-full bg-[#5b9bd5]" />
                         <span className="text-[#9ca3af] text-[10px] font-bold uppercase tracking-widest">Total Matches:</span>
-                        <span className="text-white text-sm font-black italic">24,512</span>
+                        <span className="text-white text-sm font-black italic">{totalMatches.toLocaleString()}</span>
                     </div>
 
                     <div className="ml-auto opacity-20 hover:opacity-100 transition-opacity">
                         <span className="text-[9px] font-black text-white uppercase tracking-[0.5em]">PRECISION MATCHMAKING</span>
                     </div>
                 </div>
-            </div>
+            </div >
         </div >
     );
 };

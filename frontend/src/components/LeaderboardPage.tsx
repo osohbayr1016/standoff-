@@ -6,7 +6,6 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Trophy, Crown, Medal, TrendingUp, Gamepad2 } from "lucide-react";
 import LevelBadge from "./LevelBadge";
-import { VerifiedBadge } from "./VerifiedBadge";
 
 interface LeaderboardEntry {
   rank: number;
@@ -19,6 +18,8 @@ interface LeaderboardEntry {
   wins: number;
   losses: number;
   is_discord_member?: boolean;
+  is_vip?: boolean | number;
+  vip_until?: string;
 }
 
 type FilterType = "elo" | "winrate" | "matches";
@@ -38,6 +39,7 @@ export default function LeaderboardPage({ onViewProfile }: LeaderboardPageProps)
   >([]);
   const [loading, setLoading] = useState(true);
   const [activeFilter, setActiveFilter] = useState<FilterType>("elo");
+  const [stats, setStats] = useState<{ total_vip_players: number; average_elo: number; total_matches: number } | null>(null);
   const { lastMessage, sendMessage, isConnected } = useWebSocket();
 
   // Move applyFilter declaration up before it is used
@@ -84,8 +86,12 @@ export default function LeaderboardPage({ onViewProfile }: LeaderboardPageProps)
       const age = Date.now() - parseInt(cacheTimestamp);
       if (age < CACHE_DURATION) {
         const parsed = JSON.parse(cachedData);
-        setLeaderboard(parsed);
-        applyFilter(parsed, activeFilter);
+        const players = parsed.players || parsed; // Handle both old and new format
+        const statsData = parsed.stats || null;
+
+        setLeaderboard(players);
+        setStats(statsData);
+        applyFilter(players, activeFilter);
         setLoading(false);
       }
     }
@@ -111,12 +117,16 @@ export default function LeaderboardPage({ onViewProfile }: LeaderboardPageProps)
   useEffect(() => {
     if (lastMessage?.type === "LEADERBOARD_UPDATE") {
       console.log("Real-time leaderboard update received");
-      const updatedData = lastMessage.data;
+      const response = lastMessage.data;
+      const updatedData = response.players || response; // Handle both old and new format
+      const updatedStats = response.stats || null;
+
       setLeaderboard(updatedData);
+      setStats(updatedStats);
       applyFilter(updatedData, activeFilter);
 
       // Update cache
-      localStorage.setItem(CACHE_KEY, JSON.stringify(updatedData));
+      localStorage.setItem(CACHE_KEY, JSON.stringify({ players: updatedData, stats: updatedStats }));
       localStorage.setItem(CACHE_TIMESTAMP_KEY, Date.now().toString());
     }
   }, [lastMessage, activeFilter, applyFilter]);
@@ -127,12 +137,16 @@ export default function LeaderboardPage({ onViewProfile }: LeaderboardPageProps)
         `${import.meta.env.VITE_BACKEND_URL || "http://localhost:8787"}/api/leaderboard`
       );
       if (res.ok) {
-        const data = await res.json();
-        setLeaderboard(data);
-        applyFilter(data, activeFilter);
+        const response = await res.json();
+        const players = response.players || response; // Handle both old and new format
+        const statsData = response.stats || null;
+
+        setLeaderboard(players);
+        setStats(statsData);
+        applyFilter(players, activeFilter);
 
         // Cache the data
-        localStorage.setItem(CACHE_KEY, JSON.stringify(data));
+        localStorage.setItem(CACHE_KEY, JSON.stringify({ players, stats: statsData }));
         localStorage.setItem(CACHE_TIMESTAMP_KEY, Date.now().toString());
       }
     } catch (err) {
@@ -157,6 +171,18 @@ export default function LeaderboardPage({ onViewProfile }: LeaderboardPageProps)
           </h1>
           <p className="text-muted-foreground">Top 500 players ranked by specialized matchmaking performance.</p>
         </div>
+        {stats && (
+          <div className="flex gap-4 text-sm">
+            <div className="bg-zinc-900/50 px-4 py-2 rounded-lg border border-white/10">
+              <div className="text-[#9ca3af] text-xs uppercase tracking-wider">VIP Players</div>
+              <div className="text-white font-bold text-lg">{stats.total_vip_players}</div>
+            </div>
+            <div className="bg-zinc-900/50 px-4 py-2 rounded-lg border border-white/10">
+              <div className="text-[#9ca3af] text-xs uppercase tracking-wider">Avg ELO</div>
+              <div className="text-[#ff5500] font-bold text-lg">{stats.average_elo.toLocaleString()}</div>
+            </div>
+          </div>
+        )}
       </div>
 
       <Card className="bg-zinc-950/50 backdrop-blur-sm border-white/10 shadow-lg overflow-hidden">
@@ -164,27 +190,27 @@ export default function LeaderboardPage({ onViewProfile }: LeaderboardPageProps)
           <Tabs defaultValue="elo" onValueChange={(v) => setActiveFilter(v as FilterType)} className="w-full">
             <div className="w-full overflow-x-auto -mx-4 px-4 md:mx-0 md:px-0">
               <TabsList className="bg-zinc-900 border border-white/5 w-full sm:w-auto min-w-fit flex-shrink-0">
-                <TabsTrigger 
-                  value="elo" 
+                <TabsTrigger
+                  value="elo"
                   className="data-[state=active]:bg-primary data-[state=active]:text-white text-[10px] sm:text-xs md:text-sm px-2 sm:px-3 flex-shrink-0 whitespace-nowrap"
                 >
-                  <TrendingUp className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2 flex-shrink-0" /> 
+                  <TrendingUp className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2 flex-shrink-0" />
                   <span className="hidden sm:inline">ELO Rating</span>
                   <span className="sm:hidden">ELO</span>
                 </TabsTrigger>
-                <TabsTrigger 
-                  value="winrate" 
+                <TabsTrigger
+                  value="winrate"
                   className="data-[state=active]:bg-primary data-[state=active]:text-white text-[10px] sm:text-xs md:text-sm px-2 sm:px-3 flex-shrink-0 whitespace-nowrap"
                 >
-                  <Crown className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2 flex-shrink-0" /> 
+                  <Crown className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2 flex-shrink-0" />
                   <span className="hidden sm:inline">Win Rate</span>
                   <span className="sm:hidden">Win</span>
                 </TabsTrigger>
-                <TabsTrigger 
-                  value="matches" 
+                <TabsTrigger
+                  value="matches"
                   className="data-[state=active]:bg-primary data-[state=active]:text-white text-[10px] sm:text-xs md:text-sm px-2 sm:px-3 flex-shrink-0 whitespace-nowrap"
                 >
-                  <Gamepad2 className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2 flex-shrink-0" /> 
+                  <Gamepad2 className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2 flex-shrink-0" />
                   <span className="hidden sm:inline">Matches</span>
                   <span className="sm:hidden">Match</span>
                 </TabsTrigger>
@@ -251,7 +277,13 @@ export default function LeaderboardPage({ onViewProfile }: LeaderboardPageProps)
                           <div className="flex flex-col min-w-0 flex-1">
                             <span className={`font-bold flex items-center gap-1 truncate text-xs md:text-sm ${player.rank === 1 ? 'text-yellow-500' : 'text-white'}`}>
                               <span className="truncate">{player.nickname || player.username}</span>
-                              <VerifiedBadge isVerified={player.is_discord_member} showText={false} className="w-3 h-3 md:w-3.5 md:h-3.5 flex-shrink-0" />
+                              {/* VIP Badge */}
+                              {(player.is_vip === true || player.is_vip === 1) && (
+                                <div className="bg-gradient-to-r from-yellow-500 via-amber-400 to-yellow-600 text-black px-1.5 py-0.5 rounded-[2px] text-[10px] font-black uppercase tracking-wider shadow-[0_0_10px_rgba(234,179,8,0.3)] flex items-center gap-1 transform skew-x-[-10deg] scale-90 origin-left ml-2">
+                                  <Trophy className="w-2.5 h-2.5 fill-black" />
+                                  <span className="skew-x-[10deg]">VIP</span>
+                                </div>
+                              )}
                             </span>
                             {player.nickname && (
                               <span className="text-[10px] md:text-xs text-muted-foreground truncate">@{player.username}</span>
