@@ -19,7 +19,8 @@ export const players = sqliteTable('players', {
     is_discord_member: integer('is_discord_member').default(0),
     is_vip: integer('is_vip').default(0),
     vip_until: text('vip_until'),
-    discord_roles: text('discord_roles', { mode: 'json' }) // Store JSON array of role IDs
+    discord_roles: text('discord_roles', { mode: 'json' }), // Store JSON array of role IDs
+    gold: integer('gold').default(0).notNull() // Premium currency
 }, (table) => ({
     idxPlayersVipElo: index('idx_players_vip_elo').on(table.is_vip, table.elo),
 }));
@@ -144,3 +145,30 @@ export const idxClanMembersClan = index('idx_clan_members_clan').on(clanMembers.
 export const idxClanMembersUser = index('idx_clan_members_user').on(clanMembers.user_id);
 export const idxClanRequestsUser = index('idx_clan_requests_user').on(clanRequests.user_id);
 export const idxClanRequestsStatus = index('idx_clan_requests_status').on(clanRequests.status);
+
+// Gold/Premium Currency Transactions
+export const goldTransactions = sqliteTable('gold_transactions', {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    user_id: text('user_id').notNull().references(() => players.id), // Recipient
+    amount: integer('amount').notNull(), // Positive (add) or Negative (subtract)
+    reason: text('reason').notNull(), // Purchase, Bonus, Refund, etc.
+    created_by: text('created_by').references(() => players.id), // Seller ID (or null for system)
+    created_at: text('created_at').default(sql`CURRENT_TIMESTAMP`),
+}, (table) => ({
+    idxGoldTransSeller: index('idx_gold_trans_seller').on(table.created_by),
+}));
+
+export const goldOrders = sqliteTable('gold_orders', {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    user_id: text('user_id').notNull().references(() => players.id),
+    gold_amount: integer('gold_amount').notNull(),
+    price_mnt: integer('price_mnt').notNull(),
+    status: text('status').default('pending').notNull(), // pending, completed, rejected
+    proof_url: text('proof_url'),
+    created_at: text('created_at').default(sql`CURRENT_TIMESTAMP`),
+    updated_at: text('updated_at').default(sql`CURRENT_TIMESTAMP`),
+    processed_by: text('processed_by').references(() => players.id),
+});
+
+export const idxGoldOrdersUser = index('idx_gold_orders_user').on(goldOrders.user_id);
+export const idxGoldOrdersStatus = index('idx_gold_orders_status').on(goldOrders.status);

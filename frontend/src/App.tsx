@@ -25,6 +25,7 @@ const StreamersPage = lazy(() => import("./components/StreamersPage"));
 const StreamerDashboard = lazy(() => import("./components/StreamerDashboard"));
 const ClanPage = lazy(() => import("@/components/ClanPage"));
 const ClanProfilePage = lazy(() => import("@/components/ClanProfilePage"));
+const GoldPage = lazy(() => import("./components/GoldPage"));
 
 // Placeholder components (to be implemented)
 const DailyRewards = () => <div className="placeholder-card">Daily Rewards - Coming Soon</div>;
@@ -43,6 +44,8 @@ interface User {
   vip_until?: string;
   is_discord_member?: boolean;
   created_at?: string;
+  discord_roles?: string[];
+  gold?: number;
 }
 
 interface PartyMember {
@@ -57,7 +60,7 @@ function AppContent() {
   const [currentPage, setCurrentPage] = useState(() => {
     const savedPage = localStorage.getItem("currentPage");
     const validPages = [
-      "home", "profile", "leaderboard", "friends", "vip", "join_gate", "matchmaking", "streamers", "streamer-dashboard", "clans", "clan-profile"
+      "home", "profile", "leaderboard", "friends", "vip", "join_gate", "matchmaking", "streamers", "streamer-dashboard", "clans", "clan-profile", "gold-dashboard"
     ];
     if (savedPage && validPages.includes(savedPage)) {
       return savedPage;
@@ -315,6 +318,8 @@ function AppContent() {
               vip_until: profile.vip_until,
               is_discord_member: profile.is_discord_member,
               created_at: profile.created_at,
+              discord_roles: profile.discord_roles,
+              gold: profile.gold,
             };
             setUser(updatedUser);
             localStorage.setItem("user", JSON.stringify(updatedUser));
@@ -366,7 +371,7 @@ function AppContent() {
 
   const validPages = [
     "home", "profile", "leaderboard", "rewards", "friends",
-    "matchmaking", "moderator", "admin", "vip", "join_gate", "mapban", "matchgame", "streamers", "streamer-dashboard", "clans", "clan-profile"
+    "matchmaking", "moderator", "admin", "vip", "join_gate", "mapban", "matchgame", "streamers", "streamer-dashboard", "clans", "clan-profile", "gold-dashboard"
   ];
 
   if (!isAuthenticated) return <AuthPage />;
@@ -451,6 +456,7 @@ function AppContent() {
           {currentPage === "vip" && <VIPPage user={user} backendUrl={import.meta.env.VITE_BACKEND_URL || "http://localhost:8787"} />}
           {currentPage === "streamers" && <StreamersPage />}
           {currentPage === "streamer-dashboard" && <StreamerDashboard />}
+          {currentPage === "gold-dashboard" && <GoldPage />}
           {currentPage === "matchmaking" && (
             <MatchmakingPage
               user={user}

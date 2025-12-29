@@ -17,6 +17,7 @@ import { vipRequestsRoutes } from './routes/vip-requests';
 import { streamerRoutes } from './routes/streamers';
 import { clanRoutes } from './routes/clans';
 import { clanRequestsRoutes } from './routes/clan-requests';
+import goldRoutes from './routes/gold';
 import { syncDiscordMembers } from './utils/sync';
 
 
@@ -1637,7 +1638,7 @@ app.get('/api/auth/callback', async (c) => {
       ).run();
 
       const { results } = await c.env.DB.prepare(
-        `SELECT role, elo, is_vip, vip_until FROM players WHERE id = ?`
+        `SELECT role, elo, is_vip, vip_until, discord_roles, gold FROM players WHERE id = ?`
       ).bind(userData.id).all();
 
       if (results && results.length > 0) {
@@ -1655,9 +1656,11 @@ app.get('/api/auth/callback', async (c) => {
     const createdAt = player?.created_at || '';
     const isVip = player?.is_vip || 0;
     const vipUntil = player?.vip_until || '';
+    const discordRoles = player?.discord_roles || '[]';
+    const gold = player?.gold || 0;
 
     return c.redirect(
-      `${frontendUrl}?id=${userData.id}&username=${userData.username}&avatar=${userData.avatar || ''}&role=${role}&elo=${elo}&is_vip=${isVip}&vip_until=${vipUntil}&is_discord_member=${isMember === 1}&created_at=${createdAt}`
+      `${frontendUrl}?id=${userData.id}&username=${userData.username}&avatar=${userData.avatar || ''}&role=${role}&elo=${elo}&is_vip=${isVip}&vip_until=${vipUntil}&is_discord_member=${isMember === 1}&created_at=${createdAt}&discord_roles=${encodeURIComponent(String(discordRoles))}&gold=${gold}`
     );
   } catch (error) {
     console.error('Auth error:', error);
@@ -1843,6 +1846,7 @@ app.route('/api', uploadRoutes); // R2 permissions missing, temporarily disabled
 app.route('/api/streamers', streamerRoutes);
 app.route('/api/clans', clanRoutes);
 app.route('/api/clan-requests', clanRequestsRoutes);
+app.route('/api/gold', goldRoutes);
 
 const handler = {
   async fetch(request: Request, env: Env, ctx: ExecutionContext) {

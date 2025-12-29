@@ -33,7 +33,9 @@ export function setupProfileRoutes(app: Hono<any>) {
                 is_vip: user.is_vip === 1,
                 vip_until: user.vip_until,
                 is_discord_member: user.is_discord_member === 1,
-                created_at: user.created_at
+                created_at: user.created_at,
+                discord_roles: user.discord_roles ? JSON.parse(user.discord_roles as string) : [],
+                gold: user.gold || 0
             });
         } catch (error) {
             console.error('❌ Profile fetch error:', error);

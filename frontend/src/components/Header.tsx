@@ -17,7 +17,8 @@ import {
   Crown,
   Cast,
   Video,
-  Flag
+  Flag,
+  Coins
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -38,6 +39,8 @@ interface User {
   role?: string;
   is_vip?: number | boolean;
   vip_until?: string;
+  discord_roles?: string[];
+  gold?: number;
 }
 
 interface HeaderProps {
@@ -179,6 +182,19 @@ export default function Header({
         >
           <ShieldAlert className="mr-2 h-4 w-4" />
           ADMIN PANEL
+        </Button>
+      )}
+      {(user?.role === 'admin' || (user?.discord_roles && user.discord_roles.includes('1455115991049703579'))) && (
+        <Button
+          variant={currentPage === "gold-dashboard" ? "secondary" : "ghost"}
+          className={`justify-start text-yellow-500 hover:bg-yellow-500/10 ${mobile ? "w-full" : ""}`}
+          onClick={() => {
+            onNavigate("gold-dashboard");
+            if (mobile) setIsOpen(false);
+          }}
+        >
+          <Coins className="mr-2 h-4 w-4" />
+          GOLD PANEL
         </Button>
       )}
     </>
