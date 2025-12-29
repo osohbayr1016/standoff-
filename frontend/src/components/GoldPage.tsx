@@ -188,9 +188,13 @@ export default function GoldPage() {
                                             Маркет Gold-р авхын тулд зураг дээрх <span className="text-yellow-500 font-bold">"Mad Move"</span> нэртэй graffiti авсан байх ёстой.
                                         </p>
                                         <div className="mt-2 rounded-lg overflow-hidden border border-white/10">
-                                            {/* Placeholder for Graffiti Image */}
-                                            <div className="bg-zinc-800 h-40 flex items-center justify-center text-gray-500 italic">
-                                                [Graffiti "Mad Move" Image Here]
+                                            {/* Mad Move Graffiti Image */}
+                                            <div className="bg-zinc-800 flex items-center justify-center overflow-hidden">
+                                                <img
+                                                    src="https://daisuke.mn/uploads/image/2025/12/1766824724_1d808623c008830dee71.jpg"
+                                                    alt="Mad Move Graffiti"
+                                                    className="w-full h-auto object-cover max-h-60 opacity-90 hover:opacity-100 transition-opacity"
+                                                />
                                             </div>
                                         </div>
                                     </div>
@@ -203,7 +207,11 @@ export default function GoldPage() {
                                         <p className="text-sm">
                                             Хэрвээ авч мэдэхгүй байвал доорхи видео заавар товч дээр дарж бичлэг үзээрэй.
                                         </p>
-                                        <Button variant="outline" className="w-full border-yellow-500/50 text-yellow-500 hover:bg-yellow-500/10">
+                                        <Button
+                                            variant="outline"
+                                            className="w-full border-yellow-500/50 text-yellow-500 hover:bg-yellow-500/10"
+                                            onClick={() => window.open('https://www.youtube.com/watch?v=7VFt3QQNzxw', '_blank')}
+                                        >
                                             <PlayCircle className="w-4 h-4 mr-2" /> Видео Заавар (Video)
                                         </Button>
                                     </div>
@@ -211,6 +219,25 @@ export default function GoldPage() {
                                     <div className="bg-yellow-500/10 border border-yellow-500/20 p-4 rounded-lg text-yellow-200">
                                         <h4 className="font-bold mb-1">Delivery Time</h4>
                                         <p className="text-sm">Gold орох хугацаа 5-20мин.</p>
+                                    </div>
+
+                                    <div className="pt-2 text-sm text-gray-400 space-y-1">
+                                        <p className="font-semibold">Холбоо барих (Contact):</p>
+                                        <div className="flex items-center justify-between bg-zinc-950/50 p-2 rounded border border-white/5">
+                                            <span>Утас (Phone):</span>
+                                            <span className="text-white font-mono">95500327</span>
+                                        </div>
+                                        <div className="flex items-center justify-between bg-zinc-950/50 p-2 rounded border border-white/5">
+                                            <span>И-мэйл (Email):</span>
+                                            <span className="text-white font-mono">daisukeemn@gmail.com</span>
+                                        </div>
+                                        <div
+                                            className="flex items-center justify-between bg-zinc-950/50 p-2 rounded border border-white/5 cursor-pointer hover:border-blue-500/50 hover:bg-blue-500/10 transition-all"
+                                            onClick={() => window.open('https://www.facebook.com/people/Daisukemn/61585481892424/', '_blank')}
+                                        >
+                                            <span>Facebook:</span>
+                                            <span className="text-blue-400 font-bold underline decoration-blue-400/30">Daisuke.mn Page</span>
+                                        </div>
                                     </div>
                                 </CardContent>
                             </Card>
