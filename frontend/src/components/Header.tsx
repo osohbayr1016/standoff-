@@ -269,6 +269,10 @@ export default function Header({
                   <Video className="mr-2 h-4 w-4" />
                   <span>Streamer Dashboard</span>
                 </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => onNavigate("gold-dashboard")}>
+                  <Coins className="mr-2 h-4 w-4" />
+                  <span>Gold Market</span>
+                </DropdownMenuItem>
                 <DropdownMenuItem onClick={onLogout} className="text-destructive focus:bg-destructive/10">
                   <LogOut className="mr-2 h-4 w-4" />
                   <span>Log out</span>
