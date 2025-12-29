@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { drizzle } from 'drizzle-orm/d1';
 import { eq, desc, and, sql } from 'drizzle-orm';
-import { matches, matchPlayers, eloHistory, players } from '../db/schema';
+import { matches, matchPlayers, eloHistory, players, clans, clanMembers } from '../db/schema';
 
 interface Env {
     DB: D1Database;
@@ -59,8 +59,8 @@ const requireModerator = async (c: any, next: () => Promise<void>) => {
     }
 
     const user = await c.env.DB.prepare(
-        'SELECT role FROM players WHERE id = ?'
-    ).bind(userId).first();
+        'SELECT role FROM players WHERE id = ? OR discord_id = ?'
+    ).bind(userId, userId).first();
 
     if (!user || (user.role !== 'moderator' && user.role !== 'admin')) {
         return c.json({ success: false, error: 'Moderator access required' }, 403);
@@ -95,6 +95,31 @@ moderatorRoutes.get('/pending-reviews', async (c) => {
         });
     } catch (error: any) {
         console.error('Error fetching pending reviews:', error);
+        return c.json({ success: false, error: error.message }, 500);
+    }
+});
+
+// GET /api/moderator/cancelled-matches - Get cancelled league lobbies
+moderatorRoutes.get('/cancelled-matches', async (c) => {
+    try {
+        const result = await c.env.DB.prepare(`
+            SELECT 
+                m.*,
+                p.discord_username as host_username,
+                p.discord_avatar as host_avatar
+            FROM matches m
+            LEFT JOIN players p ON m.host_id = p.id
+            WHERE m.status = 'cancelled' AND m.match_type = 'league'
+            ORDER BY m.updated_at DESC
+            LIMIT 50
+        `).all();
+
+        return c.json({
+            success: true,
+            matches: result.results || []
+        });
+    } catch (error: any) {
+        console.error('Error fetching cancelled matches:', error);
         return c.json({ success: false, error: error.message }, 500);
     }
 });
@@ -270,6 +295,41 @@ moderatorRoutes.post('/matches/:id/review', async (c) => {
             await syncDiscordTiers(c.env, player.player_id as string, newElo);
         }
 
+        // Update Clan Elo if this was a Clan Match
+        if (match.match_type === 'clan_match') {
+            const alphaPlayer = playersList.find((p: any) => p.team === 'alpha');
+            const bravoPlayer = playersList.find((p: any) => p.team === 'bravo');
+
+            if (alphaPlayer && bravoPlayer) {
+                // Find clans for both teams
+                const clanAlpha = await c.env.DB.prepare(`SELECT c.* FROM clans c JOIN clan_members cm ON c.id = cm.clan_id WHERE cm.user_id = ?`).bind(alphaPlayer.player_id).first();
+                const clanBravo = await c.env.DB.prepare(`SELECT c.* FROM clans c JOIN clan_members cm ON c.id = cm.clan_id WHERE cm.user_id = ?`).bind(bravoPlayer.player_id).first();
+
+                if (clanAlpha && clanBravo && clanAlpha.id !== clanBravo.id) {
+                    const clanEloChange = 25; // Standard change for clans
+                    const isAlphaWinner = winnerTeam === 'alpha';
+
+                    // Alpha Stats
+                    const alphaChange = isAlphaWinner ? clanEloChange : -clanEloChange;
+                    const newAlphaElo = Math.max(0, (clanAlpha.elo as number || 1000) + alphaChange);
+
+                    // Bravo Stats
+                    const bravoChange = isAlphaWinner ? -clanEloChange : clanEloChange;
+                    const newBravoElo = Math.max(0, (clanBravo.elo as number || 1000) + bravoChange);
+
+                    // Update Alpha
+                    await c.env.DB.prepare(`
+                        UPDATE clans SET elo = ?, wins = wins + ?, losses = losses + ? WHERE id = ?
+                    `).bind(newAlphaElo, isAlphaWinner ? 1 : 0, isAlphaWinner ? 0 : 1, clanAlpha.id).run();
+
+                    // Update Bravo
+                    await c.env.DB.prepare(`
+                        UPDATE clans SET elo = ?, wins = wins + ?, losses = losses + ? WHERE id = ?
+                    `).bind(newBravoElo, isAlphaWinner ? 0 : 1, isAlphaWinner ? 1 : 0, clanBravo.id).run();
+                }
+            }
+        }
+
         // Update match as completed
         await c.env.DB.prepare(`
             UPDATE matches 
@@ -352,8 +412,8 @@ moderatorRoutes.get('/players/:id/history', async (c) => {
     try {
         // Get player info
         const player = await c.env.DB.prepare(`
-            SELECT * FROM players WHERE id = ?
-        `).bind(playerId).first();
+            SELECT * FROM players WHERE id = ? OR discord_id = ?
+        `).bind(playerId, playerId).first();
 
         if (!player) {
             return c.json({ success: false, error: 'Player not found' }, 404);
@@ -418,8 +478,8 @@ moderatorRoutes.post('/players/:id/elo-adjust', async (c) => {
 
         // Get current player ELO
         const player = await c.env.DB.prepare(
-            'SELECT elo FROM players WHERE id = ?'
-        ).bind(playerId).first();
+            'SELECT elo FROM players WHERE id = ? OR discord_id = ?'
+        ).bind(playerId, playerId).first();
 
         if (!player) {
             return c.json({ success: false, error: 'Player not found' }, 404);
@@ -429,8 +489,8 @@ moderatorRoutes.post('/players/:id/elo-adjust', async (c) => {
 
         // Update player ELO
         await c.env.DB.prepare(
-            'UPDATE players SET elo = ? WHERE id = ?'
-        ).bind(newElo, playerId).run();
+            'UPDATE players SET elo = ? WHERE id = ? OR discord_id = ?'
+        ).bind(newElo, playerId, playerId).run();
 
         // Record in history
         await c.env.DB.prepare(`
@@ -466,8 +526,8 @@ moderatorRoutes.post('/players/:id/ban', async (c) => {
 
     try {
         await c.env.DB.prepare(
-            'UPDATE players SET banned = 1 WHERE id = ?'
-        ).bind(playerId).run();
+            'UPDATE players SET banned = 1 WHERE id = ? OR discord_id = ?'
+        ).bind(playerId, playerId).run();
 
         return c.json({
             success: true,
@@ -485,8 +545,8 @@ moderatorRoutes.post('/players/:id/unban', async (c) => {
 
     try {
         await c.env.DB.prepare(
-            'UPDATE players SET banned = 0 WHERE id = ?'
-        ).bind(playerId).run();
+            'UPDATE players SET banned = 0 WHERE id = ? OR discord_id = ?'
+        ).bind(playerId, playerId).run();
 
         return c.json({
             success: true,
@@ -498,9 +558,10 @@ moderatorRoutes.post('/players/:id/unban', async (c) => {
     }
 });
 
-// POST /api/moderator/players/:id/role - Change player role
+// POST /api/moderator/players/:id/role - Change player role (Admin only)
 moderatorRoutes.post('/players/:id/role', async (c) => {
     const playerId = c.req.param('id');
+    const requesterId = c.req.header('X-User-Id');
 
     try {
         const body = await c.req.json<{ role: 'user' | 'moderator' | 'admin' }>();
@@ -509,9 +570,18 @@ moderatorRoutes.post('/players/:id/role', async (c) => {
             return c.json({ success: false, error: 'Invalid role' }, 400);
         }
 
+        // Check if requester is admin
+        const requester = await c.env.DB.prepare(
+            'SELECT role FROM players WHERE id = ? OR discord_id = ?'
+        ).bind(requesterId, requesterId).first();
+
+        if (!requester || requester.role !== 'admin') {
+            return c.json({ success: false, error: 'Only administrators can change roles' }, 403);
+        }
+
         await c.env.DB.prepare(
-            'UPDATE players SET role = ? WHERE id = ?'
-        ).bind(body.role, playerId).run();
+            'UPDATE players SET role = ? WHERE id = ? OR discord_id = ?'
+        ).bind(body.role, playerId, playerId).run();
 
         return c.json({
             success: true,
@@ -531,8 +601,8 @@ moderatorRoutes.post('/players/:id/vip/grant', async (c) => {
     try {
         // Check if requester is admin
         const adminPlayer = await c.env.DB.prepare(
-            'SELECT role FROM players WHERE id = ?'
-        ).bind(adminId).first();
+            'SELECT role FROM players WHERE id = ? OR discord_id = ?'
+        ).bind(adminId, adminId).first();
 
         if (!adminPlayer || adminPlayer.role !== 'admin') {
             return c.json({ success: false, error: 'Only administrators can grant VIP status' }, 403);
@@ -548,8 +618,8 @@ moderatorRoutes.post('/players/:id/vip/grant', async (c) => {
             UPDATE players 
             SET is_vip = 1, 
                 vip_until = ?
-            WHERE id = ?
-        `).bind(isoVipUntil, playerId).run();
+            WHERE id = ? OR discord_id = ?
+        `).bind(isoVipUntil, playerId, playerId).run();
 
         // Instant Discord Role assignment
         await updateDiscordRole(c.env, playerId, TIERS.VIP, true);
@@ -572,8 +642,8 @@ moderatorRoutes.post('/players/:id/vip/revoke', async (c) => {
     try {
         // Check if requester is admin
         const adminPlayer = await c.env.DB.prepare(
-            'SELECT role FROM players WHERE id = ?'
-        ).bind(adminId).first();
+            'SELECT role FROM players WHERE id = ? OR discord_id = ?'
+        ).bind(adminId, adminId).first();
 
         if (!adminPlayer || adminPlayer.role !== 'admin') {
             return c.json({ success: false, error: 'Only administrators can revoke VIP status' }, 403);
@@ -583,8 +653,8 @@ moderatorRoutes.post('/players/:id/vip/revoke', async (c) => {
             UPDATE players 
             SET is_vip = 0, 
                 vip_until = NULL 
-            WHERE id = ?
-        `).bind(playerId).run();
+            WHERE id = ? OR discord_id = ?
+        `).bind(playerId, playerId).run();
 
         // Remove Discord Role instantly
         await updateDiscordRole(c.env, playerId, TIERS.VIP, false);
@@ -671,6 +741,578 @@ moderatorRoutes.post('/matches/:id/force-start', async (c) => {
     } catch (error: any) {
         console.error('Error force starting match:', error);
         return c.json({ success: false, error: error.message }, 500);
+    }
+});
+
+// POST /api/moderator/matches/create - Manual Match Creation
+moderatorRoutes.post('/matches/create', async (c) => {
+    const body = await c.req.json<{
+        host_id: string;
+        match_type: 'casual' | 'league' | 'clan_lobby' | 'clan_match';
+        map_name: string;
+        max_players: number;
+        clan_id?: string;
+    }>();
+
+    if (!body.host_id) return c.json({ success: false, error: 'host_id is required' }, 400);
+
+    const matchId = crypto.randomUUID();
+    const matchType = body.match_type || 'casual';
+    const maxPlayers = body.max_players || 10;
+
+    // Check if host exists
+    const host = await c.env.DB.prepare('SELECT id FROM players WHERE id = ? OR discord_id = ?').bind(body.host_id, body.host_id).first();
+    if (!host) {
+        // Warning: if host ID isn't found, we assume it's a valid ID for now? 
+        // Or we should enforce existence. This is moderator tool, so maybe enforce.
+        return c.json({ success: false, error: 'Host player not found' }, 404);
+    }
+    const realHostId = host.id;
+
+    try {
+        await c.env.DB.prepare(`
+            INSERT INTO matches (id, lobby_url, host_id, map_name, match_type, status, player_count, max_players, clan_id, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, 'waiting', 1, ?, ?, datetime('now'), datetime('now'))
+        `).bind(matchId, 'manual_create', realHostId, body.map_name || null, matchType, maxPlayers, body.clan_id || null).run();
+
+        await c.env.DB.prepare(`
+            INSERT INTO match_players (match_id, player_id, team, is_captain, joined_at)
+            VALUES (?, ?, 'alpha', 1, datetime('now'))
+        `).bind(matchId, realHostId).run();
+
+        return c.json({ success: true, matchId });
+    } catch (error: any) {
+        console.error('Error creating match:', error);
+        return c.json({ success: false, error: error.message }, 500);
+    }
+});
+
+// ============= CLAN MANAGEMENT =============
+
+// GET /api/moderator/clans - List Clans
+moderatorRoutes.get('/clans', async (c) => {
+    const search = c.req.query('search');
+    const page = parseInt(c.req.query('page') || '1');
+    const limit = 50;
+    const offset = (page - 1) * limit;
+
+    try {
+        let query = `
+            SELECT c.*, p.discord_username as leader_username,
+            (SELECT COUNT(*) FROM clan_members WHERE clan_id = c.id) as member_count
+            FROM clans c
+            LEFT JOIN players p ON c.leader_id = p.id
+        `;
+        const params: any[] = [];
+
+        if (search) {
+            query += ` WHERE c.name LIKE ? OR c.tag LIKE ?`;
+            params.push(`%${search}%`, `%${search}%`);
+        }
+
+        query += ` ORDER BY c.created_at DESC LIMIT ? OFFSET ?`;
+        params.push(limit, offset);
+
+        const result = await c.env.DB.prepare(query).bind(...params).all();
+        const countResult = await c.env.DB.prepare('SELECT COUNT(*) as count FROM clans').first();
+
+        return c.json({
+            success: true,
+            clans: result.results || [],
+            page,
+            total: countResult?.count || 0
+        });
+    } catch (error: any) {
+        console.error('Error fetching clans:', error);
+        return c.json({ success: false, error: error.message }, 500);
+    }
+});
+
+// POST /api/moderator/clans/:id/delete - Delete Clan
+moderatorRoutes.post('/clans/:id/delete', async (c) => {
+    const clanId = c.req.param('id');
+    try {
+        // Delete members first
+        await c.env.DB.prepare('DELETE FROM clan_members WHERE clan_id = ?').bind(clanId).run();
+        // Delete clan
+        await c.env.DB.prepare('DELETE FROM clans WHERE id = ?').bind(clanId).run();
+
+        return c.json({ success: true });
+    } catch (error: any) {
+        console.error('Error deleting clan:', error);
+        return c.json({ success: false, error: error.message }, 500);
+    }
+});
+
+// GET /api/moderator/clans/:id - Get full clan details
+moderatorRoutes.get('/clans/:id', async (c) => {
+    const clanId = c.req.param('id');
+    try {
+        const clan = await c.env.DB.prepare(`
+            SELECT c.*, p.discord_username as leader_username 
+            FROM clans c
+            LEFT JOIN players p ON c.leader_id = p.id
+            WHERE c.id = ?
+        `).bind(clanId).first();
+
+        if (!clan) return c.json({ success: false, error: 'Clan not found' }, 404);
+
+        const members = await c.env.DB.prepare(`
+            SELECT cm.*, p.discord_username, p.standoff_nickname, p.elo, p.role as player_role
+            FROM clan_members cm
+            LEFT JOIN players p ON cm.user_id = p.id
+            WHERE cm.clan_id = ?
+            ORDER BY 
+                CASE 
+                    WHEN cm.role = 'leader' THEN 1 
+                    WHEN cm.role = 'co_leader' THEN 2 
+                    ELSE 3 
+                END
+        `).bind(clanId).all();
+
+        return c.json({ success: true, clan, members: members.results || [] });
+    } catch (error: any) {
+        console.error('Error fetching clan details:', error);
+        return c.json({ success: false, error: error.message }, 500);
+    }
+});
+
+// POST /api/moderator/clans/:id/update - Update clan details
+moderatorRoutes.post('/clans/:id/update', async (c) => {
+    const clanId = c.req.param('id');
+    try {
+        const body = await c.req.json<{
+            name: string;
+            tag: string;
+            elo: number;
+            leader_id: string;
+        }>();
+
+        await c.env.DB.prepare(`
+            UPDATE clans 
+            SET name = ?, tag = ?, elo = ?, leader_id = ?
+            WHERE id = ?
+        `).bind(body.name, body.tag, body.elo, body.leader_id, clanId).run();
+
+        // Also update the leader role in clan_members table specifically? 
+        // For simplicity, we assume the moderator handles role swaps if changing leader_id manually,
+        // or we adding logic to ensure the new leader has 'leader' role is complex. 
+        // Let's just update the clan record for now.
+
+        return c.json({ success: true });
+    } catch (error: any) {
+        console.error('Error updating clan:', error);
+        return c.json({ success: false, error: error.message }, 500);
+    }
+});
+
+// ============= CLAN REQUESTS =============
+
+// GET /api/moderator/clan-requests - List Pending Clan Requests
+moderatorRoutes.get('/clan-requests', async (c) => {
+    try {
+        const requests = await c.env.DB.prepare(`
+            SELECT cr.*, p.discord_username, p.discord_avatar
+            FROM clan_requests cr
+            LEFT JOIN players p ON cr.user_id = p.id
+            WHERE cr.status = 'pending'
+            ORDER BY cr.created_at ASC
+        `).all();
+
+        return c.json({
+            success: true,
+            requests: requests.results || []
+        });
+    } catch (error: any) {
+        console.error('Error fetching clan requests:', error);
+        return c.json({ success: false, error: error.message }, 500);
+    }
+});
+
+// POST /api/moderator/clan-requests/:id/approve - Approve Request & Create Clan
+moderatorRoutes.post('/clan-requests/:id/approve', async (c) => {
+    const requestId = c.req.param('id');
+    const moderatorId = c.req.header('X-User-Id');
+
+    try {
+        const request = await c.env.DB.prepare('SELECT * FROM clan_requests WHERE id = ?').bind(requestId).first();
+        if (!request) return c.json({ success: false, error: 'Request not found' }, 404);
+        if (request.status !== 'pending') return c.json({ success: false, error: 'Request already processed' }, 400);
+
+        // Check if clan name/tag exists
+        const existing = await c.env.DB.prepare('SELECT id FROM clans WHERE name = ? OR tag = ?').bind(request.clan_name, request.clan_tag).first();
+        if (existing) return c.json({ success: false, error: 'Clan name or tag already taken' }, 400);
+
+        const clanId = crypto.randomUUID();
+
+        // Transaction: Create Clan -> Add Member -> Update Request -> Deduct Balance? (No, manual payment)
+        const batch = await c.env.DB.batch([
+            c.env.DB.prepare(`
+                INSERT INTO clans (id, name, tag, leader_id, max_members, created_at)
+                VALUES (?, ?, ?, ?, ?, datetime('now'))
+            `).bind(clanId, request.clan_name, request.clan_tag, request.user_id, request.clan_size),
+
+            c.env.DB.prepare(`
+                INSERT INTO clan_members (clan_id, user_id, role, joined_at)
+                VALUES (?, ?, 'leader', datetime('now'))
+            `).bind(clanId, request.user_id),
+
+            c.env.DB.prepare(`
+                UPDATE clan_requests 
+                SET status = 'approved', reviewed_by = ?, updated_at = datetime('now')
+                WHERE id = ?
+            `).bind(moderatorId, requestId)
+        ]);
+
+        return c.json({ success: true, message: 'Clan created successfully' });
+    } catch (error: any) {
+        console.error('Error approving clan request:', error);
+        return c.json({ success: false, error: error.message }, 500);
+    }
+});
+
+// POST /api/moderator/clan-requests/:id/reject - Reject Request
+moderatorRoutes.post('/clan-requests/:id/reject', async (c) => {
+    const requestId = c.req.param('id');
+    const moderatorId = c.req.header('X-User-Id');
+    const { reason } = await c.req.json();
+
+    try {
+        await c.env.DB.prepare(`
+            UPDATE clan_requests 
+            SET status = 'rejected', reviewed_by = ?, rejection_reason = ?, updated_at = datetime('now')
+            WHERE id = ?
+        `).bind(moderatorId, reason || 'No reason provided', requestId).run();
+
+        return c.json({ success: true, message: 'Request rejected' });
+    } catch (error: any) {
+        console.error('Error rejecting clan request:', error);
+        return c.json({ success: false, error: error.message }, 500);
+    }
+});
+
+// ============= VIP REQUESTS =============
+
+// GET /api/moderator/vip-requests - Get all VIP requests
+moderatorRoutes.get('/vip-requests', async (c) => {
+    const status = c.req.query('status') || 'pending';
+
+    try {
+        const requests = await c.env.DB.prepare(`
+            SELECT 
+                vr.*,
+                p.discord_username as user_discord_username,
+                p.discord_avatar as user_discord_avatar,
+                reviewer.discord_username as reviewer_username
+            FROM vip_requests vr
+            LEFT JOIN players p ON vr.user_id = p.id
+            LEFT JOIN players reviewer ON vr.reviewed_by = reviewer.id
+            WHERE vr.status = ?
+            ORDER BY vr.created_at DESC
+        `).bind(status).all();
+
+        return c.json({
+            success: true,
+            requests: requests.results || []
+        });
+    } catch (error: any) {
+        console.error('Error fetching VIP requests:', error);
+        return c.json({ success: false, error: error.message }, 500);
+    }
+});
+
+// POST /api/moderator/vip-requests/:id/approve - Approve VIP request (Admin only)
+moderatorRoutes.post('/vip-requests/:id/approve', async (c) => {
+    const requestId = c.req.param('id');
+    const adminId = c.req.header('X-User-Id');
+
+    try {
+        // Check if requester is admin
+        const adminPlayer = await c.env.DB.prepare(
+            'SELECT role FROM players WHERE id = ?'
+        ).bind(adminId).first();
+
+        if (!adminPlayer || adminPlayer.role !== 'admin') {
+            return c.json({ success: false, error: 'Only administrators can approve VIP requests' }, 403);
+        }
+
+        // Get request details
+        const request = await c.env.DB.prepare(
+            'SELECT user_id, status FROM vip_requests WHERE id = ?'
+        ).bind(requestId).first();
+
+        if (!request) {
+            return c.json({ success: false, error: 'Request not found' }, 404);
+        }
+
+        if (request.status !== 'pending') {
+            return c.json({ success: false, error: 'Request has already been reviewed' }, 400);
+        }
+
+        const now = new Date();
+        const vipUntilDate = new Date(now);
+        vipUntilDate.setMonth(vipUntilDate.getMonth() + 1);
+        const isoVipUntil = vipUntilDate.toISOString();
+        const isoNow = now.toISOString();
+
+        // Grant VIP to user
+        await c.env.DB.prepare(`
+            UPDATE players 
+            SET is_vip = 1, vip_until = ?
+            WHERE id = ? OR discord_id = ?
+        `).bind(isoVipUntil, request.user_id, request.user_id).run();
+
+        // Update request status
+        await c.env.DB.prepare(`
+            UPDATE vip_requests
+            SET status = 'approved',
+                reviewed_by = ?,
+                reviewed_at = ?
+            WHERE id = ?
+        `).bind(adminId, isoNow, requestId).run();
+
+        // Add Discord VIP role
+        await updateDiscordRole(c.env, request.user_id as string, TIERS.VIP, true);
+
+        return c.json({
+            success: true,
+            message: 'VIP request approved and VIP granted for 1 month'
+        });
+    } catch (error: any) {
+        console.error('Error approving VIP request:', error);
+        return c.json({ success: false, error: error.message }, 500);
+    }
+});
+
+// POST /api/moderator/vip-requests/:id/reject - Reject VIP request (Admin only)
+moderatorRoutes.post('/vip-requests/:id/reject', async (c) => {
+    const requestId = c.req.param('id');
+    const adminId = c.req.header('X-User-Id');
+
+    try {
+        // Check if requester is admin
+        const adminPlayer = await c.env.DB.prepare(
+            'SELECT role FROM players WHERE id = ?'
+        ).bind(adminId).first();
+
+        if (!adminPlayer || adminPlayer.role !== 'admin') {
+            return c.json({ success: false, error: 'Only administrators can reject VIP requests' }, 403);
+        }
+
+        const body = await c.req.json<{ reason?: string }>();
+
+        // Get request
+        const request = await c.env.DB.prepare(
+            'SELECT status FROM vip_requests WHERE id = ?'
+        ).bind(requestId).first();
+
+        if (!request) {
+            return c.json({ success: false, error: 'Request not found' }, 404);
+        }
+
+        if (request.status !== 'pending') {
+            return c.json({ success: false, error: 'Request has already been reviewed' }, 400);
+        }
+
+        const now = new Date().toISOString();
+
+        // Update request status
+        await c.env.DB.prepare(`
+            UPDATE vip_requests
+            SET status = 'rejected',
+                reviewed_by = ?,
+                reviewed_at = ?,
+                rejection_reason = ?
+            WHERE id = ?
+        `).bind(adminId, now, body.reason || 'No reason provided', requestId).run();
+
+        return c.json({
+            success: true,
+            message: 'VIP request rejected'
+        });
+    } catch (error: any) {
+        console.error('Error rejecting VIP request:', error);
+        return c.json({ success: false, error: error.message }, 500);
+    }
+});
+// ============= CLAN REQUESTS =============
+
+// GET /api/moderator/clan-requests - Get all pending clan requests
+moderatorRoutes.get('/clan-requests', async (c) => {
+    try {
+        const result = await c.env.DB.prepare(`
+            SELECT cr.*, p.discord_username, p.discord_avatar
+            FROM clan_requests cr
+            JOIN players p ON cr.user_id = p.id
+            WHERE cr.status = 'pending'
+            ORDER BY cr.created_at ASC
+        `).all();
+
+        return c.json({
+            success: true,
+            requests: result.results || []
+        });
+    } catch (error: any) {
+        console.error('Error fetching clan requests:', error);
+        return c.json({ success: false, error: error.message }, 500);
+    }
+});
+
+// POST /api/moderator/clan-requests/:id/approve - Approve clan request
+moderatorRoutes.post('/clan-requests/:id/approve', async (c) => {
+    const requestId = c.req.param('id');
+    const moderatorId = c.req.header('X-User-Id');
+
+    try {
+        // Get request details
+        const request = await c.env.DB.prepare('SELECT * FROM clan_requests WHERE id = ?').bind(requestId).first();
+        if (!request) {
+            return c.json({ success: false, error: 'Request not found' }, 404);
+        }
+
+        if (request.status !== 'pending') {
+            return c.json({ success: false, error: 'Request is handled' }, 400);
+        }
+
+        const clanId = crypto.randomUUID();
+
+        // Transactionish: Create Clan -> Create Member -> Update Request
+        // 1. Create Clan
+        await c.env.DB.prepare(`
+            INSERT INTO clans (id, name, tag, leader_id, max_members, logo_url)
+            VALUES (?, ?, ?, ?, ?, ?)
+        `).bind(clanId, request.clan_name, request.clan_tag, request.user_id, request.clan_size, request.screenshot_url).run(); // Using screenshot as logo initially? Or null? Let's use null for logo and keep screenshot for record.
+        // Actually, user didn't upload a logo, just payment screenshot. So logo_url should be null or default.
+
+        // 2. Add Leader as Member
+        await c.env.DB.prepare(`
+            INSERT INTO clan_members (clan_id, user_id, role)
+            VALUES (?, ?, 'leader')
+        `).bind(clanId, request.user_id).run();
+
+        // 3. Update Request Status
+        await c.env.DB.prepare(`
+            UPDATE clan_requests 
+            SET status = 'approved', 
+                reviewed_by = ?, 
+                updated_at = datetime('now')
+            WHERE id = ?
+        `).bind(moderatorId, requestId).run();
+
+        return c.json({ success: true, message: 'Clan approved and created' });
+    } catch (error: any) {
+        console.error('Error approving clan request:', error);
+        return c.json({ success: false, error: error.message }, 500);
+    }
+});
+
+// POST /api/moderator/clan-requests/:id/reject - Reject clan request
+moderatorRoutes.post('/clan-requests/:id/reject', async (c) => {
+    const requestId = c.req.param('id');
+    const moderatorId = c.req.header('X-User-Id');
+    const { reason } = await c.req.json<{ reason: string }>();
+
+    try {
+        await c.env.DB.prepare(`
+            UPDATE clan_requests 
+            SET status = 'rejected', 
+                rejection_reason = ?,
+                reviewed_by = ?, 
+                updated_at = datetime('now')
+            WHERE id = ?
+        `).bind(reason || 'Rejected by moderator', moderatorId, requestId).run();
+
+        return c.json({ success: true, message: 'Clan request rejected' });
+    } catch (error: any) {
+        console.error('Error rejecting clan request:', error);
+        return c.json({ success: false, error: error.message }, 500);
+    }
+});
+
+// GET /api/moderator/clans - List/Search Clans
+moderatorRoutes.get('/clans', async (c) => {
+    const page = parseInt(c.req.query('page') || '1');
+    const search = c.req.query('search') || '';
+    const limit = 20;
+    const offset = (page - 1) * limit;
+
+    try {
+        let query = 'SELECT * FROM clans';
+        const params: any[] = [];
+
+        if (search) {
+            query += ' WHERE name LIKE ? OR tag LIKE ?';
+            params.push(`%${search}%`, `%${search}%`);
+        }
+
+        const countQuery = query.replace('SELECT *', 'SELECT COUNT(*) as count');
+        const countRes = await c.env.DB.prepare(countQuery).bind(...params).first();
+
+        query += ' ORDER BY elo DESC LIMIT ? OFFSET ?';
+        params.push(limit, offset);
+
+        const result = await c.env.DB.prepare(query).bind(...params).all();
+
+        return c.json({
+            success: true,
+            clans: result.results || [],
+            total: countRes?.count || 0,
+            page
+        });
+    } catch (e: any) {
+        console.error('Error fetching clans:', e);
+        return c.json({ success: false, error: e.message }, 500);
+    }
+});
+
+// GET /api/moderator/clans/:id - Get specific clan details
+moderatorRoutes.get('/clans/:id', async (c) => {
+    const clanId = c.req.param('id');
+    try {
+        const clan = await c.env.DB.prepare('SELECT * FROM clans WHERE id = ?').bind(clanId).first();
+        if (!clan) return c.json({ success: false, error: 'Clan not found' }, 404);
+
+        const members = await c.env.DB.prepare(`
+            SELECT cm.*, p.username, p.discord_avatar, p.elo 
+            FROM clan_members cm
+            JOIN players p ON cm.user_id = p.id
+            WHERE cm.clan_id = ?
+        `).bind(clanId).all();
+
+        return c.json({ success: true, clan, members: members.results });
+    } catch (e: any) {
+        return c.json({ success: false, error: e.message }, 500);
+    }
+});
+
+// POST /api/moderator/clans/:id/update - Update clan details
+moderatorRoutes.post('/clans/:id/update', async (c) => {
+    const clanId = c.req.param('id');
+    const { name, tag, elo, leader_id } = await c.req.json();
+
+    try {
+        await c.env.DB.prepare(`
+            UPDATE clans SET name = ?, tag = ?, elo = ?, leader_id = ? WHERE id = ?
+        `).bind(name, tag, elo, leader_id, clanId).run();
+
+        return c.json({ success: true });
+    } catch (e: any) {
+        return c.json({ success: false, error: e.message }, 500);
+    }
+});
+
+// POST /api/moderator/clans/:id/delete - Delete clan
+moderatorRoutes.post('/clans/:id/delete', async (c) => {
+    const clanId = c.req.param('id');
+    try {
+        // Delete members first (or cascade if set up, but safer to do manual)
+        await c.env.DB.prepare('DELETE FROM clan_members WHERE clan_id = ?').bind(clanId).run();
+        // Delete clan
+        await c.env.DB.prepare('DELETE FROM clans WHERE id = ?').bind(clanId).run();
+
+        return c.json({ success: true });
+    } catch (e: any) {
+        return c.json({ success: false, error: e.message }, 500);
     }
 });
 

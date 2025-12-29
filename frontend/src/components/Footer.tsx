@@ -23,7 +23,7 @@ export default function Footer() {
                 Join Our Community
               </div>
               <a
-                href="https://discord.gg/4dSXyfWUdq"
+                href="https://discord.gg/so2faceit"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center gap-2 text-sm text-gray-400 hover:text-white transition-colors group"
@@ -34,7 +34,7 @@ export default function Footer() {
                 <span>Discord Server</span>
               </a>
             </div>
-            
+
             {/* Developer Links */}
             <div className="flex flex-col gap-3 mt-4">
               <div className="text-xs text-gray-600 uppercase tracking-widest font-bold">

@@ -14,6 +14,7 @@ interface LeaderboardPlayer {
   elo: number;
   wins: number;
   losses: number;
+  is_vip?: boolean;
 }
 
 export default function Leaderboard() {
@@ -33,7 +34,10 @@ export default function Leaderboard() {
         }
 
         const data = await response.json();
-        const top5 = data.slice(0, 5).map((player: any, index: number) => ({
+        // Handle new API format: {players: [], stats: {}} or old format: []
+        const players = data.players || data;
+        // Backend now returns only valid VIPs, so we just take the top 5
+        const top5 = players.slice(0, 5).map((player: any, index: number) => ({
           rank: index + 1,
           ...player
         }));
@@ -83,8 +87,8 @@ export default function Leaderboard() {
             <Trophy className="h-5 w-5 text-primary" /> Top Players
           </CardTitle>
         </CardHeader>
-        <CardContent className="h-[200px] flex items-center justify-center text-muted-foreground">
-          {error || 'No players found'}
+        <CardContent className="h-[200px] flex items-center justify-center text-muted-foreground text-center px-4">
+          {error || 'No VIP players found in rankings yet'}
         </CardContent>
       </Card>
     );
@@ -94,7 +98,7 @@ export default function Leaderboard() {
     <Card className="border-border/50 bg-card/50 backdrop-blur-sm overflow-hidden animate-fade-in">
       <CardHeader className="pb-2">
         <CardTitle className="text-lg font-bold font-display uppercase tracking-wider flex items-center gap-2 text-primary">
-          <Trophy className="h-5 w-5" /> Live Leaderboard
+          <Crown className="h-5 w-5 text-yellow-500" /> VIP Leaderboard
         </CardTitle>
       </CardHeader>
       <CardContent className="p-0">
@@ -121,9 +125,17 @@ export default function Leaderboard() {
                       <AvatarImage src={getAvatarUrl(player) || undefined} />
                       <AvatarFallback>{player.username[0].toUpperCase()}</AvatarFallback>
                     </Avatar>
-                    <span className={`font-medium ${player.rank === 1 ? 'text-yellow-500' : 'text-foreground'}`}>
-                      {getDisplayName(player)}
-                    </span>
+                    <div className="flex flex-col">
+                      <div className={`font-medium ${player.rank === 1 ? 'text-yellow-500' : 'text-foreground'} flex items-center gap-2`}>
+                        {getDisplayName(player)}
+                        {player.is_vip && (
+                          <div className="bg-gradient-to-r from-yellow-500 via-amber-400 to-yellow-600 text-black px-1.5 py-0.5 rounded-[2px] text-[10px] font-black uppercase tracking-wider shadow-[0_0_10px_rgba(234,179,8,0.3)] flex items-center gap-1 transform skew-x-[-10deg] scale-90 origin-left">
+                            <Trophy className="w-2.5 h-2.5 fill-black" />
+                            <span className="skew-x-[10deg]">VIP</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 </TableCell>
                 <TableCell className="text-right font-mono font-bold text-primary">

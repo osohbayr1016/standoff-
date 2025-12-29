@@ -13,6 +13,12 @@ import { matchesRoutes } from './routes/matches';
 import { moderatorRoutes } from './routes/moderator';
 import { uploadRoutes } from './routes/upload';
 import { lobbyInviteRoutes } from './routes/lobby-invites';
+import { vipRequestsRoutes } from './routes/vip-requests';
+import { streamerRoutes } from './routes/streamers';
+import { clanRoutes } from './routes/clans';
+import { clanRequestsRoutes } from './routes/clan-requests';
+import { syncDiscordMembers } from './utils/sync';
+
 
 // ============= Type Definitions =============
 interface QueuePlayer {
@@ -63,6 +69,18 @@ interface Lobby {
   serverInfo?: ServerInfo;
 }
 
+interface ChatMessage {
+  id: string;
+  userId: string;
+  username: string;
+  avatar?: string;
+  content: string;
+  timestamp: number;
+  lobbyId?: string; // Optional, present for lobby-specific chat
+  type?: 'user' | 'system';
+}
+
+
 interface Env {
   MATCH_QUEUE: DurableObjectNamespace;
   DB: D1Database;
@@ -93,6 +111,14 @@ export class MatchQueueDO {
   remoteQueue: QueuePlayer[] = [];
   activeLobbies: Map<string, Lobby> = new Map();
   playerLobbyMap: Map<string, string> = new Map(); // UserId -> LobbyId
+  chatHistory: ChatMessage[] = []; // Global chat history
+  lobbyChatHistory: Map<string, ChatMessage[]> = new Map(); // LobbyId -> ChatMessage[]
+
+  // High-performance update tracking
+  lastBroadcastData: string = '';
+  lastQueueBroadcast: string = '';
+
+
 
   constructor(public state: DurableObjectState, public env: Env) { }
 
@@ -120,12 +146,30 @@ export class MatchQueueDO {
 
       // Handle LOBBY_ACTION relay from Hono routes
       if (body.type === 'LOBBY_ACTION') {
-        const { userIds, ...msgData } = body.data;
+        const { userIds, type, matchId, players, ...msgData } = body.data;
+
+        // Sync manual lobby state to DO for chat/real-time support
+        if (matchId && players) {
+          this.activeLobbies.set(matchId, {
+            id: matchId,
+            players: players,
+            // Minimal lobby object for manual matches
+            captainA: players[0],
+            captainB: players[1] || players[0],
+            teamA: players.filter((p: any) => p.team === 'alpha'),
+            teamB: players.filter((p: any) => p.team === 'bravo'),
+            readyPlayers: [],
+            mapBanState: { bannedMaps: [], currentBanTeam: 'alpha', banHistory: [], mapBanPhase: false, banTimeout: 15 },
+            readyPhaseState: { phaseActive: false, readyPlayers: [], readyPhaseTimeout: 30 }
+          } as any);
+          console.log(`📌 Synced manual lobby ${matchId} with ${players.length} players`);
+        }
+
         if (Array.isArray(userIds)) {
           userIds.forEach(uid => {
             const ws = this.userSockets.get(uid);
             if (ws && ws.readyState === WebSocket.READY_STATE_OPEN) {
-              ws.send(JSON.stringify(msgData));
+              ws.send(JSON.stringify({ type, matchId, ...msgData }));
             }
           });
         }
@@ -443,25 +487,39 @@ export class MatchQueueDO {
       }
 
       // 3. BROADCAST QUEUE STATUS
-      this.broadcastMergedQueue();
+      const currentQueueData = JSON.stringify({
+        local: Array.from(this.localQueue.values()),
+        remote: this.remoteQueue
+      });
 
-      this.broadcastToAll(JSON.stringify({
+      if (currentQueueData !== this.lastQueueBroadcast) {
+        this.broadcastMergedQueue();
+        this.lastQueueBroadcast = currentQueueData;
+      }
+
+      const currentDebugData = JSON.stringify({
         type: 'DEBUG_QUEUE_STATUS',
         localQueueSize: this.localQueue.size,
         remoteQueueSize: this.remoteQueue.length,
         activeLobbies: this.activeLobbies.size,
-        timestamp: Date.now()
-      }));
+        timestamp: Math.floor(Date.now() / 1000) // Lower precision to avoid jitter
+      });
+
+      if (currentDebugData !== this.lastBroadcastData) {
+        this.broadcastToAll(currentDebugData);
+        this.lastBroadcastData = currentDebugData;
+      }
 
     } catch (error) {
       console.error('❌ Alarm error:', error);
     } finally {
-      // Reschedule
+      // Reschedule - THROTTLED to 3 seconds for general status updates
       const shouldReschedule = this.activeLobbies.size > 0 || this.localQueue.size > 0 || this.sessions.size > 0;
       if (shouldReschedule) {
-        await this.state.storage.setAlarm(Date.now() + 1000);
+        await this.state.storage.setAlarm(Date.now() + 3000);
       }
     }
+
   }
 
   broadcastMergedQueue() {
@@ -682,9 +740,11 @@ export class MatchQueueDO {
                   players: lobby.players,
                   captains: [lobby.captainA, lobby.captainB]
                 }));
+                // Send chat history
                 ws.send(JSON.stringify({
-                  type: 'LOBBY_UPDATE',
-                  lobby: lobby
+                  type: 'LOBBY_CHAT_HISTORY',
+                  lobbyId: lobby.id,
+                  messages: this.lobbyChatHistory.get(lobbyId) || []
                 }));
               } else {
                 // Stale map entry?
@@ -692,8 +752,14 @@ export class MatchQueueDO {
                 this.broadcastMergedQueue();
               }
             } else {
+              // Send global chat history
+              ws.send(JSON.stringify({
+                type: 'CHAT_HISTORY',
+                messages: this.chatHistory
+              }));
               this.broadcastMergedQueue();
             }
+
           }
         }
 
@@ -999,30 +1065,92 @@ export class MatchQueueDO {
           }
         }
 
-        // 10. REQUEST_LEADERBOARD
+        // 11. SEND_CHAT
+        if (msg.type === 'SEND_CHAT') {
+          const { content, lobbyId } = msg;
+          if (!content) return;
+
+          const chatMessage: ChatMessage = {
+            id: crypto.randomUUID(),
+            userId: currentUserId || 'unknown',
+            username: currentUserData?.username || 'Unknown',
+            avatar: currentUserData?.avatar,
+            content: content.slice(0, 500), // Limit message length
+            timestamp: Date.now(),
+            lobbyId: lobbyId,
+            type: 'user'
+          };
+
+          if (lobbyId) {
+            // Lobby Chat
+            if (this.activeLobbies.has(lobbyId)) {
+              const history = this.lobbyChatHistory.get(lobbyId) || [];
+              history.push(chatMessage);
+              this.lobbyChatHistory.set(lobbyId, history.slice(-50)); // Keep last 50
+
+              this.broadcastToLobby(lobbyId, JSON.stringify({
+                type: 'CHAT_MESSAGE',
+                message: chatMessage
+              }));
+            }
+          } else {
+            // Global Chat
+            this.chatHistory.push(chatMessage);
+            this.chatHistory = this.chatHistory.slice(-50); // Keep last 50
+
+            this.broadcastToAll(JSON.stringify({
+              type: 'CHAT_MESSAGE',
+              message: chatMessage
+            }));
+          }
+        }
+
+        // 12. REQUEST_LEADERBOARD
         if (msg.type === 'REQUEST_LEADERBOARD') {
           try {
-            // Fetch leaderboard from database
+            // Fetch leaderboard from database - VIP ONLY (matching HTTP API)
             const result = await this.env.DB.prepare(
-              'SELECT * FROM players ORDER BY elo DESC LIMIT 500'
+              "SELECT * FROM players WHERE is_vip = 1 OR is_vip = 'true' OR is_vip = true ORDER BY elo DESC LIMIT 500"
             ).all();
 
-            const leaderboard = (result.results || []).map((player: any, index: number) => ({
-              rank: index + 1,
-              id: player.id,
-              discord_id: player.discord_id,
-              username: player.discord_username,
-              avatar: player.discord_avatar,
-              nickname: player.standoff_nickname,
-              elo: player.elo,
-              wins: player.wins,
-              losses: player.losses,
-            }));
+            // Calculate regional stats
+            const players = result.results || [];
+            const totalPlayers = players.length;
+            const totalElo = players.reduce((sum: number, p: any) => sum + (p.elo || 0), 0);
+            const averageElo = totalPlayers > 0 ? Math.round(totalElo / totalPlayers) : 0;
+            const totalMatches = players.reduce((sum: number, p: any) => sum + (p.wins || 0) + (p.losses || 0), 0);
 
-            // Send leaderboard to requesting client
+            const leaderboard = players.map((player: any, index: number) => {
+              const totalPlayerMatches = (player.wins || 0) + (player.losses || 0);
+              const winRate = totalPlayerMatches > 0 ? ((player.wins || 0) / totalPlayerMatches) * 100 : 0;
+
+              return {
+                rank: index + 1,
+                id: player.id,
+                discord_id: player.discord_id,
+                username: player.discord_username,
+                avatar: player.discord_avatar,
+                nickname: player.standoff_nickname,
+                elo: player.elo,
+                wins: player.wins,
+                losses: player.losses,
+                total_matches: totalPlayerMatches,
+                win_rate: Math.round(winRate * 10) / 10,
+                is_vip: player.is_vip === 1 || player.is_vip === 'true' || player.is_vip === true
+              };
+            });
+
+            // Send leaderboard with stats to requesting client
             ws.send(JSON.stringify({
               type: 'LEADERBOARD_UPDATE',
-              data: leaderboard
+              data: {
+                players: leaderboard,
+                stats: {
+                  total_vip_players: totalPlayers,
+                  average_elo: averageElo,
+                  total_matches: totalMatches
+                }
+              }
             }));
           } catch (error) {
             console.error('Error fetching leaderboard:', error);
@@ -1326,6 +1454,7 @@ setupStatsRoutes(app);
 app.route('/api/matches', matchesRoutes);
 app.route('/api/matches', lobbyInviteRoutes);
 app.route('/api/moderator', moderatorRoutes);
+app.route('/api/vip-requests', vipRequestsRoutes);
 app.route('/api', uploadRoutes);
 
 app.get('/', (c) => c.text('Standoff 2 Platform API is Online!'));
@@ -1408,7 +1537,10 @@ app.get('/api/auth/callback', async (c) => {
     let isDiscordMember = false;
     let hasAdminRole = false;
     let hasVipRole = false;
+    let hasModeratorRole = false;
     let tierElo = 1000;
+    let discordRolesJson = '[]';
+
 
     if (requiredGuildId && botToken) {
       try {
@@ -1423,12 +1555,20 @@ app.get('/api/auth/callback', async (c) => {
           const memberData = await memberResponse.json() as any;
           isDiscordMember = true;
           const roles = memberData.roles || [];
+          discordRolesJson = JSON.stringify(roles);
 
           // Role IDs provided by user:
           // Admin: 1453054732141854751
           // VIP: 1454234806933258382
           hasAdminRole = roles.includes('1453054732141854751');
           hasVipRole = roles.includes('1454234806933258382');
+
+          // Moderator check
+          const moderatorRoleId = c.env.MODERATOR_ROLE_ID;
+          if (moderatorRoleId) {
+
+            hasModeratorRole = roles.includes(moderatorRoleId);
+          }
 
           // Tier Role IDs:
           // Gold: 1454095406446153839 (1600+)
@@ -1442,7 +1582,7 @@ app.get('/api/auth/callback', async (c) => {
             tierElo = 1000;
           }
 
-          console.log(`User ${userData.id} profile: Admin=${hasAdminRole}, VIP=${hasVipRole}, TierElo=${tierElo}`);
+          console.log(`User ${userData.id} profile: Admin=${hasAdminRole}, Mod=${hasModeratorRole}, VIP=${hasVipRole}, TierElo=${tierElo}`);
         }
       } catch (err) {
         console.warn('Could not fetch Discord guild roles:', err);
@@ -1453,9 +1593,12 @@ app.get('/api/auth/callback', async (c) => {
     let player: any = null;
     try {
       // Determine role and VIP status
-      const roleToSet = hasAdminRole ? 'admin' : 'user'; // We don't downgrade moderators unless they aren't admin? 
-      // Actually, if they have the Discord Admin role, they ARE admin. 
-      // If we don't want to overwrite existing 'moderator' status, we might need to check DB first.
+      let roleToSet = 'user';
+      if (hasAdminRole) {
+        roleToSet = 'admin';
+      } else if (hasModeratorRole) {
+        roleToSet = 'moderator';
+      }
 
       const eloDefault = 1000;
 
@@ -1465,15 +1608,20 @@ app.get('/api/auth/callback', async (c) => {
       const vipUntilDate = oneMonthFromNow.toISOString();
 
       await c.env.DB.prepare(
-        `INSERT INTO players (id, discord_id, discord_username, discord_avatar, is_discord_member, role, is_vip, vip_until, elo) 
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `INSERT INTO players (id, discord_id, discord_username, discord_avatar, is_discord_member, role, is_vip, vip_until, elo, discord_roles) 
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(id) DO UPDATE SET
          discord_username = excluded.discord_username,
          discord_avatar = excluded.discord_avatar,
          is_discord_member = excluded.is_discord_member,
-         role = CASE WHEN excluded.role = 'admin' THEN 'admin' ELSE players.role END,
+         role = excluded.role,
          is_vip = CASE WHEN excluded.is_vip = 1 THEN 1 ELSE players.is_vip END,
-         vip_until = CASE WHEN excluded.is_vip = 1 THEN excluded.vip_until ELSE players.vip_until END,
+         vip_until = CASE 
+            WHEN excluded.is_vip = 1 AND (players.vip_until IS NULL OR players.vip_until < datetime('now')) 
+            THEN excluded.vip_until 
+            ELSE players.vip_until 
+         END,
+         discord_roles = excluded.discord_roles,
          elo = CASE WHEN excluded.elo > players.elo THEN excluded.elo ELSE players.elo END`
       ).bind(
         userData.id,
@@ -1484,7 +1632,8 @@ app.get('/api/auth/callback', async (c) => {
         roleToSet,
         hasVipRole ? 1 : 0,
         hasVipRole ? vipUntilDate : null,
-        tierElo
+        tierElo,
+        discordRolesJson
       ).run();
 
       const { results } = await c.env.DB.prepare(
@@ -1502,11 +1651,13 @@ app.get('/api/auth/callback', async (c) => {
     const frontendUrl = c.env.FRONTEND_URL || 'http://localhost:5173';
     const role = player?.role || 'user';
     const elo = player?.elo || 1000;
+    const isMember = player?.is_discord_member || 0;
+    const createdAt = player?.created_at || '';
     const isVip = player?.is_vip || 0;
     const vipUntil = player?.vip_until || '';
 
     return c.redirect(
-      `${frontendUrl}?id=${userData.id}&username=${userData.username}&avatar=${userData.avatar || ''}&role=${role}&elo=${elo}&is_vip=${isVip}&vip_until=${vipUntil}`
+      `${frontendUrl}?id=${userData.id}&username=${userData.username}&avatar=${userData.avatar || ''}&role=${role}&elo=${elo}&is_vip=${isVip}&vip_until=${vipUntil}&is_discord_member=${isMember === 1}&created_at=${createdAt}`
     );
   } catch (error) {
     console.error('Auth error:', error);
@@ -1689,6 +1840,9 @@ app.post('/api/admin/cleanup-vips', async (c) => {
 
 // New Manual Matchmaking Routes
 app.route('/api', uploadRoutes); // R2 permissions missing, temporarily disabled
+app.route('/api/streamers', streamerRoutes);
+app.route('/api/clans', clanRoutes);
+app.route('/api/clan-requests', clanRequestsRoutes);
 
 const handler = {
   async fetch(request: Request, env: Env, ctx: ExecutionContext) {
@@ -1696,7 +1850,9 @@ const handler = {
   },
   async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext) {
     ctx.waitUntil(cleanupExpiredVips(env));
+    ctx.waitUntil(syncDiscordMembers(env));
   }
+
 };
 
 export default handler;

@@ -3,6 +3,15 @@ import { useWebSocket } from './WebSocketContext';
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Input } from "@/components/ui/input";
 import {
@@ -21,9 +30,14 @@ import {
     Loader2,
     UserPlus,
     ArrowLeft,
-    Gamepad2
+    Gamepad2,
+    Pencil,
+    ShieldAlert
 } from "lucide-react";
+import LevelBadge from './LevelBadge';
+import Chat from './Chat';
 import InviteFriendModal from './InviteFriendModal';
+
 
 interface MatchPlayer {
     player_id: string;
@@ -31,6 +45,7 @@ interface MatchPlayer {
     discord_username?: string;
     discord_avatar?: string;
     elo?: number;
+    is_vip?: number | boolean;
     standoff_nickname?: string;
     role?: string;
 }
@@ -55,6 +70,7 @@ interface LobbyDetailPageProps {
         id: string;
         username: string;
         avatar?: string;
+        role?: string;
     } | null;
     backendUrl: string;
     onBack: () => void;
@@ -62,7 +78,7 @@ interface LobbyDetailPageProps {
     onNavigateToProfile?: (userId: string) => void;
 }
 
-const LobbyDetailPage: React.FC<LobbyDetailPageProps> = ({ matchId, user, backendUrl, onBack, previousProfileUserId, onNavigateToProfile }) => {
+const LobbyDetailPage: React.FC<LobbyDetailPageProps> = ({ matchId, user, backendUrl, onBack, previousProfileUserId }) => {
     const { lastMessage } = useWebSocket();
     const [match, setMatch] = useState<Match | null>(null);
     const [players, setPlayers] = useState<MatchPlayer[]>([]);
@@ -73,6 +89,12 @@ const LobbyDetailPage: React.FC<LobbyDetailPageProps> = ({ matchId, user, backen
     const [selectedFile, setSelectedFile] = useState<File | null>(null);
     const [showInviteModal, setShowInviteModal] = useState(false);
     const [lockedTeamNames, setLockedTeamNames] = useState<{ alpha: string | null; bravo: string | null }>({ alpha: null, bravo: null });
+    const [isEditingLink, setIsEditingLink] = useState(false);
+    const [newLobbyUrl, setNewLobbyUrl] = useState('');
+    const [updatingLink, setUpdatingLink] = useState(false);
+    const [isProcessing, setIsProcessing] = useState(false);
+    const [errorDialogOpen, setErrorDialogOpen] = useState(false);
+    const [errorMessage, setErrorMessage] = useState("");
 
     // Fetch match details
     const fetchMatchDetails = async () => {
@@ -82,6 +104,7 @@ const LobbyDetailPage: React.FC<LobbyDetailPageProps> = ({ matchId, user, backen
             if (data.success) {
                 setMatch(data.match);
                 setPlayers(data.players || []);
+                setNewLobbyUrl(data.match.lobby_url || '');
             } else {
                 setError(data.error || 'Failed to load match');
             }
@@ -155,17 +178,21 @@ const LobbyDetailPage: React.FC<LobbyDetailPageProps> = ({ matchId, user, backen
             if (data.success) {
                 fetchMatchDetails();
             } else {
-                alert(data.error || 'Failed to join lobby');
+                setErrorMessage(data.error || 'Failed to join lobby');
+                setErrorDialogOpen(true);
             }
         } catch (err) {
-            alert('Network error');
+            setErrorMessage('Network error');
+            setErrorDialogOpen(true);
+        } finally {
+            setIsProcessing(false);
         }
     };
 
     // Leave lobby
     const handleLeaveLobby = async () => {
         if (!user) return;
-
+        setIsProcessing(true);
         try {
             const response = await fetch(`${backendUrl}/api/matches/${matchId}/leave`, {
                 method: 'POST',
@@ -177,17 +204,21 @@ const LobbyDetailPage: React.FC<LobbyDetailPageProps> = ({ matchId, user, backen
             if (data.success) {
                 onBack();
             } else {
-                alert(data.error || 'Failed to leave');
+                setErrorMessage(data.error || 'Failed to leave lobby');
+                setErrorDialogOpen(true);
             }
         } catch (err) {
-            alert('Network error');
+            setErrorMessage('Network error');
+            setErrorDialogOpen(true);
+        } finally {
+            setIsProcessing(false);
         }
     };
 
     // Switch team
     const handleSwitchTeam = async () => {
         if (!user) return;
-
+        setIsProcessing(true);
         try {
             const response = await fetch(`${backendUrl}/api/matches/${matchId}/switch-team`, {
                 method: 'POST',
@@ -199,16 +230,21 @@ const LobbyDetailPage: React.FC<LobbyDetailPageProps> = ({ matchId, user, backen
             if (data.success) {
                 fetchMatchDetails();
             } else {
-                alert(data.error || 'Failed to switch team');
+                setErrorMessage(data.error || 'Failed to switch team');
+                setErrorDialogOpen(true);
             }
         } catch (err) {
-            alert('Network error');
+            setErrorMessage('Network error');
+            setErrorDialogOpen(true);
+        } finally {
+            setIsProcessing(false);
         }
     };
 
     // Start match (host only)
     const handleStartMatch = async () => {
         if (!user || !match) return;
+        setIsProcessing(true);
 
         try {
             const response = await fetch(`${backendUrl}/api/matches/${matchId}/status`, {
@@ -224,10 +260,14 @@ const LobbyDetailPage: React.FC<LobbyDetailPageProps> = ({ matchId, user, backen
             if (data.success) {
                 fetchMatchDetails();
             } else {
-                alert(data.error || 'Failed to start match');
+                setErrorMessage(data.error || 'Failed to start match');
+                setErrorDialogOpen(true);
             }
         } catch (err) {
-            alert('Network error');
+            setErrorMessage('Network error');
+            setErrorDialogOpen(true);
+        } finally {
+            setIsProcessing(false);
         }
     };
 
@@ -245,6 +285,7 @@ const LobbyDetailPage: React.FC<LobbyDetailPageProps> = ({ matchId, user, backen
 
         if (!confirmCancel) return;
 
+        setIsProcessing(true);
         try {
             const response = await fetch(`${backendUrl}/api/matches/${matchId}/status`, {
                 method: 'PATCH',
@@ -257,13 +298,18 @@ const LobbyDetailPage: React.FC<LobbyDetailPageProps> = ({ matchId, user, backen
 
             const data = await response.json();
             if (data.success) {
-                alert('Match cancelled successfully');
+                setErrorMessage('Match cancelled successfully');
+                setErrorDialogOpen(true);
                 onBack();
             } else {
-                alert(data.error || 'Failed to cancel match');
+                setErrorMessage(data.error || 'Failed to cancel match');
+                setErrorDialogOpen(true);
             }
         } catch (err) {
-            alert('Network error');
+            setErrorMessage('Network error');
+            setErrorDialogOpen(true);
+        } finally {
+            setIsProcessing(false);
         }
     };
 
@@ -293,10 +339,12 @@ const LobbyDetailPage: React.FC<LobbyDetailPageProps> = ({ matchId, user, backen
                 // Refresh match details to update UI
                 fetchMatchDetails();
             } else {
-                alert(data.error || 'Failed to kick player');
+                setErrorMessage(data.error || 'Failed to kick player');
+                setErrorDialogOpen(true);
             }
         } catch (err) {
-            alert('Network error');
+            setErrorMessage('Network error');
+            setErrorDialogOpen(true);
         }
     };
 
@@ -318,13 +366,16 @@ const LobbyDetailPage: React.FC<LobbyDetailPageProps> = ({ matchId, user, backen
 
             const data = await response.json();
             if (data.success) {
-                alert(`Invitation sent to ${friend.username || friend.nickname}!`);
+                setErrorMessage(`Invitation sent to ${friend.username || friend.nickname}!`);
+                setErrorDialogOpen(true);
                 setShowInviteModal(false);
             } else {
-                alert(data.error || 'Failed to send invitation');
+                setErrorMessage(data.error || 'Failed to send invitation');
+                setErrorDialogOpen(true);
             }
         } catch (err) {
-            alert('Network error');
+            setErrorMessage('Network error');
+            setErrorDialogOpen(true);
         }
     };
 
@@ -334,6 +385,7 @@ const LobbyDetailPage: React.FC<LobbyDetailPageProps> = ({ matchId, user, backen
 
         if (!window.confirm('Are you sure you want to end this casual match?')) return;
 
+        setIsProcessing(true);
         try {
             const response = await fetch(`${backendUrl}/api/matches/${matchId}/status`, {
                 method: 'PATCH',
@@ -346,13 +398,18 @@ const LobbyDetailPage: React.FC<LobbyDetailPageProps> = ({ matchId, user, backen
 
             const data = await response.json();
             if (data.success) {
-                alert('Match ended successfully!');
+                setErrorMessage('Match ended successfully!');
+                setErrorDialogOpen(true);
                 fetchMatchDetails();
             } else {
-                alert(data.error || 'Failed to end match');
+                setErrorMessage(data.error || 'Failed to end match');
+                setErrorDialogOpen(true);
             }
         } catch (err) {
-            alert('Network error');
+            setErrorMessage('Network error');
+            setErrorDialogOpen(true);
+        } finally {
+            setIsProcessing(false);
         }
     };
 
@@ -377,13 +434,15 @@ const LobbyDetailPage: React.FC<LobbyDetailPageProps> = ({ matchId, user, backen
 
                 const uploadData = await uploadRes.json();
                 if (!uploadData.success) {
-                    alert('Failed to upload screenshot: ' + uploadData.error);
+                    setErrorMessage('Failed to upload screenshot: ' + uploadData.error);
+                    setErrorDialogOpen(true);
                     setSubmittingResult(false);
                     return;
                 }
                 screenshotUrl = uploadData.url;
             } else if (!screenshotUrl) {
-                alert('Please upload a screenshot or provide a URL');
+                setErrorMessage('Please upload a screenshot or provide a URL');
+                setErrorDialogOpen(true);
                 setSubmittingResult(false);
                 return;
             }
@@ -400,15 +459,49 @@ const LobbyDetailPage: React.FC<LobbyDetailPageProps> = ({ matchId, user, backen
 
             const data = await response.json();
             if (data.success) {
-                alert('Result submitted! Waiting for moderator review.');
+                setErrorMessage('Result submitted! Waiting for moderator review.');
+                setErrorDialogOpen(true);
                 fetchMatchDetails();
             } else {
-                alert(data.error || 'Failed to submit result');
+                setErrorMessage(data.error || 'Failed to submit result');
+                setErrorDialogOpen(true);
             }
         } catch (err) {
-            alert('Network error');
+            setErrorMessage('Network error');
+            setErrorDialogOpen(true);
         } finally {
             setSubmittingResult(false);
+        }
+    };
+
+    // Update match link (host only)
+    const handleUpdateLink = async () => {
+        if (!user || !match || !newLobbyUrl.trim()) return;
+        setUpdatingLink(true);
+
+        try {
+            const response = await fetch(`${backendUrl}/api/matches/${matchId}/link`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    host_id: user.id,
+                    lobby_url: newLobbyUrl.trim()
+                })
+            });
+
+            const data = await response.json();
+            if (data.success) {
+                setIsEditingLink(false);
+                fetchMatchDetails();
+            } else {
+                setErrorMessage(data.error || 'Failed to update link');
+                setErrorDialogOpen(true);
+            }
+        } catch (err) {
+            setErrorMessage('Network error');
+            setErrorDialogOpen(true);
+        } finally {
+            setUpdatingLink(false);
         }
     };
 
@@ -435,6 +528,7 @@ const LobbyDetailPage: React.FC<LobbyDetailPageProps> = ({ matchId, user, backen
     }
 
     const isHost = user?.id === match.host_id;
+    const isStaff = isHost || user?.role === 'moderator' || user?.role === 'admin';
     const isInMatch = players.some(p => p.player_id === user?.id);
     const alphaPlayers = players.filter(p => p.team === 'alpha');
     const bravoPlayers = players.filter(p => p.team === 'bravo');
@@ -470,13 +564,7 @@ const LobbyDetailPage: React.FC<LobbyDetailPageProps> = ({ matchId, user, backen
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-border/50 pb-6">
                 <div className="flex items-center gap-4">
                     <Button
-                        onClick={() => {
-                            if (previousProfileUserId && onNavigateToProfile) {
-                                onNavigateToProfile(previousProfileUserId);
-                            } else {
-                                onBack();
-                            }
-                        }}
+                        onClick={onBack}
                         variant="ghost"
                         size="icon"
                         className="rounded-full hover:bg-muted"
@@ -508,12 +596,62 @@ const LobbyDetailPage: React.FC<LobbyDetailPageProps> = ({ matchId, user, backen
                 </div>
 
                 {isInMatch && (
-                    <Button
-                        onClick={() => window.open(match.lobby_url, '_blank')}
-                        className="w-full md:w-auto font-bold shadow-lg shadow-primary/20 hover:scale-105 transition-transform"
-                    >
-                        <ExternalLink className="mr-2 h-4 w-4" /> Open Standoff 2
-                    </Button>
+                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full md:w-auto">
+                        {isEditingLink ? (
+                            <div className="flex items-center gap-2 bg-zinc-800 p-1 rounded-lg border border-white/10 w-full sm:w-80">
+                                <Input
+                                    value={newLobbyUrl}
+                                    onChange={(e) => setNewLobbyUrl(e.target.value)}
+                                    placeholder="standoff2://lobby/..."
+                                    className="h-9 text-xs bg-transparent border-0 focus-visible:ring-0 text-white font-mono"
+                                    autoFocus
+                                />
+                                <div className="flex items-center gap-1 pr-1">
+                                    <Button
+                                        size="icon"
+                                        variant="ghost"
+                                        className="h-8 w-8 text-green-500 hover:bg-green-500/10"
+                                        onClick={handleUpdateLink}
+                                        disabled={updatingLink}
+                                    >
+                                        {updatingLink ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                                    </Button>
+                                    <Button
+                                        size="icon"
+                                        variant="ghost"
+                                        className="h-8 w-8 text-red-500 hover:bg-red-500/10"
+                                        onClick={() => {
+                                            setIsEditingLink(false);
+                                            setNewLobbyUrl(match.lobby_url || '');
+                                        }}
+                                        disabled={updatingLink}
+                                    >
+                                        <X className="h-4 w-4" />
+                                    </Button>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="flex items-center gap-2 w-full">
+                                <Button
+                                    onClick={() => window.open(match.lobby_url, '_blank')}
+                                    className="flex-1 sm:w-auto font-bold shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] transition-all"
+                                >
+                                    <ExternalLink className="mr-2 h-4 w-4" /> Open Standoff 2
+                                </Button>
+                                {isStaff && match.status === 'waiting' && (
+                                    <Button
+                                        variant="outline"
+                                        size="icon"
+                                        className="h-10 w-10 border-white/10 bg-white/5 hover:bg-white/10 text-white flex-shrink-0"
+                                        onClick={() => setIsEditingLink(true)}
+                                        title="Edit Match Link"
+                                    >
+                                        <Pencil className="h-4 w-4" />
+                                    </Button>
+                                )}
+                            </div>
+                        )}
+                    </div>
                 )}
             </div>
 
@@ -560,14 +698,7 @@ const LobbyDetailPage: React.FC<LobbyDetailPageProps> = ({ matchId, user, backen
                                                 {player.role === 'moderator' && <Badge className="text-[9px] lg:text-[10px] px-1.5 py-0 bg-[#5b9bd5] text-white border-0 font-bold">MOD</Badge>}
                                             </div>
                                             <div className="flex items-center gap-1.5 flex-shrink-0">
-                                                <img
-                                                    src="https://corp.faceit.com/wp-content/uploads/2018/05/FACEIT_logo_transparent.png"
-                                                    alt="FACEIT"
-                                                    className="h-4 w-4 lg:h-5 lg:w-5 object-contain opacity-80"
-                                                />
-                                                <span className="text-[11px] lg:text-xs font-bold text-white/90 font-mono">
-                                                    {player.elo || 1000}
-                                                </span>
+                                                <LevelBadge elo={player.elo || 1000} showElo={true} className="gap-1" />
                                             </div>
                                         </div>
                                         <div className="text-[11px] lg:text-xs text-white/40 font-mono">
@@ -631,14 +762,7 @@ const LobbyDetailPage: React.FC<LobbyDetailPageProps> = ({ matchId, user, backen
                                                 {player.role === 'moderator' && <Badge className="text-[9px] lg:text-[10px] px-1.5 py-0 bg-[#e74c3c] text-white border-0 font-bold">MOD</Badge>}
                                             </div>
                                             <div className="flex items-center gap-1.5 flex-shrink-0">
-                                                <img
-                                                    src="https://corp.faceit.com/wp-content/uploads/2018/05/FACEIT_logo_transparent.png"
-                                                    alt="FACEIT"
-                                                    className="h-4 w-4 lg:h-5 lg:w-5 object-contain opacity-80"
-                                                />
-                                                <span className="text-[11px] lg:text-xs font-bold text-white/90 font-mono">
-                                                    {player.elo || 1000}
-                                                </span>
+                                                <LevelBadge elo={player.elo || 1000} showElo={true} className="gap-1" />
                                             </div>
                                         </div>
                                         <div className="text-[11px] lg:text-xs text-white/40 font-mono">
@@ -668,10 +792,14 @@ const LobbyDetailPage: React.FC<LobbyDetailPageProps> = ({ matchId, user, backen
                                         {isHost && (
                                             <Button
                                                 onClick={handleStartMatch}
-                                                disabled={players.length < 2}
-                                                className="flex-shrink-0 h-12 md:h-11 px-4 md:px-6 lg:px-8 bg-[#ff5500] hover:bg-[#e64d00] text-white font-bold shadow-lg uppercase tracking-wide transition-all text-sm whitespace-nowrap"
+                                                disabled={players.length < 2 || isProcessing}
+                                                className="flex-shrink-0 h-12 md:h-11 px-4 md:px-6 lg:px-8 bg-[#ff5500] hover:bg-[#e64d00] text-white font-bold shadow-lg uppercase tracking-wide transition-all text-sm whitespace-nowrap active:scale-95"
                                             >
-                                                <Play className="mr-2 h-4 w-4 fill-current" />
+                                                {isProcessing ? (
+                                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                                ) : (
+                                                    <Play className="mr-2 h-4 w-4 fill-current" />
+                                                )}
                                                 Start Match ({players.length}/10)
                                             </Button>
                                         )}
@@ -693,10 +821,14 @@ const LobbyDetailPage: React.FC<LobbyDetailPageProps> = ({ matchId, user, backen
                                         {!isInMatch && match.status === 'waiting' && (
                                             <Button
                                                 onClick={handleJoinLobby}
-                                                disabled={players.length >= match.max_players}
-                                                className="flex-shrink-0 h-12 md:h-11 px-4 md:px-6 bg-green-600 hover:bg-green-700 text-white font-bold shadow-md uppercase tracking-wide text-sm whitespace-nowrap"
+                                                disabled={players.length >= match.max_players || isProcessing}
+                                                className="flex-shrink-0 h-12 md:h-11 px-4 md:px-6 bg-green-600 hover:bg-green-700 text-white font-bold shadow-md uppercase tracking-wide text-sm whitespace-nowrap active:scale-95"
                                             >
-                                                <UserPlus className="mr-2 h-4 w-4" />
+                                                {isProcessing ? (
+                                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                                ) : (
+                                                    <UserPlus className="mr-2 h-4 w-4" />
+                                                )}
                                                 {players.length >= match.max_players ? 'Full Lobby' : 'Join Match'}
                                             </Button>
                                         )}
@@ -706,42 +838,148 @@ const LobbyDetailPage: React.FC<LobbyDetailPageProps> = ({ matchId, user, backen
                                             <>
                                                 <Button
                                                     onClick={handleSwitchTeam}
-                                                    className="flex-shrink-0 h-12 md:h-11 px-4 md:px-6 bg-[#18181b] hover:bg-[#27272a] text-white border border-white/5 font-semibold text-sm whitespace-nowrap"
+                                                    disabled={isProcessing}
+                                                    className="flex-shrink-0 h-12 md:h-11 px-4 md:px-6 bg-[#18181b] hover:bg-[#27272a] text-white border border-white/5 font-semibold text-sm whitespace-nowrap active:scale-95"
                                                 >
-                                                    <RotateCcw className="mr-2 h-4 w-4" /> Switch Team
+                                                    {isProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RotateCcw className="mr-2 h-4 w-4" />}
+                                                    Switch Team
                                                 </Button>
 
                                                 <Button
                                                     onClick={handleLeaveLobby}
                                                     variant="outline"
-                                                    className="flex-shrink-0 h-12 md:h-11 px-4 md:px-6 border-white/10 text-muted-foreground hover:text-white hover:bg-white/5 font-semibold text-sm bg-transparent whitespace-nowrap"
+                                                    disabled={isProcessing}
+                                                    className="flex-shrink-0 h-12 md:h-11 px-4 md:px-6 border-white/10 text-muted-foreground hover:text-white hover:bg-white/5 font-semibold text-sm bg-transparent whitespace-nowrap active:scale-95"
                                                 >
-                                                    <LogOut className="mr-2 h-4 w-4" /> Leave
+                                                    {isProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <LogOut className="mr-2 h-4 w-4" />}
+                                                    Leave
                                                 </Button>
                                             </>
                                         )}
 
-                                        {/* Cancel Button - Host Only */}
-                                        {isHost && (
+                                        {/* Cancel Button - Staff Only */}
+                                        {isStaff && (
                                             <>
                                                 {/* Mobile Cancel Button */}
                                                 <Button
                                                     onClick={handleCancelMatch}
+                                                    disabled={isProcessing}
                                                     variant="ghost"
                                                     className="sm:hidden h-12 text-sm text-red-500 bg-red-500/20 hover:text-red-400 hover:bg-red-500/30"
                                                 >
-                                                    <X className="mr-1 h-4 w-4" /> Cancel Lobby
+                                                    {isProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ShieldAlert className="mr-2 h-4 w-4" />} Cancel Match
                                                 </Button>
                                                 {/* Desktop Cancel Button */}
                                                 <Button
                                                     onClick={handleCancelMatch}
-                                                    className="hidden sm:flex h-12 md:h-11 px-4 md:px-6 bg-[#ff002b] hover:bg-[#d60024] text-white border-none shadow-lg rounded-md whitespace-nowrap"
+                                                    disabled={isProcessing}
+                                                    className="hidden sm:flex h-12 md:h-11 px-4 md:px-6 bg-[#ff002b] hover:bg-[#d60024] text-white border-none shadow-lg rounded-md whitespace-nowrap active:scale-95"
                                                     title="Cancel Match"
                                                 >
-                                                    <X className="h-4 w-4 mr-2" />
-                                                    Cancel
+                                                    {isProcessing ? (
+                                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                                    ) : (
+                                                        <ShieldAlert className="h-4 w-4 mr-2" />
+                                                    )}
+                                                    Cancel Match
                                                 </Button>
                                             </>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+
+                            {match.status === 'in_progress' && isStaff && (
+                                <div className="w-full flex flex-col md:flex-row items-center gap-4">
+                                    <div className="flex-1 w-full p-4 bg-muted/30 rounded-lg border border-border/50">
+                                        {match.match_type === 'league' ? (
+                                            <>
+                                                <h3 className="text-sm font-black uppercase tracking-widest mb-4 flex items-center gap-2 text-primary">
+                                                    <Trophy className="h-4 w-4" /> Submit Match Result
+                                                </h3>
+
+                                                <div className="grid gap-4">
+                                                    <div className="grid grid-cols-2 gap-4">
+                                                        <Button
+                                                            onClick={() => setWinnerTeam('alpha')}
+                                                            variant={winnerTeam === 'alpha' ? 'default' : 'outline'}
+                                                            className={`h-24 flex flex-col items-center justify-center gap-2 border-2 ${winnerTeam === 'alpha' ? 'border-orange-500 bg-orange-500/10 text-orange-500 hover:bg-orange-500/20' : 'hover:bg-muted'}`}
+                                                        >
+                                                            <span className="text-2xl">🦁</span>
+                                                            <span className="font-bold">{alphaTeamName}</span>
+                                                        </Button>
+                                                        <Button
+                                                            onClick={() => setWinnerTeam('bravo')}
+                                                            variant={winnerTeam === 'bravo' ? 'default' : 'outline'}
+                                                            className={`h-24 flex flex-col items-center justify-center gap-2 border-2 ${winnerTeam === 'bravo' ? 'border-blue-500 bg-blue-500/10 text-blue-500 hover:bg-blue-500/20' : 'hover:bg-muted'}`}
+                                                        >
+                                                            <span className="text-2xl">🦈</span>
+                                                            <span className="font-bold">{bravoTeamName}</span>
+                                                        </Button>
+                                                    </div>
+
+                                                    <div className="space-y-2">
+                                                        <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">Proof of Victory (Screenshot)</label>
+                                                        <div className="flex gap-2">
+                                                            <Input
+                                                                type="file"
+                                                                accept="image/*"
+                                                                onChange={e => setSelectedFile(e.target.files?.[0] || null)}
+                                                                className="hidden"
+                                                                id="screenshot-upload"
+                                                            />
+                                                            <label
+                                                                htmlFor="screenshot-upload"
+                                                                className="flex-1 flex items-center justify-center border-2 border-dashed border-muted-foreground/30 rounded-md p-4 cursor-pointer hover:bg-muted/50 hover:border-primary/50 transition-all"
+                                                            >
+                                                                {selectedFile ? (
+                                                                    <span className="text-green-500 flex items-center gap-2 font-medium"><Check className="h-5 w-5" /> {selectedFile.name}</span>
+                                                                ) : (
+                                                                    <span className="text-muted-foreground flex items-center gap-2"><Upload className="h-5 w-5" /> Click to upload screenshot</span>
+                                                                )}
+                                                            </label>
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="flex justify-end gap-2 pt-2">
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            className="text-muted-foreground hover:text-destructive text-xs"
+                                                            onClick={handleCancelMatch}
+                                                        >
+                                                            Cancel Match (Trolled)
+                                                        </Button>
+                                                        <Button onClick={handleSubmitResult} disabled={submittingResult} className="font-bold">
+                                                            {submittingResult && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                                            Submit Result
+                                                        </Button>
+                                                    </div>
+                                                </div>
+                                            </>
+                                        ) : (
+                                            <div className="flex flex-col items-center justify-center py-6 gap-4">
+                                                <div className="bg-primary/10 p-4 rounded-full">
+                                                    <Gamepad2 className="h-8 w-8 text-primary" />
+                                                </div>
+                                                <div className="text-center">
+                                                    <h3 className="text-lg font-bold">Casual Match in Progress</h3>
+                                                    <p className="text-muted-foreground text-sm max-w-xs">Casual matches do not requiring result submission or moderator review.</p>
+                                                </div>
+                                                <div className="flex gap-3">
+                                                    <Button
+                                                        variant="outline"
+                                                        onClick={handleCancelMatch}
+                                                        disabled={isProcessing}
+                                                        className="border-destructive/50 text-destructive hover:bg-destructive hover:text-white active:scale-95"
+                                                    >
+                                                        {isProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <X className="mr-2 h-4 w-4" />} Cancel
+                                                    </Button>
+                                                    <Button onClick={handleFinishMatch} disabled={isProcessing} className="bg-green-600 hover:bg-green-700 font-bold px-8 active:scale-95">
+                                                        {isProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />} FINISH MATCH
+                                                    </Button>
+                                                </div>
+                                            </div>
                                         )}
                                     </div>
                                 </div>
@@ -828,12 +1066,13 @@ const LobbyDetailPage: React.FC<LobbyDetailPageProps> = ({ matchId, user, backen
                                                     <Button
                                                         variant="outline"
                                                         onClick={handleCancelMatch}
-                                                        className="border-destructive/50 text-destructive hover:bg-destructive hover:text-white"
+                                                        disabled={isProcessing}
+                                                        className="border-destructive/50 text-destructive hover:bg-destructive hover:text-white active:scale-95"
                                                     >
-                                                        <X className="mr-2 h-4 w-4" /> Cancel
+                                                        {isProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <X className="mr-2 h-4 w-4" />} Cancel
                                                     </Button>
-                                                    <Button onClick={handleFinishMatch} className="bg-green-600 hover:bg-green-700 font-bold px-8">
-                                                        <Check className="mr-2 h-4 w-4" /> FINISH MATCH
+                                                    <Button onClick={handleFinishMatch} disabled={isProcessing} className="bg-green-600 hover:bg-green-700 font-bold px-8 active:scale-95">
+                                                        {isProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />} FINISH MATCH
                                                     </Button>
                                                 </div>
                                             </div>
@@ -852,8 +1091,27 @@ const LobbyDetailPage: React.FC<LobbyDetailPageProps> = ({ matchId, user, backen
                             onClose={() => setShowInviteModal(false)}
                         />
                     )}
+
+                    {/* Lobby Chat */}
+                    <div className="mt-6">
+                        <Chat lobbyId={matchId} variant="inline" title="Лобби Чаат" />
+                    </div>
                 </div>
             </div>
+            {/* Error Alert Dialog */}
+            <AlertDialog open={errorDialogOpen} onOpenChange={setErrorDialogOpen}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Error</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            {errorMessage}
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogAction onClick={() => setErrorDialogOpen(false)}>OK</AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </div>
     );
 };

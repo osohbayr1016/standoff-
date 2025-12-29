@@ -1,6 +1,17 @@
 import { createContext, useContext, useEffect, useState, useRef, useCallback } from 'react';
 import type { ReactNode } from 'react';
 
+interface ChatMessage {
+    id: string;
+    userId: string;
+    username: string;
+    avatar?: string;
+    content: string;
+    timestamp: number;
+    lobbyId?: string;
+    type?: 'user' | 'system';
+}
+
 interface WebSocketContextType {
     socket: WebSocket | null;
     sendMessage: (message: any) => void;
@@ -10,30 +21,27 @@ interface WebSocketContextType {
     registerUser: (userId: string) => void;
     requestMatchState: (lobbyId: string) => void;
     leaveMatch: (userId: string, lobbyId?: string) => void;
+    sendChat: (content: string, lobbyId?: string) => void;
+    chatMessages: ChatMessage[];
+    lobbyChatMessages: ChatMessage[];
 }
 
 const WebSocketContext = createContext<WebSocketContextType | undefined>(undefined);
 
 export const WebSocketProvider = ({ children, url }: { children: ReactNode; url: string }) => {
-    // const [socket, setSocket] = useState<WebSocket | null>(null);
-    const [socket] = useState<WebSocket | null>(null); // Keep socket for context providing
-    // const [lastMessage, setLastMessage] = useState<any>(null);
-    const [lastMessage] = useState<any>(null);
-    // const [messageLog, setMessageLog] = useState<any[]>([]);
-    const [messageLog] = useState<any[]>([]);
-    // const [isConnected, setIsConnected] = useState(false);
-    const [isConnected] = useState(false);
+    const [socket, setSocket] = useState<WebSocket | null>(null);
+    const [lastMessage, setLastMessage] = useState<any>(null);
+    const [messageLog, setMessageLog] = useState<any[]>([]);
+    const [isConnected, setIsConnected] = useState(false);
+    const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+    const [lobbyChatMessages, setLobbyChatMessages] = useState<ChatMessage[]>([]);
+
     // use 'any' for timeout ref to avoid NodeJS vs Window timeout type issues
     const reconnectTimeoutRef = useRef<any>(null);
     const socketRef = useRef<WebSocket | null>(null);
     const userIdRef = useRef<string | null>(null);
 
     const connect = useCallback(() => {
-        // WebSocket temporarily disabled due to backend permission issues
-        console.log("WebSocket connection temporarily disabled");
-        return;
-
-        /*
         if (socketRef.current && (socketRef.current.readyState === WebSocket.OPEN || socketRef.current.readyState === WebSocket.CONNECTING)) {
             return;
         }
@@ -49,21 +57,41 @@ export const WebSocketProvider = ({ children, url }: { children: ReactNode; url:
 
         ws.onopen = () => {
             console.log('WebSocket Connected');
-            console.log('Registering user ID:', userIdRef.current);
             setIsConnected(true);
             setSocket(ws);
 
             // Auto-register if we have a user ID stored
             if (userIdRef.current) {
-                ws.send(JSON.stringify({ type: 'REGISTER', userId: userIdRef.current }));
+                const user = JSON.parse(localStorage.getItem('user') || '{}');
+                ws.send(JSON.stringify({
+                    type: 'REGISTER',
+                    userId: userIdRef.current,
+                    username: user.username,
+                    avatar: user.avatar,
+                    elo: user.elo
+                }));
             }
         };
 
         ws.onmessage = (event) => {
             try {
                 const data = JSON.parse(event.data);
-                console.log("WS Message Received:", data); // DEBUG LOG
+                console.log("WS Message Received:", data);
                 setLastMessage(data);
+
+                // Handle Chat Messages
+                if (data.type === 'CHAT_MESSAGE') {
+                    if (data.message.lobbyId) {
+                        setLobbyChatMessages(prev => [...prev.slice(-49), data.message]);
+                    } else {
+                        setChatMessages(prev => [...prev.slice(-49), data.message]);
+                    }
+                } else if (data.type === 'CHAT_HISTORY') {
+                    setChatMessages(data.messages);
+                } else if (data.type === 'LOBBY_CHAT_HISTORY') {
+                    setLobbyChatMessages(data.messages);
+                }
+
                 setMessageLog(prev => {
                     const newLog = [...prev, { direction: 'IN', data, timestamp: new Date().toISOString() }];
                     return newLog.slice(-50); // Keep last 50
@@ -89,7 +117,6 @@ export const WebSocketProvider = ({ children, url }: { children: ReactNode; url:
             console.error('WebSocket Error', error);
             ws.close();
         };
-        */
     }, [url]);
 
     useEffect(() => {
@@ -101,66 +128,76 @@ export const WebSocketProvider = ({ children, url }: { children: ReactNode; url:
         };
     }, [connect]);
 
-    // Memoize sendMessage so it doesn't change on every render
     const sendMessage = useCallback((message: any) => {
         if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
-            console.log("Sending WS Message:", message); // DEBUG LOG
             socketRef.current.send(JSON.stringify(message));
-            /*
-            setMessageLog(prev => {
-                const newLog = [...prev, { direction: 'OUT', data: message, timestamp: new Date().toISOString() }];
-                return newLog.slice(-50);
-            });
-            */
-        } else {
-            console.warn('WebSocket not connected, message dropped:', message);
         }
     }, []);
 
-    // Memoize registerUser so it doesn't change on every render
     const registerUser = useCallback((userId: string) => {
         userIdRef.current = userId;
+        const user = JSON.parse(localStorage.getItem('user') || '{}');
         if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
-            console.log("Registering User via open socket:", userId);
-            socketRef.current.send(JSON.stringify({ type: 'REGISTER', userId }));
+            socketRef.current.send(JSON.stringify({
+                type: 'REGISTER',
+                userId,
+                username: user.username,
+                avatar: user.avatar,
+                elo: user.elo
+            }));
         }
     }, []);
 
-    // Request match state from server
+    const sendChat = useCallback((content: string, lobbyId?: string) => {
+        if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+            socketRef.current.send(JSON.stringify({
+                type: 'SEND_CHAT',
+                content,
+                lobbyId
+            }));
+        }
+    }, []);
+
     const requestMatchState = useCallback((lobbyId: string) => {
         if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
             const user = JSON.parse(localStorage.getItem('user') || '{}');
-            console.log("Requesting match state for lobby:", lobbyId);
             socketRef.current.send(JSON.stringify({
                 type: 'REQUEST_MATCH_STATE',
-                lobbyId: lobbyId,
+                lobbyId,
                 userId: user.id
             }));
-        } else {
-            console.warn('WebSocket not connected, cannot request match state');
         }
     }, []);
 
-    // Leave current match
     const leaveMatch = useCallback((userId: string, lobbyId?: string) => {
         if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
-            console.log("Leaving match:", { userId, lobbyId });
             socketRef.current.send(JSON.stringify({
                 type: 'LEAVE_MATCH',
-                userId: userId,
-                lobbyId: lobbyId
+                userId,
+                lobbyId
             }));
-        } else {
-            console.warn('WebSocket not connected, cannot leave match');
         }
     }, []);
 
     return (
-        <WebSocketContext.Provider value={{ socket, sendMessage, lastMessage, messageLog, isConnected, registerUser, requestMatchState, leaveMatch }}>
+        <WebSocketContext.Provider value={{
+            socket,
+            sendMessage,
+            lastMessage,
+            messageLog,
+            isConnected,
+            registerUser,
+            requestMatchState,
+            leaveMatch,
+            sendChat,
+            chatMessages,
+            lobbyChatMessages
+        }}>
             {children}
         </WebSocketContext.Provider>
     );
 };
+
 
 export const useWebSocket = () => {
     const context = useContext(WebSocketContext);

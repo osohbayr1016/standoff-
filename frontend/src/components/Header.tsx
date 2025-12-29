@@ -13,7 +13,11 @@ import {
   LogOut,
   User as UserIcon,
   ShieldAlert,
-  MessageCircle
+  MessageCircle,
+  Crown,
+  Cast,
+  Video,
+  Flag
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -32,7 +36,7 @@ interface User {
   standoff_nickname?: string;
   elo?: number;
   role?: string;
-  is_vip?: number;
+  is_vip?: number | boolean;
   vip_until?: string;
 }
 
@@ -108,6 +112,28 @@ export default function Header({
         REWARDS
       </Button>
       <Button
+        variant={currentPage === "streamers" ? "secondary" : "ghost"}
+        className={`justify-start ${mobile ? "w-full" : ""}`}
+        onClick={() => {
+          onNavigate("streamers");
+          if (mobile) setIsOpen(false);
+        }}
+      >
+        <Cast className="mr-2 h-4 w-4" />
+        STREAMERS
+      </Button>
+      <Button
+        variant={currentPage === "vip" ? "secondary" : "ghost"}
+        className={`justify-start ${mobile ? "w-full" : ""} ${currentPage !== "vip" ? "text-yellow-500 hover:text-yellow-600 hover:bg-yellow-500/10" : "bg-gradient-to-r from-yellow-400 to-yellow-600 text-black font-bold"}`}
+        onClick={() => {
+          onNavigate("vip");
+          if (mobile) setIsOpen(false);
+        }}
+      >
+        <Crown className={`mr-2 h-4 w-4 ${currentPage === "vip" ? "text-black" : "text-yellow-500"}`} />
+        VIP
+      </Button>
+      <Button
         variant={currentPage === "friends" ? "secondary" : "ghost"}
         className={`justify-start ${mobile ? "w-full" : ""}`}
         onClick={() => {
@@ -117,6 +143,17 @@ export default function Header({
       >
         <Users className="mr-2 h-4 w-4" />
         FRIENDS
+      </Button>
+      <Button
+        variant={currentPage === "clans" ? "secondary" : "ghost"}
+        className={`justify-start ${mobile ? "w-full" : ""}`}
+        onClick={() => {
+          onNavigate("clans");
+          if (mobile) setIsOpen(false);
+        }}
+      >
+        <Flag className="mr-2 h-4 w-4" />
+        CLANS
       </Button>
       {(user?.role === 'moderator' || user?.role === 'admin') && (
         <Button
@@ -173,7 +210,7 @@ export default function Header({
             variant="ghost"
             size="icon"
             className="h-10 w-10 rounded-full hover:bg-[#5865F2]/10 hover:text-[#5865F2] transition-colors"
-            onClick={() => window.open('https://discord.gg/4dSXyfWUdq', '_blank', 'noopener,noreferrer')}
+            onClick={() => window.open('https://discord.gg/so2faceit', '_blank', 'noopener,noreferrer')}
             title="Join our Discord server"
           >
             <MessageCircle className="h-5 w-5" />
@@ -211,6 +248,10 @@ export default function Header({
                 <DropdownMenuItem onClick={() => onNavigate("profile")}>
                   <UserIcon className="mr-2 h-4 w-4" />
                   <span>Profile</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => onNavigate("streamer-dashboard")}>
+                  <Video className="mr-2 h-4 w-4" />
+                  <span>Streamer Dashboard</span>
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={onLogout} className="text-destructive focus:bg-destructive/10">
                   <LogOut className="mr-2 h-4 w-4" />

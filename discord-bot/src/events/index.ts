@@ -59,6 +59,41 @@ export function setupEventHandlers(client: Client, backendService: BackendServic
         }
     });
 
+    // Automatically sync new members when they join the Discord server
+    client.on(Events.GuildMemberAdd, async (member) => {
+        console.log(`👋 New member joined: ${member.user.username} (${member.user.id})`);
+
+        try {
+            const backendUrl = process.env.BACKEND_URL || 'http://localhost:8787';
+            const adminSecret = process.env.ADMIN_SECRET || 'admin-secret-123';
+
+            // Call backend REST API to sync the new member
+            const response = await fetch(`${backendUrl}/api/admin/sync-member`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-admin-secret': adminSecret
+                },
+                body: JSON.stringify({
+                    userId: member.user.id,
+                    username: member.user.username,
+                    avatar: member.user.avatar
+                })
+            });
+
+            const data = await response.json() as { success?: boolean; role?: string; elo?: number; error?: string };
+
+            if (response.ok && data.success) {
+                console.log(`✅ Successfully synced new member ${member.user.username} to backend`);
+                console.log(`   Role: ${data.role}, ELO: ${data.elo}`);
+            } else {
+                console.error(`❌ Failed to sync member ${member.user.username}:`, data.error);
+            }
+        } catch (error) {
+            console.error(`❌ Error syncing new member ${member.user.username}:`, error);
+        }
+    });
+
     // Log when bot joins a guild
     client.on(Events.GuildCreate, (guild) => {
         console.log(`✅ Bot added to guild: ${guild.name} (${guild.id})`);

@@ -52,7 +52,7 @@ uploadRoutes.post('/upload', async (c) => {
 });
 
 // GET /images/:key - Serve image from R2
-uploadRoutes.get('/images/:key', async (c) => {
+uploadRoutes.get('/images/:key{.+}', async (c) => {
     try {
         const key = c.req.param('key');
         const object = await c.env.IMAGES_BUCKET.get(key);

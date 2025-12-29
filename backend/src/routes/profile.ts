@@ -10,8 +10,8 @@ export function setupProfileRoutes(app: Hono<any>) {
 
             // Use raw SQL for simplicity and robustness
             const user = await c.env.DB.prepare(
-                'SELECT * FROM players WHERE discord_id = ?'
-            ).bind(userId).first();
+                'SELECT * FROM players WHERE id = ? OR discord_id = ?'
+            ).bind(userId, userId).first();
 
             if (!user) {
                 return c.json({ error: 'User not found' }, 404);
@@ -19,7 +19,7 @@ export function setupProfileRoutes(app: Hono<any>) {
 
             // Standardize response
             return c.json({
-                id: user.discord_id,
+                id: user.id, // Use the actual DB primary key
                 discord_id: user.discord_id,
                 discord_username: user.discord_username,
                 discord_avatar: user.discord_avatar,
@@ -30,7 +30,10 @@ export function setupProfileRoutes(app: Hono<any>) {
                 wins: user.wins || 0,
                 losses: user.losses || 0,
                 role: user.role || 'user',
-                is_discord_member: user.is_discord_member === 1
+                is_vip: user.is_vip === 1,
+                vip_until: user.vip_until,
+                is_discord_member: user.is_discord_member === 1,
+                created_at: user.created_at
             });
         } catch (error) {
             console.error('❌ Profile fetch error:', error);
@@ -71,8 +74,8 @@ export function setupProfileRoutes(app: Hono<any>) {
 
             // Update database via raw SQL
             const result = await c.env.DB.prepare(
-                'UPDATE players SET standoff_nickname = ?, nickname_updated_at = ? WHERE discord_id = ?'
-            ).bind(nickname, new Date().toISOString(), userId).run();
+                'UPDATE players SET standoff_nickname = ?, nickname_updated_at = ? WHERE id = ? OR discord_id = ?'
+            ).bind(nickname, new Date().toISOString(), userId, userId).run();
 
             if (result.meta?.changes === 0) {
                 return c.json({ error: 'User not found in database. Please logout and login again.' }, 404);
@@ -139,17 +142,17 @@ export function setupProfileRoutes(app: Hono<any>) {
     app.get('/api/profile/:userId/matches', async (c) => {
         try {
             const userId = c.req.param('userId');
+            const type = c.req.query('type'); // 'league' or 'casual'
 
-            // Find all matches user participated in
-            // Find all matches user participated in
-            const matches = await c.env.DB.prepare(
-                `SELECT 
+            // Base query
+            let query = `SELECT 
                     m.id as match_id, 
                     m.map_name, 
                     m.status, 
                     m.winner_team,
                     m.created_at,
                     m.result_screenshot_url,
+                    m.match_type,
                     mp.team as player_team,
                     mp.joined_at,
                     m.alpha_score,
@@ -157,11 +160,21 @@ export function setupProfileRoutes(app: Hono<any>) {
                     eh.elo_change
                 FROM matches m
                 JOIN match_players mp ON m.id = mp.match_id
-                LEFT JOIN elo_history eh ON m.id = eh.match_id AND eh.user_id = ?
-                WHERE mp.player_id = ? AND m.status IN ('completed', 'pending_review')
-                ORDER BY m.created_at DESC
-                LIMIT 20`
-            ).bind(userId, userId).all();
+                LEFT JOIN elo_history eh ON m.id = eh.match_id AND (eh.user_id = ? OR eh.user_id IN (SELECT discord_id FROM players WHERE id = ?))
+                WHERE (mp.player_id = ? OR mp.player_id IN (SELECT discord_id FROM players WHERE id = ?)) AND m.status IN ('completed', 'pending_review')`;
+
+            const params: any[] = [userId, userId, userId, userId];
+
+            // Add filter if type is provided
+            if (type) {
+                query += ` AND m.match_type = ?`;
+                params.push(type);
+            }
+
+            query += ` ORDER BY m.created_at DESC LIMIT 20`;
+
+            // Find all matches user participated in
+            const matches = await c.env.DB.prepare(query).bind(...params).all();
 
             return c.json({ matches: matches.results || [] });
         } catch (error) {
@@ -177,9 +190,9 @@ export function setupProfileRoutes(app: Hono<any>) {
 
             const history = await c.env.DB.prepare(
                 `SELECT * FROM elo_history 
-                 WHERE user_id = ? 
+                 WHERE user_id = ? OR user_id IN (SELECT discord_id FROM players WHERE id = ?)
                  ORDER BY created_at ASC`
-            ).bind(userId).all();
+            ).bind(userId, userId).all();
 
             return c.json({ history: history.results || [] });
         } catch (error) {

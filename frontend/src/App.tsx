@@ -1,21 +1,30 @@
-import { useState, useEffect } from "react";
-import "./InviteToast.css"; // Keeping for now as it handles toast animations specific to invites
+import { useState, useEffect, Suspense, lazy } from "react";
+import Chat from './components/Chat';
 import Header from "./components/Header";
 import Hero from "./components/Hero";
+// Eager Load Leaderboard for homepage
 import Leaderboard from "./components/Leaderboard";
-import ProfilePage from "./components/ProfilePage";
-import LeaderboardPage from "./components/LeaderboardPage";
-import FriendsPage from "./components/FriendsPage";
-import AuthPage from "./components/AuthPage";
-import NotFoundPage from "./components/NotFoundPage";
-import JoinGatePage from "./components/JoinGatePage";
-import ModeratorPage from "./components/ModeratorPage";
-import AdminPage from "@/components/AdminPage";
 import Footer from "./components/Footer";
 import NicknameSetupModal from "./components/NicknameSetupModal";
-import MatchmakingPage from "./components/MatchmakingPage";
 import { WebSocketProvider, useWebSocket } from "./components/WebSocketContext";
 import RecentMatches from "./components/RecentMatches";
+import LoadingSpinner from "./components/LoadingSpinner";
+
+// Lazy Loaded Routes
+const ProfilePage = lazy(() => import("./components/ProfilePage"));
+const LeaderboardPage = lazy(() => import("./components/LeaderboardPage"));
+const FriendsPage = lazy(() => import("./components/FriendsPage"));
+const AuthPage = lazy(() => import("./components/AuthPage"));
+const NotFoundPage = lazy(() => import("./components/NotFoundPage"));
+const ModeratorPage = lazy(() => import("./components/ModeratorPage"));
+const AdminPage = lazy(() => import("@/components/AdminPage"));
+const MatchmakingPage = lazy(() => import("./components/MatchmakingPage"));
+const VIPPage = lazy(() => import("./components/VIPPage"));
+const JoinGatePage = lazy(() => import("./components/JoinGatePage"));
+const StreamersPage = lazy(() => import("./components/StreamersPage"));
+const StreamerDashboard = lazy(() => import("./components/StreamerDashboard"));
+const ClanPage = lazy(() => import("@/components/ClanPage"));
+const ClanProfilePage = lazy(() => import("@/components/ClanProfilePage"));
 
 // Placeholder components (to be implemented)
 const DailyRewards = () => <div className="placeholder-card">Daily Rewards - Coming Soon</div>;
@@ -30,8 +39,10 @@ interface User {
   standoff_nickname?: string;
   elo?: number;
   role?: string;
-  is_vip?: number;
+  is_vip?: number | boolean;
   vip_until?: string;
+  is_discord_member?: boolean;
+  created_at?: string;
 }
 
 interface PartyMember {
@@ -43,21 +54,10 @@ interface PartyMember {
 
 // Inner App component that uses WebSocket context
 function AppContent() {
-  // Initialize currentPage from localStorage or default to 'home'
   const [currentPage, setCurrentPage] = useState(() => {
-    // Check for error param first (Server Gate)
-    const params = new URLSearchParams(window.location.search);
-    if (params.get("error") === "not_in_server") {
-      return "join_gate";
-    }
-
     const savedPage = localStorage.getItem("currentPage");
     const validPages = [
-      "home",
-      "profile",
-      "leaderboard",
-      "friends",
-      "join_gate"
+      "home", "profile", "leaderboard", "friends", "vip", "join_gate", "matchmaking", "streamers", "streamer-dashboard", "clans", "clan-profile"
     ];
     if (savedPage && validPages.includes(savedPage)) {
       return savedPage;
@@ -91,24 +91,29 @@ function AppContent() {
   const { registerUser, lastMessage, requestMatchState } = useWebSocket();
 
   const [viewUserId, setViewUserId] = useState<string | null>(null);
+  const [viewClanId, setViewClanId] = useState<string | null>(null);
+  const [clanInitialTab, setClanInitialTab] = useState('members');
+  const [targetMatchId, setTargetMatchId] = useState<string | null>(null);
   const [previousPage, setPreviousPage] = useState<string | null>(null);
 
   const handleViewProfile = (userId: string) => {
-    // Store the current page before navigating to profile
     setPreviousPage(currentPage);
     setViewUserId(userId);
     setCurrentPage("profile");
-    // Store the profile userId in localStorage so we can navigate back to it
     localStorage.setItem("previousProfileUserId", userId);
   };
 
+  const handleViewClanProfile = (clanId: string) => {
+    setPreviousPage(currentPage);
+    setViewClanId(clanId);
+    setCurrentPage("clan-profile");
+  };
+
   const handleProfileBack = () => {
-    // Navigate back to the previous page, or home if no previous page
     if (previousPage && previousPage !== "profile") {
       setCurrentPage(previousPage);
       setPreviousPage(null);
     } else {
-      // Fallback: check localStorage for previous page
       const savedPage = localStorage.getItem("currentPage");
       if (savedPage && savedPage !== "profile") {
         setCurrentPage(savedPage);
@@ -118,8 +123,6 @@ function AppContent() {
     }
     setViewUserId(null);
   };
-
-  // --- Effects ---
 
   useEffect(() => {
     localStorage.setItem("currentPage", currentPage);
@@ -149,20 +152,16 @@ function AppContent() {
     }
   }, [navigatedAwayLobbyId]);
 
-  // Register user
   useEffect(() => {
     if (user && user.id) {
-      console.log('App: Registering user effect triggered', { userId: user.id });
       registerUser(user.id);
     }
   }, [user, registerUser]);
 
-  // Request match state
   useEffect(() => {
     if (user && user.id && activeLobbyId) {
       const timeout = setTimeout(() => {
         if (currentPage === "matchgame" || !matchData) {
-          console.log("Requesting match state for lobby:", activeLobbyId);
           requestMatchState(activeLobbyId);
         }
       }, 500);
@@ -170,112 +169,65 @@ function AppContent() {
     }
   }, [activeLobbyId, requestMatchState, currentPage, matchData, user]);
 
-  // WebSocket Message Handling
   useEffect(() => {
     if (!lastMessage) return;
 
     if (lastMessage.type === "AUTH_ERROR") {
-      console.error("Auth Error:", lastMessage.message);
-      // alert("Session Expired: " + lastMessage.message); // Alert might be annoying if loop
       handleLogout();
       return;
     }
 
-    if (lastMessage.type === "ERROR") {
-      console.error("Backend Error:", lastMessage.message);
-    }
-
-    // 1. Invites
     if (lastMessage.type === "INVITE_RECEIVED") {
       const { fromUser, lobbyId } = lastMessage;
       setInviteNotification({ fromUser, lobbyId });
       setTimeout(() => setInviteNotification(null), 10000);
     }
 
-    // 2. Global Match Ready
     if (lastMessage.type === "MATCH_READY") {
-      console.log("Global Match Ready:", lastMessage);
       if (lastMessage.lobbyId) {
         setActiveLobbyId(lastMessage.lobbyId);
-
         if (lastMessage.players && Array.isArray(lastMessage.players)) {
-          let players: PartyMember[] = [];
-          if (lastMessage.players.length > 0 && typeof lastMessage.players[0] === "object") {
-            players = lastMessage.players.map((p: any) => ({
-              id: p.id || p.discord_id,
-              username: p.username || p.name || "Unknown",
-              avatar: p.avatar || p.avatar_url,
-              elo: p.elo || 1000,
-            }));
-          } else {
-            players = lastMessage.players.map((id: string) => ({
-              id,
-              username: "Player",
-              elo: 1000,
-            }));
-          }
+          const players = lastMessage.players.map((p: any) => ({
+            id: p.id || p.discord_id,
+            username: p.username || p.name || "Unknown",
+            avatar: p.avatar || p.avatar_url,
+            elo: p.elo || 1000,
+          }));
           setLobbyPartyMembers(players);
 
-          // Auto-Navigate
           if (user && user.id) {
-            const rawPlayers = lastMessage.players || [];
-            const isUserInMatch = rawPlayers.some((p: any) =>
+            const isUserInMatch = lastMessage.players.some((p: any) =>
               String(p.id) === String(user.id) ||
               (p.discord_id && String(p.discord_id) === String(user.id))
             );
-
-            if (isUserInMatch) {
-              if (navigatedAwayLobbyId === lastMessage.lobbyId) {
-                console.log("User previously explicity navigated away. Suppressing.");
-              } else {
-                console.log("User in match -> MapBan");
-                setCurrentPage("mapban");
-                setNavigatedAwayLobbyId(null);
-              }
+            if (isUserInMatch && navigatedAwayLobbyId !== lastMessage.lobbyId) {
+              setCurrentPage("mapban");
+              setNavigatedAwayLobbyId(null);
             }
           }
         }
       }
     }
 
-    // 3. Ready Phase logic (Deprecated/Removed, but backend might send it - handled by going straight to lobby/game in recent changes)
-    if (lastMessage.type === "READY_PHASE_STARTED") {
-      // Just ensure matchgame or mapban flow correct
-    }
-
-    // 4. Lobby Update / Match Start
     if (lastMessage.type === "LOBBY_UPDATE" || lastMessage.type === "MATCH_START") {
       const lobby = lastMessage.lobby || lastMessage.matchData;
-      const lobbyId = lobby?.id || lastMessage.lobbyId || lastMessage.matchData?.id;
+      const lobbyId = lobby?.id || lastMessage.lobbyId;
 
       if (lastMessage.type === "MATCH_START") {
         if (lobbyId && matchData?.lobby?.id === lobbyId) return;
-
-        console.log("MATCH STARTED! Switching to Match View", lastMessage);
         setMatchData(lastMessage);
-
         if (navigatedAwayLobbyId !== lobbyId && currentPage !== "matchgame") {
           setCurrentPage("matchgame");
         }
         return;
       }
 
-      // Sync Lobby Data
       if (lobby && lobby.id) {
-        if (activeLobbyId && lobby.id !== activeLobbyId) {
-          console.warn("Ignoring LOBBY_UPDATE for different lobby");
-          return;
-        }
+        if (activeLobbyId && lobby.id !== activeLobbyId) return;
         setActiveLobbyId(lobby.id);
-
         if (lastMessage.type === "LOBBY_UPDATE") {
-          setMatchData({
-            type: "LOBBY_UPDATE",
-            lobby: lobby,
-            matchData: lobby,
-          });
+          setMatchData({ type: "LOBBY_UPDATE", lobby: lobby, matchData: lobby });
         }
-
         if (lobby.players && Array.isArray(lobby.players)) {
           const players = lobby.players.map((p: any) => ({
             id: p.id || p.discord_id,
@@ -285,8 +237,6 @@ function AppContent() {
           }));
           setLobbyPartyMembers(players);
         }
-
-        // Simple Auto-Nav Logic
         if (navigatedAwayLobbyId !== lobby.id) {
           if (lobby.serverInfo && currentPage !== "matchgame") {
             setCurrentPage("matchgame");
@@ -297,11 +247,9 @@ function AppContent() {
       }
     }
 
-    // 5. Match Cancelled/Error/Leave
     if (lastMessage.type === "MATCH_CANCELLED" ||
       lastMessage.type === "MATCH_STATE_ERROR" ||
       lastMessage.type === "LEAVE_MATCH_SUCCESS") {
-      console.log("Match Ended/Error:", lastMessage.type);
       setActiveLobbyId(undefined);
       setLobbyPartyMembers([]);
       setMatchData(null);
@@ -311,7 +259,6 @@ function AppContent() {
       }
     }
 
-    // 6. Server Ready (Async)
     if (lastMessage.type === "SERVER_READY") {
       if (lastMessage.serverInfo && matchData) {
         setMatchData((prev: any) => ({
@@ -321,47 +268,31 @@ function AppContent() {
         }));
       }
     }
-
   }, [lastMessage, currentPage, navigatedAwayLobbyId, matchData, activeLobbyId, user]);
 
-  // OAuth Logic
   useEffect(() => {
     const initUser = async () => {
       const params = new URLSearchParams(window.location.search);
       const id = params.get("id");
       const username = params.get("username");
       const avatar = params.get("avatar");
-
-      // Server Gate Handling
-      // If error param exists, it's handled in useState initializer, but here we prevent auto-login overlap
-      if (params.get("error") === "not_in_server") return;
-
       let userData: User | null = null;
 
       if (id && username) {
-        const role = params.get("role") || 'user';
-        const elo = params.get("elo") ? parseInt(params.get("elo")!) : 1000;
-        const is_vip = params.get("is_vip") === '1' ? 1 : 0;
-        const vip_until = params.get("vip_until") || undefined;
-
         userData = {
-          id,
-          username,
-          avatar: avatar || "",
-          role,
-          elo,
-          is_vip,
-          vip_until
+          id, username, avatar: avatar || "",
+          role: params.get("role") || 'user',
+          elo: params.get("elo") ? parseInt(params.get("elo")!) : 1000,
+          is_vip: params.get("is_vip") === '1' ? 1 : 0,
+          vip_until: params.get("vip_until") || undefined,
+          is_discord_member: params.get("is_discord_member") === 'true',
+          created_at: params.get("created_at") || undefined
         };
         window.history.replaceState({}, document.title, "/");
       } else {
         const savedUser = localStorage.getItem("user");
         if (savedUser) {
-          try {
-            userData = JSON.parse(savedUser);
-          } catch (e) {
-            localStorage.removeItem("user");
-          }
+          try { userData = JSON.parse(savedUser); } catch (e) { localStorage.removeItem("user"); }
         }
       }
 
@@ -369,38 +300,26 @@ function AppContent() {
         setUser(userData);
         setIsAuthenticated(true);
         localStorage.setItem("user", JSON.stringify(userData));
-
         try {
-          const res = await fetch(
-            `${import.meta.env.VITE_BACKEND_URL || "http://localhost:8787"}/api/profile/${userData.id}`
-          );
+          const res = await fetch(`${import.meta.env.VITE_BACKEND_URL || "http://localhost:8787"}/api/profile/${userData.id}`);
           if (res.ok) {
             const profile = await res.json();
-            if (!profile.standoff_nickname) {
-              setShowNicknameModal(true);
-            }
+            if (!profile.standoff_nickname) setShowNicknameModal(true);
             const updatedUser = {
               ...userData,
+              id: profile.id, // Synchronize with DB primary key
               standoff_nickname: profile.standoff_nickname,
               elo: profile.elo || 1000,
-              role: profile.role === 'admin' ? 'admin' : (userData.role === 'admin' ? 'admin' : (profile.role || 'user')),
+              role: profile.role,
               is_vip: profile.is_vip || 0,
               vip_until: profile.vip_until,
+              is_discord_member: profile.is_discord_member,
+              created_at: profile.created_at,
             };
-            if (
-              updatedUser.elo !== userData.elo ||
-              updatedUser.standoff_nickname !== userData.standoff_nickname ||
-              updatedUser.role !== (userData as any).role ||
-              updatedUser.is_vip !== (userData as any).is_vip ||
-              updatedUser.vip_until !== (userData as any).vip_until
-            ) {
-              setUser(updatedUser);
-              localStorage.setItem("user", JSON.stringify(updatedUser));
-            }
+            setUser(updatedUser);
+            localStorage.setItem("user", JSON.stringify(updatedUser));
           }
-        } catch (error) {
-          console.error("Failed to fetch profile", error);
-        }
+        } catch (error) { console.error("Failed to fetch profile", error); }
       }
     };
     initUser();
@@ -416,63 +335,59 @@ function AppContent() {
   };
 
   const handleFindMatch = () => setCurrentPage("matchmaking");
-  const handleGoHome = () => {
-    setViewUserId(null);
-    setCurrentPage("home");
-  };
+  const handleGoHome = () => { setViewUserId(null); setCurrentPage("home"); };
 
   const handleNavigate = (page: string) => {
     const matchPages = ["mapban", "matchgame"];
     if (matchPages.includes(currentPage) && !matchPages.includes(page)) {
       if (activeLobbyId) setNavigatedAwayLobbyId(activeLobbyId);
     }
-    if (matchPages.includes(page)) {
-      setNavigatedAwayLobbyId(null);
-    }
+    if (matchPages.includes(page)) setNavigatedAwayLobbyId(null);
     if (page === "profile") {
-      // Navigate to OWN profile - store previous page
-      if (currentPage !== "profile") {
-        setPreviousPage(currentPage);
-      }
+      if (currentPage !== "profile") setPreviousPage(currentPage);
       setViewUserId(null);
     } else {
-      // Clear previous page when navigating away from profile
-      if (currentPage === "profile") {
-        setPreviousPage(null);
-      }
+      if (currentPage === "profile") setPreviousPage(null);
     }
+    if (page !== "matchmaking") setTargetMatchId(null);
     setCurrentPage(page);
   };
 
+  const handleViewLobby = (lobbyId: string) => { setTargetMatchId(lobbyId); setCurrentPage("matchmaking"); };
+
   const handleLogout = () => {
-    setUser(null);
-    setIsAuthenticated(false);
-    localStorage.removeItem("user");
-    localStorage.removeItem("currentPage");
+    setUser(null); setIsAuthenticated(false);
+    localStorage.removeItem("user"); localStorage.removeItem("currentPage");
     setCurrentPage("home");
   };
 
-  const handleAcceptInvite = () => {
-    console.log("Joined lobby", inviteNotification?.lobbyId);
-    setInviteNotification(null);
-    setCurrentPage("matchmaking");
-  };
-
+  const handleAcceptInvite = () => { setInviteNotification(null); setCurrentPage("matchmaking"); };
   const handleDeclineInvite = () => setInviteNotification(null);
 
-  // Render Check
   const validPages = [
-    "home", "profile", "leaderboard", "rewards",
-    "friends", "matchmaking", "matchlobby", "mapban",
-    "matchgame", "join_gate", "moderator", "admin"
+    "home", "profile", "leaderboard", "rewards", "friends",
+    "matchmaking", "moderator", "admin", "vip", "join_gate", "mapban", "matchgame", "streamers", "streamer-dashboard", "clans", "clan-profile"
   ];
 
-  if (currentPage === "join_gate") {
-    // Gate page is special, doesn't need auth necessarily, or acts as auth barrier
-    return <JoinGatePage />;
+  if (!isAuthenticated) return <AuthPage />;
+
+  const isStaff = user?.role === 'admin' || user?.role === 'moderator';
+  const hasExpiredGracePeriod = user && user.is_discord_member === false && user.created_at && (
+    new Date().getTime() - new Date(user.created_at).getTime() > 24 * 60 * 60 * 1000
+  );
+
+  if (hasExpiredGracePeriod && !isStaff) {
+    return (
+      <div className="flex flex-col min-h-screen bg-background relative">
+        <Header currentPage="join_gate" user={user} onNavigate={handleNavigate} onLogout={handleLogout} backendUrl={import.meta.env.VITE_BACKEND_URL || "http://localhost:8787"} />
+        <main className="container mx-auto px-4 md:px-8 py-8 flex-1 flex items-center justify-center">
+          <JoinGatePage />
+        </main>
+        <Footer />
+      </div>
+    );
   }
 
-  if (!isAuthenticated) return <AuthPage />;
   if (!validPages.includes(currentPage)) return <NotFoundPage onGoHome={handleGoHome} />;
 
   return (
@@ -482,7 +397,7 @@ function AppContent() {
           <div className="invite-content">
             <div className="invite-avatar">
               <img
-                src={inviteNotification.fromUser.avatar
+                src={inviteNotification.fromUser?.avatar
                   ? `https://cdn.discordapp.com/avatars/${inviteNotification.fromUser.id}/${inviteNotification.fromUser.avatar}.png`
                   : "https://placehold.co/40x40"
                 }
@@ -514,48 +429,57 @@ function AppContent() {
       />
 
       <main className="container mx-auto px-4 md:px-8 py-8 flex-1">
-        {currentPage === "home" && (
-          <>
-            <Hero
+        <Suspense fallback={<LoadingSpinner />}>
+          {currentPage === "home" && (
+            <>
+              <Hero backendUrl={import.meta.env.VITE_BACKEND_URL || "http://localhost:8787"} onNavigate={handleNavigate} onViewProfile={handleViewProfile} />
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-8">
+                <Leaderboard />
+                <RecentMatches userId={user?.id} backendUrl={import.meta.env.VITE_BACKEND_URL || "http://localhost:8787"} onNavigate={handleNavigate} />
+                <DailyRewards />
+              </div>
+            </>
+          )}
+          {currentPage === "profile" && <ProfilePage user={user} targetUserId={viewUserId || user?.id} onFindMatch={handleFindMatch} onLogout={handleLogout} onBack={handleProfileBack} />}
+          {currentPage === "leaderboard" && <LeaderboardPage onViewProfile={handleViewProfile} />}
+          {currentPage === "rewards" && <RewardsPage />}
+          {currentPage === "friends" && <FriendsPage onViewProfile={handleViewProfile} />}
+          {currentPage === "clans" && <ClanPage user={user} backendUrl={import.meta.env.VITE_BACKEND_URL || "http://localhost:8787"} onViewLobby={handleViewLobby} onViewClanProfile={handleViewClanProfile} initialTab={clanInitialTab} />}
+          {currentPage === "clan-profile" && viewClanId && <ClanProfilePage backendUrl={import.meta.env.VITE_BACKEND_URL || "http://localhost:8787"} clanId={viewClanId} onBack={() => handleNavigate('clans')} onManage={() => { setClanInitialTab('settings'); handleNavigate('clans'); }} />}
+          {currentPage === "moderator" && <ModeratorPage user={user} backendUrl={import.meta.env.VITE_BACKEND_URL || "http://localhost:8787"} onViewLobby={handleViewLobby} />}
+          {currentPage === "admin" && <AdminPage user={user} backendUrl={import.meta.env.VITE_BACKEND_URL || "http://localhost:8787"} />}
+          {currentPage === "vip" && <VIPPage user={user} backendUrl={import.meta.env.VITE_BACKEND_URL || "http://localhost:8787"} />}
+          {currentPage === "streamers" && <StreamersPage />}
+          {currentPage === "streamer-dashboard" && <StreamerDashboard />}
+          {currentPage === "matchmaking" && (
+            <MatchmakingPage
+              user={user}
               backendUrl={import.meta.env.VITE_BACKEND_URL || "http://localhost:8787"}
-              onNavigate={handleNavigate}
               onViewProfile={handleViewProfile}
+              onNavigateToVip={() => handleNavigate('vip')}
+              targetMatchId={targetMatchId}
             />
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-8">
-              <Leaderboard />
-              <RecentMatches userId={user?.id} backendUrl={import.meta.env.VITE_BACKEND_URL || "http://localhost:8787"} onNavigate={handleNavigate} />
-              <DailyRewards />
-            </div>
-          </>
-        )}
-        {currentPage === "profile" && <ProfilePage user={user} targetUserId={viewUserId || user?.id} onFindMatch={handleFindMatch} onLogout={handleLogout} onBack={handleProfileBack} />}
-        {currentPage === "leaderboard" && <LeaderboardPage onViewProfile={handleViewProfile} />}
-        {currentPage === "rewards" && <RewardsPage />}
-        {currentPage === "friends" && <FriendsPage onViewProfile={handleViewProfile} />}
-        {currentPage === "moderator" && <ModeratorPage user={user} backendUrl={import.meta.env.VITE_BACKEND_URL || "http://localhost:8787"} />}
-        {currentPage === "admin" && <AdminPage user={user} backendUrl={import.meta.env.VITE_BACKEND_URL || "http://localhost:8787"} />}
-        {currentPage === "matchmaking" && (
-          <MatchmakingPage
-            user={user}
-            backendUrl={import.meta.env.VITE_BACKEND_URL || "http://localhost:8787"}
-            onViewProfile={handleViewProfile}
-          />
-        )}
-        {currentPage === "mapban" && (
-          <MapBanPage
-            partyMembers={lobbyPartyMembers}
-            onCancel={() => handleNavigate("home")}
-            activeLobbyId={activeLobbyId}
-            onReadyPhaseStart={() => setCurrentPage("matchgame")}
-          />
-        )}
-        {currentPage === "matchgame" && (
-          <MatchLobbyPage
-            lobby={matchData?.lobby || matchData?.matchData || matchData}
-            serverInfo={matchData?.matchData?.serverInfo || matchData?.serverInfo}
-          />
-        )}
+          )}
+          {currentPage === "mapban" && (
+            <MapBanPage
+              partyMembers={lobbyPartyMembers}
+              onCancel={() => handleNavigate("home")}
+              onReadyPhaseStart={() => setCurrentPage("matchgame")}
+            />
+          )}
+          {currentPage === "matchgame" && (
+            <MatchLobbyPage
+              lobby={matchData?.lobby || matchData?.matchData || matchData}
+              serverInfo={matchData?.matchData?.serverInfo || matchData?.serverInfo}
+            />
+          )}
+        </Suspense>
       </main>
+
+      {user && currentPage !== "matchgame" && currentPage !== "mapban" && (
+        <Chat variant="floating" />
+      )}
+
       <Footer />
     </div>
   );

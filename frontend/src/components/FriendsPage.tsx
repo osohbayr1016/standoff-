@@ -4,8 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { Search, UserPlus, Check, X, MessageSquare, Users } from "lucide-react";
-import { VerifiedBadge } from "./VerifiedBadge";
+import { Search, UserPlus, Check, X, MessageSquare, Users, Trophy } from "lucide-react";
 
 interface User {
   id: string;
@@ -22,6 +21,7 @@ interface Friend {
   elo: number;
   is_discord_member?: boolean;
   status: string;
+  is_vip?: boolean | number;
 }
 
 interface SearchResult {
@@ -31,6 +31,7 @@ interface SearchResult {
   avatar?: string;
   elo: number;
   is_discord_member?: boolean;
+  is_vip?: boolean | number;
 }
 
 interface FriendsPageProps {
@@ -218,7 +219,13 @@ export default function FriendsPage({ onViewProfile }: FriendsPageProps) {
                           <div className="flex items-center gap-2">
                             <span className="font-bold text-white max-w-[120px] truncate flex items-center gap-1.5">
                               {friend.nickname || friend.username}
-                              <VerifiedBadge isVerified={friend.is_discord_member} showText={false} className="w-3.5 h-3.5" />
+                              {/* VIP Badge */}
+                              {(friend.is_vip === true || friend.is_vip === 1) && (
+                                <div className="bg-gradient-to-r from-yellow-500 via-amber-400 to-yellow-600 text-black px-1.5 py-0.5 rounded-[2px] text-[10px] font-black uppercase tracking-wider shadow-[0_0_10px_rgba(234,179,8,0.3)] flex items-center gap-1 transform skew-x-[-10deg] scale-90 origin-left">
+                                  <Trophy className="w-2.5 h-2.5 fill-black" />
+                                  <span className="skew-x-[10deg]">VIP</span>
+                                </div>
+                              )}
                             </span>
                           </div>
                           <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -280,7 +287,12 @@ export default function FriendsPage({ onViewProfile }: FriendsPageProps) {
                       <div className="flex flex-col">
                         <span className="text-sm font-medium text-white flex items-center gap-1.5">
                           {result.nickname || result.username}
-                          <VerifiedBadge isVerified={result.is_discord_member} showText={false} className="w-3.5 h-3.5" />
+                          {(result.is_vip === true || result.is_vip === 1) && (
+                            <div className="bg-gradient-to-r from-yellow-500 via-amber-400 to-yellow-600 text-black px-1.5 py-0.5 rounded-[2px] text-[10px] font-black uppercase tracking-wider shadow-[0_0_10px_rgba(234,179,8,0.3)] flex items-center gap-1 transform skew-x-[-10deg] scale-90 origin-left">
+                              <Trophy className="w-2.5 h-2.5 fill-black" />
+                              <span className="skew-x-[10deg]">VIP</span>
+                            </div>
+                          )}
                         </span>
                         <span className="text-xs text-primary font-mono">ELO {result.elo}</span>
                       </div>
@@ -330,7 +342,12 @@ export default function FriendsPage({ onViewProfile }: FriendsPageProps) {
                         <div className="flex flex-col">
                           <span className="text-sm font-medium text-white flex items-center gap-1.5">
                             {request.nickname || request.username}
-                            <VerifiedBadge isVerified={request.is_discord_member} showText={false} className="w-3.5 h-3.5" />
+                            {(request.is_vip === true || request.is_vip === 1) && (
+                              <div className="bg-gradient-to-r from-yellow-500 via-amber-400 to-yellow-600 text-black px-1.5 py-0.5 rounded-[2px] text-[10px] font-black uppercase tracking-wider shadow-[0_0_10px_rgba(234,179,8,0.3)] flex items-center gap-1 transform skew-x-[-10deg] scale-90 origin-left">
+                                <Trophy className="w-2.5 h-2.5 fill-black" />
+                                <span className="skew-x-[10deg]">VIP</span>
+                              </div>
+                            )}
                           </span>
                           <span className="text-xs text-primary font-mono">ELO {request.elo}</span>
                         </div>

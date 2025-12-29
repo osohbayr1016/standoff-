@@ -59,8 +59,9 @@ export function setupStatsRoutes(app: Hono<any>) {
             // OR simpler: Just count total active matches and distribute them randomly for demo if data is sparse, 
             // BUT let's try to be real. We will fetch active matches and calculate in JS for flexibility.
 
+            // Get Ongoing Matches by Rank (Bronze, Silver, Gold) & Casual
             const activeMatches = await db.prepare(`
-                SELECT m.id, AVG(p.elo) as avg_elo
+                SELECT m.id, m.match_type, AVG(p.elo) as avg_elo
                 FROM matches m
                 JOIN match_players mp ON m.id = mp.match_id
                 JOIN players p ON mp.player_id = p.id
@@ -68,21 +69,26 @@ export function setupStatsRoutes(app: Hono<any>) {
                 GROUP BY m.id
             `).all();
 
-            const ongoingByRank = {
+            const ongoingStats = {
                 bronze: 0,
                 silver: 0,
-                gold: 0
+                gold: 0,
+                casual: 0
             };
 
             if (activeMatches.results) {
                 activeMatches.results.forEach((m: any) => {
-                    const elo = m.avg_elo || 1000;
-                    // Bronze: Level 1-3 (Max 900)
-                    if (elo <= 900) ongoingByRank.bronze++;
-                    // Silver: Level 4-7 (Max 1530)
-                    else if (elo <= 1530) ongoingByRank.silver++;
-                    // Gold: Level 8-10 (1531+)
-                    else ongoingByRank.gold++;
+                    if (m.match_type === 'casual') {
+                        ongoingStats.casual++;
+                    } else {
+                        const elo = m.avg_elo || 1000;
+                        // Bronze: < 1200
+                        if (elo < 1200) ongoingStats.bronze++;
+                        // Silver: 1200 - 1599
+                        else if (elo < 1600) ongoingStats.silver++;
+                        // Gold: 1600+
+                        else ongoingStats.gold++;
+                    }
                 });
             }
 
@@ -94,7 +100,7 @@ export function setupStatsRoutes(app: Hono<any>) {
                     active_players: activePlayers?.count || 0,
                     popular_map: popularMap?.map_name || 'N/A',
                     avg_duration_minutes: Math.round(avgDuration?.avg_minutes || 0),
-                    ongoing_matches_by_rank: ongoingByRank
+                    ongoing_matches_by_rank: ongoingStats
                 }
             });
         } catch (error) {

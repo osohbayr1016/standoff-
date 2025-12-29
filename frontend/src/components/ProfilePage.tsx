@@ -22,6 +22,9 @@ interface User {
   id: string;
   username: string;
   avatar: string;
+  is_vip?: number | boolean;
+  vip_until?: string;
+  role?: string;
 }
 
 interface MatchHistoryItem {
@@ -35,6 +38,7 @@ interface MatchHistoryItem {
   elo_change?: number; // Added from backend
   result_screenshot_url?: string;
   status?: string;
+  match_type?: 'casual' | 'league';
 }
 
 interface ProfileData {
@@ -47,7 +51,7 @@ interface ProfileData {
   wins: number;
   losses: number;
   is_discord_member?: boolean;
-  is_vip?: number;
+  is_vip?: number | boolean;
   vip_until?: string;
   matches?: MatchHistoryItem[];
 }
@@ -111,6 +115,9 @@ export default function ProfilePage({
   const [avatarError, setAvatarError] = useState(false);
   const [selectedMatch, setSelectedMatch] = useState<MatchDetails | null>(null);
   const [leaderboardRank, setLeaderboardRank] = useState<number | null>(null);
+  const [showCasualHistory, setShowCasualHistory] = useState(false);
+  const [casualMatches, setCasualMatches] = useState<MatchHistoryItem[]>([]);
+  const [loadingCasualHistory, setLoadingCasualHistory] = useState(false);
 
   // Determine which user ID to fetch (target or logged-in)
   const profileId = targetUserId || user?.id;
@@ -245,6 +252,30 @@ export default function ProfilePage({
     }
   };
 
+  const fetchCasualMatches = async () => {
+    if (!profileId) return;
+    setLoadingCasualHistory(true);
+    try {
+      const res = await fetch(
+        `${import.meta.env.VITE_BACKEND_URL || "http://localhost:8787"}/api/profile/${profileId}/matches?type=casual`
+      );
+      if (res.ok) {
+        const data = await res.json();
+        setCasualMatches(data.matches || []);
+      }
+    } catch (err) {
+      console.error("Failed to fetch casual matches:", err);
+    } finally {
+      setLoadingCasualHistory(false);
+    }
+  };
+
+  useEffect(() => {
+    if (showCasualHistory && profileId) {
+      fetchCasualMatches();
+    }
+  }, [showCasualHistory, profileId]);
+
   if (!user && !targetUserId) {
     return (
       <div className="flex items-center justify-center min-h-[50vh]">
@@ -363,7 +394,7 @@ export default function ProfilePage({
                     {profile?.standoff_nickname || profile?.discord_username || "Unknown Player"}
 
                     {/* VIP Badge After Name */}
-                    {profile?.is_vip === 1 && (
+                    {!!profile?.is_vip && (
                       <div className="flex flex-col items-start gap-0.5">
                         <div className="bg-gradient-to-r from-yellow-500 via-amber-400 to-yellow-600 text-black px-3 py-1 rounded text-xs font-black uppercase tracking-wider shadow-[0_0_20px_rgba(234,179,8,0.4)] flex items-center gap-1.5 animate-pulse transform skew-x-[-10deg]">
                           <Trophy className="w-3 h-3 fill-black" />
@@ -511,9 +542,21 @@ export default function ProfilePage({
       {/* Match History */}
       <Card className="bg-card/30 border-white/5">
         <CardHeader>
-          <CardTitle className="flex items-center gap-3">
-            <Trophy className="h-5 w-5 text-primary" />
-            <span className="font-display font-bold uppercase tracking-wider text-xl">Recent Matches</span>
+          <CardTitle className="flex items-center justify-between w-full">
+            <div className="flex items-center gap-3">
+              <Trophy className="h-5 w-5 text-primary" />
+              <div className="flex flex-col">
+                <span className="font-display font-bold uppercase tracking-wider text-xl">Recent Matches</span>
+              </div>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowCasualHistory(true)}
+              className="h-8 border-white/10 hover:bg-white/5 text-xs font-bold uppercase tracking-wider text-muted-foreground hover:text-white"
+            >
+              Casual History
+            </Button>
           </CardTitle>
           <CardDescription>Last 20 competitive matches played</CardDescription>
         </CardHeader>
@@ -785,6 +828,108 @@ export default function ProfilePage({
               )}
             </>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Casual Match History Dialog */}
+      <Dialog open={showCasualHistory} onOpenChange={setShowCasualHistory}>
+        <DialogContent className="bg-[#121418] border-white/10 text-white max-w-4xl max-h-[85vh] overflow-hidden flex flex-col p-0">
+          <DialogHeader className="p-6 pb-2 border-b border-white/5">
+            <DialogTitle className="flex items-center gap-3 text-xl font-black uppercase tracking-wider">
+              <Swords className="h-5 w-5 text-secondary" />
+              Casual Match History
+            </DialogTitle>
+            <DialogDescription>
+              Recent non-ranked casual matches. No ELO updates occur in these games.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex-1 overflow-y-auto p-6 pt-0">
+            {loadingCasualHistory ? (
+              <div className="flex items-center justify-center py-12">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+              </div>
+            ) : (
+              <Table>
+                <TableHeader className="bg-[#121418] sticky top-0 z-10">
+                  <TableRow className="border-white/5 hover:bg-transparent">
+                    <TableHead className="w-[80px] bg-[#121418]"></TableHead>
+                    <TableHead className="text-xs font-bold uppercase tracking-wider text-muted-foreground bg-[#121418]">Map / Date</TableHead>
+                    <TableHead className="text-center text-xs font-bold uppercase tracking-wider text-muted-foreground bg-[#121418]">Result</TableHead>
+                    <TableHead className="text-center text-xs font-bold uppercase tracking-wider text-muted-foreground bg-[#121418]">Score</TableHead>
+                    <TableHead className="text-center text-xs font-bold uppercase tracking-wider text-muted-foreground bg-[#121418]">Details</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {casualMatches && casualMatches.length > 0 ? (
+                    casualMatches.map((match) => {
+                      const isWinner = match.winner_team === match.player_team;
+                      const mapImage = match.map_name && MAP_IMAGES[match.map_name] ? MAP_IMAGES[match.map_name] : '/maps/sandstone.png';
+
+                      return (
+                        <TableRow
+                          key={match.match_id || Math.random().toString()}
+                          className="border-white/5 hover:bg-white/5 transition-colors group"
+                        >
+                          <TableCell className="p-2">
+                            <div className="h-10 w-16 rounded overflow-hidden relative shadow-sm border border-white/10">
+                              <img src={mapImage} alt={match.map_name} className="h-full w-full object-cover" />
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex flex-col">
+                              <span className="font-bold text-white text-sm">{match.map_name || 'Unknown Map'}</span>
+                              <span className="text-[10px] text-muted-foreground">{new Date(match.created_at).toLocaleDateString()}</span>
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-center">
+                            {match.winner_team ? (
+                              <Badge variant={isWinner ? "default" : "secondary"} className={`
+                                ${isWinner
+                                  ? "bg-green-500/10 text-green-500 border-green-500/20"
+                                  : "bg-white/5 text-muted-foreground border-white/10"} 
+                                uppercase text-[10px] font-bold tracking-wider px-2 py-0.5 border
+                            `}>
+                                {isWinner ? "VICTORY" : "Finished"}
+                              </Badge>
+                            ) : (
+                              <Badge variant="outline" className="border-white/10 text-muted-foreground text-[10px] uppercase">
+                                Completed
+                              </Badge>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <div className="font-mono font-bold text-sm text-white/80">
+                              {match.alpha_score ?? '-'} : {match.bravo_score ?? '-'}
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-8 w-8 p-0 hover:bg-white/10 rounded-full"
+                              onClick={() => fetchMatchDetails(match.match_id)}
+                            >
+                              <ArrowLeft className="h-4 w-4 rotate-180" />
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })
+                  ) : (
+                    <TableRow>
+                      <TableCell colSpan={5} className="text-center py-12 text-muted-foreground italic bg-muted/5">
+                        No casual match history available.
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            )}
+          </div>
+          <DialogFooter className="p-4 border-t border-white/5 bg-[#121418]">
+            <Button onClick={() => setShowCasualHistory(false)}>Close</Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

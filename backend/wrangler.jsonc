@@ -41,6 +41,11 @@
     "MODERATOR_ROLE_ID": "1454067327074177167",
     "TURNSTILE_SECRET_KEY": "1x0000000000000000000000000000000aa"
   },
+  "triggers": {
+    "crons": [
+      "*/30 * * * *"
+    ]
+  },
   "observability": {
     "logs": {
       "enabled": false,
