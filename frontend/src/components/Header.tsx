@@ -184,7 +184,7 @@ export default function Header({
           ADMIN PANEL
         </Button>
       )}
-      {(user?.role === 'admin' || (user?.discord_roles && user.discord_roles.includes('1455115991049703579'))) && (
+      {user && (
         <Button
           variant={currentPage === "gold-dashboard" ? "secondary" : "ghost"}
           className={`justify-start text-yellow-500 hover:bg-yellow-500/10 ${mobile ? "w-full" : ""}`}
@@ -194,7 +194,7 @@ export default function Header({
           }}
         >
           <Coins className="mr-2 h-4 w-4" />
-          GOLD PANEL
+          GOLD MARKET
         </Button>
       )}
     </>
