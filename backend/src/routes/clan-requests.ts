@@ -110,23 +110,67 @@ app.post('/check-payment', async (c) => {
 
         if (isPaid) {
             const db = drizzle(c.env.DB);
+            const { clans, clanMembers } = await import('../db/schema');
 
-            // Check if request already exists (optional but good)
-            // Just insert new request
+            // 1. Safety Checks
+            // Check if user is already in a clan
+            const existingMember = await db.select()
+                .from(clanMembers)
+                .where(eq(clanMembers.user_id, userId))
+                .get();
+
+            if (existingMember) {
+                return c.json({ success: false, error: 'You are already in a clan' }, 400);
+            }
+
+            // Check if clan name or tag is already taken
+            const existingClan = await db.select()
+                .from(clans)
+                .where(eq(clans.name, clan_name))
+                .get();
+
+            if (existingClan) {
+                return c.json({ success: false, error: 'Clan name already exists' }, 400);
+            }
+
+            // 2. Automated Clan Creation
+            const clanId = crypto.randomUUID();
+
+            // Insert into clans
+            await db.insert(clans).values({
+                id: clanId,
+                name: clan_name,
+                tag: clan_tag,
+                leader_id: userId,
+                max_members: clan_size,
+                elo: 1000
+            }).run();
+
+            // Insert into clan_members as leader
+            await db.insert(clanMembers).values({
+                id: crypto.randomUUID(),
+                clan_id: clanId,
+                user_id: userId,
+                role: 'leader'
+            }).run();
+
+            // 3. Log the request as auto-approved
             await db.insert(clanRequests).values({
                 user_id: userId,
                 clan_name: clan_name,
                 clan_tag: clan_tag,
                 clan_size: clan_size,
                 screenshot_url: `QPAY:${invoice_id}`, // QPay Marker
-                status: 'pending'
+                status: 'approved',
+                updated_at: new Date().toISOString()
             }).run();
 
-            return c.json({ success: true, paid: true, message: 'Payment confirmed. Clan request submitted.' });
+            return c.json({ success: true, paid: true, message: 'Payment confirmed. Clan created successfully!' });
         } else {
             return c.json({ success: true, paid: false, message: 'Payment not found yet.' });
         }
     } catch (e: any) {
+        console.error('Check payment error:', e);
         return c.json({ success: false, error: e.message }, 500);
     }
 });

@@ -22,18 +22,11 @@ async function requireGoldSeller(c: any, next: any) {
 
     if (!user) return c.json({ error: 'User not found' }, 404);
 
-    let hasRole = false;
-    try {
-        const roles = user.discord_roles ? JSON.parse(user.discord_roles as string) : [];
-        if (Array.isArray(roles) && roles.includes(GOLD_SELLER_ROLE_ID)) {
-            hasRole = true;
-        }
-    } catch (e) {
-        console.error('Error checking roles', e);
-    }
+    const ALLOWED_SELLERS = ['1237067681623052288', '656126101235695626'];
+    const isAllowed = ALLOWED_SELLERS.includes(user.id) || (user.discord_id && ALLOWED_SELLERS.includes(user.discord_id));
 
-    if (!hasRole && user.role !== 'admin') {
-        return c.json({ error: 'Permission denied: Gold Seller role required' }, 403);
+    if (!isAllowed) {
+        return c.json({ error: 'Permission denied: Gold Seller access restricted' }, 403);
     }
 
     c.set('user', user);
@@ -141,9 +134,9 @@ goldRoutes.post('/request', async (c) => {
         const userId = c.req.header('X-User-Id');
         if (!userId) return c.json({ error: 'Unauthorized' }, 401);
 
-        const { goldAmount, proofUrl } = await c.req.json();
-        if (!goldAmount || !proofUrl) {
-            return c.json({ success: false, error: 'goldAmount and proofUrl are required' }, 400);
+        const { goldAmount, priceMnt, proofUrl, graffitiUrl } = await c.req.json();
+        if (!goldAmount || !proofUrl || !graffitiUrl) {
+            return c.json({ success: false, error: 'goldAmount, proofUrl, and graffitiUrl are required' }, 400);
         }
 
         const db = drizzle(c.env.DB);
@@ -153,8 +146,9 @@ goldRoutes.post('/request', async (c) => {
         await db.insert(goldOrders).values({
             user_id: userId,
             gold_amount: Number(goldAmount),
-            price_mnt: 0, // Placeholder or calculated if rate known
+            price_mnt: Number(priceMnt) || 0,
             proof_url: proofUrl,
+            graffiti_url: graffitiUrl,
             status: 'pending'
         }).run();
 
@@ -174,12 +168,10 @@ goldRoutes.get('/orders', async (c) => {
     const user = await db.select().from(players).where(eq(players.id, userId)).get();
 
     let isSeller = false;
-    try {
-        const roles = user?.discord_roles ? JSON.parse(user.discord_roles as string) : [];
-        if (user?.role === 'admin' || (Array.isArray(roles) && roles.includes(GOLD_SELLER_ROLE_ID))) {
-            isSeller = true;
-        }
-    } catch (e) { }
+    const ALLOWED_SELLERS = ['1237067681623052288', '656126101235695626'];
+    if (user && (ALLOWED_SELLERS.includes(user.id) || (user.discord_id && ALLOWED_SELLERS.includes(user.discord_id)))) {
+        isSeller = true;
+    }
 
     if (isSeller) {
         // Seller sees ALL pending/recent orders

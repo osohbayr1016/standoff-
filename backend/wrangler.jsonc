@@ -37,7 +37,7 @@
     "DISCORD_REDIRECT_URI": "https://backend.anandoctane4.workers.dev/api/auth/callback",
     "DISCORD_SERVER_ID": "1452635831901753357",
     "DISCORD_CHANNEL_ID": "1453526990798983394",
-    "FRONTEND_URL": "https://main.standoff-frontend.pages.dev",
+    "FRONTEND_URL": "https://standoff2.mn",
     "MODERATOR_ROLE_ID": "1454067327074177167",
     "TURNSTILE_SECRET_KEY": "1x0000000000000000000000000000000aa"
   },

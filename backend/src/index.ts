@@ -1439,6 +1439,8 @@ app.use('/*', cors({
     'http://localhost:5173',
     'http://localhost:3000',
     'https://standoff-frontend.pages.dev',
+    'https://standoff2.mn',
+    'https://www.standoff2.mn',
     'https://main.standoff-frontend.pages.dev',
     'https://a0ab2f80.standoff-frontend.pages.dev'
   ],

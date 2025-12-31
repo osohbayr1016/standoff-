@@ -51,6 +51,7 @@ export default function ClanPage({ user, backendUrl, onViewLobby, onViewClanProf
     const [actionLoading, setActionLoading] = useState(false);
     const [addMemberId, setAddMemberId] = useState('');
     const [pendingRequest, setPendingRequest] = useState<any>(null);
+    const [activeInvoice, setActiveInvoice] = useState<any>(null); // New state for QPay
     const [activeMatch, setActiveMatch] = useState<any>(null);
     const [isAddMemberOpen, setIsAddMemberOpen] = useState(false);
     const [clanList, setClanList] = useState<any[]>([]);
@@ -201,8 +202,8 @@ export default function ClanPage({ user, backendUrl, onViewLobby, onViewClanProf
 
     useEffect(() => {
         let interval: any;
-        if (pendingRequest && pendingRequest.invoice_id && !success) {
-            setActionLoading(true); // show spinner or text indicating check
+        if (activeInvoice && !success) {
+            setActionLoading(true);
             interval = setInterval(async () => {
                 try {
                     const res = await fetch(`${backendUrl}/api/clan-requests/check-payment`, {
@@ -213,7 +214,7 @@ export default function ClanPage({ user, backendUrl, onViewLobby, onViewClanProf
                             'X-User-Id': user.id
                         },
                         body: JSON.stringify({
-                            invoice_id: pendingRequest.invoice_id,
+                            invoice_id: activeInvoice.invoice_id,
                             clan_name: createForm.name,
                             clan_tag: createForm.tag,
                             clan_size: createForm.size
@@ -221,9 +222,10 @@ export default function ClanPage({ user, backendUrl, onViewLobby, onViewClanProf
                     });
                     const data = await res.json();
                     if (data.success && data.paid) {
-                        setSuccess('Tөлбөр төлөгдлөөн. Клан хүсэлт илгээгдлээ!');
-                        setPendingRequest(null); // Clear invoice view
-                        fetchMyRequest(); // Fetch actual request status
+                        setSuccess('Төлбөр төлөгдлөө. Клан амжилттай үүсгэгдлээ!');
+                        setActiveInvoice(null);
+                        fetchClan(); // Immediate dashboard load
+                        fetchMyRequest();
                         clearInterval(interval);
                         setActionLoading(false);
                     }
@@ -231,7 +233,7 @@ export default function ClanPage({ user, backendUrl, onViewLobby, onViewClanProf
             }, 5000);
         }
         return () => { if (interval) clearInterval(interval); }
-    }, [pendingRequest, success]);
+    }, [activeInvoice, success]);
 
     const handleCreateInvoice = async () => {
         setError(null);
@@ -250,8 +252,7 @@ export default function ClanPage({ user, backendUrl, onViewLobby, onViewClanProf
             });
             const data = await res.json();
             if (data.success) {
-                // Use pendingRequest state effectively to show the invoice
-                setPendingRequest({ ...data.invoice, isInvoice: true });
+                setActiveInvoice(data.invoice);
             } else {
                 setError(data.error);
             }
@@ -360,7 +361,8 @@ export default function ClanPage({ user, backendUrl, onViewLobby, onViewClanProf
     if (loading) return <div className="h-[50vh] flex items-center justify-center"><LoadingSpinner size="lg" /></div>;
 
     if (!clan) {
-        if (pendingRequest) {
+        // Only show full-page pending if NOT viewing an active invoice
+        if (pendingRequest && !activeInvoice) {
             return (
                 <div className="min-h-screen bg-gradient-to-b from-zinc-950 via-zinc-900 to-zinc-950 text-white flex items-center justify-center p-4">
                     <Card className="max-w-md w-full bg-zinc-900/50 border-white/10 text-center p-8 space-y-6">
@@ -441,13 +443,12 @@ export default function ClanPage({ user, backendUrl, onViewLobby, onViewClanProf
                                     </CardHeader>
                                     <CardContent className="space-y-6 pt-6">
                                         {[
-                                            { step: '1', title: `Данс руу ${currentPrice}₮ шилжүүлэх`, desc: 'Утга: Discord нэр + Утас', icon: Shield },
-                                            { step: '2', title: 'Шилжүүлгийн screenshot авна', desc: 'Баримт болгож хадгална', icon: FileImage },
-                                            { step: '3', title: 'Доорх маягтыг бөглөнө', desc: 'Кланы мэдээлэл болон зураг', icon: Check },
-                                            { step: '4', title: 'Screenshot-оо хавсаргана', desc: 'Төлбөрийн баримт', icon: Plus },
-                                            { step: '5', title: 'Хүсэлт илгээнэ', desc: 'Админ руу илгэх', icon: Zap },
-                                            { step: '6', title: 'Админ баталгаажуулна', desc: '1-24 цагийн дотор', icon: Clock },
-                                            { step: '7', title: 'Клан идэвхжинэ', desc: 'Амжилт!', icon: Crown },
+                                            { step: '1', title: 'Клан мэдээлэл бөглөх', desc: 'Нэр болон таг оруулна', icon: Shield },
+                                            { step: '2', title: 'QPay товчлуур дээр дарах', desc: 'Төлбөрийн хэсэг гарч ирнэ', icon: Zap },
+                                            { step: '3', title: 'Банкны апп эсвэл QR сонгох', desc: 'Өөрийн ашигладаг банкаар', icon: Check },
+                                            { step: '4', title: `Төлбөр төлөх (${currentPrice}₮)`, desc: 'Гүйлгээ автоматаар шалгагдана', icon: FileImage },
+                                            { step: '5', title: 'Клан үүсгэгдэнэ', desc: 'Төлбөр төлөгдөнгүүт шууд үүснэ', icon: Crown },
+                                            { step: '6', title: 'Шууд идэвхжинэ', desc: 'Админы оролцоогүй автомат', icon: Zap },
                                         ].map((item, i) => (
                                             <div key={i} className="flex gap-4 items-start">
                                                 <div className="w-8 h-8 rounded-full bg-primary/10 border border-primary/30 flex items-center justify-center shrink-0 text-primary font-bold text-sm">
@@ -517,7 +518,7 @@ export default function ClanPage({ user, backendUrl, onViewLobby, onViewClanProf
                                             {error && <p className="text-red-400 text-sm bg-red-900/20 p-3 rounded">{error}</p>}
                                             {success && <p className="text-green-400 text-sm bg-green-900/20 p-3 rounded">{success}</p>}
 
-                                            {!pendingRequest ? (
+                                            {!activeInvoice ? (
                                                 <Button
                                                     className="w-full bg-primary hover:bg-primary/90 text-black font-bold h-12"
                                                     onClick={handleCreateInvoice}
@@ -528,15 +529,15 @@ export default function ClanPage({ user, backendUrl, onViewLobby, onViewClanProf
                                             ) : (
                                                 <div className="space-y-6 text-center animate-fade-in mt-4">
                                                     <div className="bg-white p-4 rounded-xl inline-block">
-                                                        <img src={`data:image/png;base64,${pendingRequest.qr_image}`} alt="QPay QR" className="w-48 h-48 md:w-64 md:h-64 mx-auto" />
+                                                        <img src={`data:image/png;base64,${activeInvoice.qr_image}`} alt="QPay QR" className="w-48 h-48 md:w-64 md:h-64 mx-auto" />
                                                     </div>
 
                                                     {/* Bank Apps Grid */}
-                                                    {pendingRequest.urls && pendingRequest.urls.length > 0 && (
+                                                    {activeInvoice.urls && activeInvoice.urls.length > 0 && (
                                                         <div className="space-y-2">
                                                             <p className="text-sm text-gray-400">Эсвэл банкаа сонгон төлнө үү (Use Bank App):</p>
                                                             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-48 overflow-y-auto p-2 bg-zinc-900/50 rounded-lg">
-                                                                {pendingRequest.urls.map((bank: any) => (
+                                                                {activeInvoice.urls.map((bank: any) => (
                                                                     <a
                                                                         key={bank.name}
                                                                         href={bank.link}
@@ -568,7 +569,7 @@ export default function ClanPage({ user, backendUrl, onViewLobby, onViewClanProf
                                                             Төлбөр шалгаж байна...
                                                         </div>
                                                     )}
-                                                    <Button variant="ghost" className="text-xs text-gray-500" onClick={() => setPendingRequest(null)}>
+                                                    <Button variant="ghost" className="text-xs text-gray-500" onClick={() => setActiveInvoice(null)}>
                                                         Буцах / Цуцлах
                                                     </Button>
                                                 </div>

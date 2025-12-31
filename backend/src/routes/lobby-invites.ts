@@ -83,7 +83,7 @@ lobbyInviteRoutes.post('/:matchId/invite', async (c) => {
                 });
             }
 
-            const lobbyUrl = `${c.env.FRONTEND_URL || 'https://main.standoff-frontend.pages.dev'}/matchmaking?join=${matchId}`;
+            const lobbyUrl = `${c.env.FRONTEND_URL || 'https://standoff2.mn'}/matchmaking?join=${matchId}`;
             const message = {
                 content: `🎮 **Lobby Invitation**\n\n**${sender.discord_username}** invited you to join their lobby!\n\n📍 Map: ${match.map_name || 'Random'}\n👥 Players: ${match.player_count}/${match.max_players}\n\n[Click here to join the lobby](${lobbyUrl})`,
             };

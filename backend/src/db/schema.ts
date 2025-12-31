@@ -165,6 +165,7 @@ export const goldOrders = sqliteTable('gold_orders', {
     price_mnt: integer('price_mnt').notNull(),
     status: text('status').default('pending').notNull(), // pending, completed, rejected
     proof_url: text('proof_url'),
+    graffiti_url: text('graffiti_url'),
     created_at: text('created_at').default(sql`CURRENT_TIMESTAMP`),
     updated_at: text('updated_at').default(sql`CURRENT_TIMESTAMP`),
     processed_by: text('processed_by').references(() => players.id),
