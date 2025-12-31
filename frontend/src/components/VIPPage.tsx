@@ -210,15 +210,13 @@ export default function VIPPage({ user, backendUrl }: VIPPageProps) {
                         <CardTitle className="text-2xl font-display text-white">Хэрхэн VIP авах вэ?</CardTitle>
                     </CardHeader>
                     <CardContent>
-                        <div className="grid md:grid-cols-7 gap-4">
+                        <div className="grid md:grid-cols-5 gap-4">
                             {[
-                                { step: '1', text: 'Данс руу 10,000₮ шилжүүлэх (Утга: Discord нэр + Утас)', icon: Shield },
-                                { step: '2', text: 'Шилжүүлгийн screenshot авна', icon: Upload },
-                                { step: '3', text: 'Доорх маягтыг бөглөнө', icon: Check },
-                                { step: '4', text: 'Screenshot-оо хавсаргана', icon: Upload },
-                                { step: '5', text: 'Хүсэлт илгээнэ', icon: Zap },
-                                { step: '6', text: 'Админ баталгаажуулна (1-24 цаг)', icon: Clock },
-                                { step: '7', text: 'VIP эрх идэвхжинэ', icon: Crown }
+                                { step: '1', text: 'Утасны дугаараа оруулна', icon: Zap },
+                                { step: '2', text: 'QPay товч дарна', icon: Shield },
+                                { step: '3', text: 'QR код эсвэл банкны апп сонгоно', icon: Check },
+                                { step: '4', text: 'Төлбөр төлнө (10,000₮)', icon: Upload },
+                                { step: '5', text: 'VIP эрх ШУУД идэвхжинэ!', icon: Crown }
                             ].map((item, i) => (
                                 <div key={i} className="flex flex-col items-center text-center">
                                     <div className="w-12 h-12 rounded-full bg-primary/10 border-2 border-primary/20 flex items-center justify-center mb-2">
@@ -275,7 +273,7 @@ export default function VIPPage({ user, backendUrl }: VIPPageProps) {
                         <CardHeader>
                             <CardTitle className="text-2xl font-display text-white">VIP хүсэлт илгээх</CardTitle>
                             <CardDescription className="text-gray-400">
-                                Дээрх данс руу төлбөр хийсний дараа энэ маягтыг бөглөнө үү
+                                Утасны дугаараа оруулаад QPay -ээр төлөх товч дарна уу
                             </CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-6">
