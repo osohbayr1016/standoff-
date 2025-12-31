@@ -267,8 +267,8 @@ export default function VIPPage({ user, backendUrl }: VIPPageProps) {
                     </Card>
                 ) : null}
 
-                {/* Request Form - Show if: no active VIP OR (VIP expired and no pending request) */}
-                {!isVipActive && (!currentRequest || currentRequest.status === 'rejected') && (
+                {/* Request Form - Show if VIP is not active (allows renewal after expiry or admin revoke) */}
+                {!isVipActive && (
                     <Card className="bg-zinc-950/50 backdrop-blur-sm border-white/10">
                         <CardHeader>
                             <CardTitle className="text-2xl font-display text-white">VIP хүсэлт илгээх</CardTitle>
