@@ -4,6 +4,7 @@ import { drizzle } from 'drizzle-orm/d1';
 import { eq, desc } from 'drizzle-orm';
 import { clanRequests, players } from '../db/schema';
 import { verifyAuth } from '../middleware/auth';
+import { QPayService } from '../utils/qpay';
 
 // Define Env and Variables (copied/adapted from index.ts)
 interface Env {
@@ -67,6 +68,66 @@ app.get('/my-request', async (c) => {
     } catch (e: any) {
         console.error('Get my request error:', e);
         return c.json({ success: false, error: 'Failed to fetch request' }, 500);
+    }
+});
+
+// POST /api/clan-requests/invoice - Create QPay invoice for Clan Creation
+app.post('/invoice', async (c) => {
+    const userId = c.get('userId') as string;
+    const { clan_size } = await c.req.json<{ clan_size: number }>();
+
+    if (!clan_size || ![20, 50].includes(clan_size)) {
+        return c.json({ success: false, error: 'Invalid clan size' }, 400);
+    }
+
+    const price = clan_size === 20 ? 20000 : 50000;
+
+    try {
+        const invoice = await QPayService.createInvoice(price, `Clan Creation (${clan_size} slots)`, userId);
+        return c.json({ success: true, invoice });
+    } catch (e: any) {
+        return c.json({ success: false, error: e.message }, 500);
+    }
+});
+
+// POST /api/clan-requests/check-payment
+app.post('/check-payment', async (c) => {
+    const userId = c.get('userId') as string;
+    const {
+        invoice_id,
+        clan_name,
+        clan_tag,
+        clan_size
+    } = await c.req.json<{
+        invoice_id: string;
+        clan_name: string;
+        clan_tag: string;
+        clan_size: number;
+    }>();
+
+    try {
+        const isPaid = await QPayService.checkInvoice(invoice_id);
+
+        if (isPaid) {
+            const db = drizzle(c.env.DB);
+
+            // Check if request already exists (optional but good)
+            // Just insert new request
+            await db.insert(clanRequests).values({
+                user_id: userId,
+                clan_name: clan_name,
+                clan_tag: clan_tag,
+                clan_size: clan_size,
+                screenshot_url: `QPAY:${invoice_id}`, // QPay Marker
+                status: 'pending'
+            }).run();
+
+            return c.json({ success: true, paid: true, message: 'Payment confirmed. Clan request submitted.' });
+        } else {
+            return c.json({ success: true, paid: false, message: 'Payment not found yet.' });
+        }
+    } catch (e: any) {
+        return c.json({ success: false, error: e.message }, 500);
     }
 });
 

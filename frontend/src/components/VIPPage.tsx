@@ -2,10 +2,9 @@ import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import {
     Crown, Trophy, Shield, Zap, Check, Upload, AlertTriangle,
-    Clock, CheckCircle2, XCircle, Copy
+    Clock, CheckCircle2, XCircle
 } from "lucide-react";
 
 interface VIPPageProps {
@@ -30,15 +29,14 @@ interface VIPRequest {
 
 export default function VIPPage({ user, backendUrl }: VIPPageProps) {
     const [phoneNumber, setPhoneNumber] = useState('');
-    const [message, setMessage] = useState('');
-    const [screenshot, setScreenshot] = useState<File | null>(null);
-    const [screenshotPreview, setScreenshotPreview] = useState<string>('');
-    const [uploading, setUploading] = useState(false);
+    // const [message, setMessage] = useState(''); // Unused for now in QPay flow unless we added it back?
+    // Actually I removed the textarea in step 72. So remove message state.
+    const [invoice, setInvoice] = useState<any>(null);
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
     const [currentRequest, setCurrentRequest] = useState<VIPRequest | null>(null);
-    const [copied, setCopied] = useState(false);
+    const [checkingPayment, setCheckingPayment] = useState(false);
 
     useEffect(() => {
         if (user) {
@@ -60,34 +58,47 @@ export default function VIPPage({ user, backendUrl }: VIPPageProps) {
         }
     };
 
-    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (file) {
-            if (!file.type.startsWith('image/')) {
-                setError('Зөвхөн зураг файл оруулна уу');
-                return;
-            }
-            if (file.size > 5 * 1024 * 1024) {
-                setError('Файлын хэмжээ 5MB-аас бага байх ёстой');
-                return;
-            }
-            setScreenshot(file);
-            setScreenshotPreview(URL.createObjectURL(file));
-            setError('');
-        }
-    };
+    useEffect(() => {
+        let interval: any;
 
-    const handleSubmit = async () => {
+        if (invoice && !success) {
+            setCheckingPayment(true);
+            interval = setInterval(async () => {
+                try {
+                    const res = await fetch(`${backendUrl}/api/vip-requests/check-payment`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-User-Id': user?.id || ''
+                        },
+                        body: JSON.stringify({
+                            invoice_id: invoice.invoice_id,
+                            phone_number: phoneNumber,
+                            discord_username: user?.username
+                        })
+                    });
+                    const data = await res.json();
+                    if (data.success && data.paid) {
+                        setSuccess('Төлбөр амжилттай төлөгдлөөн. VIP хүсэлт илгээгдлээ!');
+                        setInvoice(null);
+                        setCheckingPayment(false);
+                        fetchCurrentRequest();
+                        clearInterval(interval);
+                    }
+                } catch (e) { console.error('Check payment error', e); }
+            }, 5000);
+        }
+
+        return () => {
+            if (interval) clearInterval(interval);
+        };
+    }, [invoice, success]);
+
+    const handleCreateInvoice = async () => {
         if (!user) {
             setError('Нэвтэрч орно уу');
             return;
         }
-
-        if (!screenshot) {
-            setError('Шилжүүлгийн screenshot оруулна уу');
-            return;
-        }
-
         if (!phoneNumber) {
             setError('Утасны дугаараа оруулна уу');
             return;
@@ -97,63 +108,22 @@ export default function VIPPage({ user, backendUrl }: VIPPageProps) {
         setError('');
 
         try {
-            // 1. Upload screenshot
-            setUploading(true);
-            const formData = new FormData();
-            formData.append('screenshot', screenshot);
-
-            const uploadResponse = await fetch(`${backendUrl}/api/vip-requests/upload/vip-screenshot`, {
+            const res = await fetch(`${backendUrl}/api/vip-requests/invoice`, {
                 method: 'POST',
-                headers: { 'X-User-Id': user.id },
-                body: formData
+                headers: { 'X-User-Id': user.id }
             });
+            const data = await res.json();
 
-            const uploadData = await uploadResponse.json();
-            setUploading(false);
-
-            if (!uploadData.success) {
-                throw new Error(uploadData.error || 'Screenshot upload failed');
-            }
-
-            // 2. Submit VIP request
-            const requestResponse = await fetch(`${backendUrl}/api/vip-requests`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-User-Id': user.id
-                },
-                body: JSON.stringify({
-                    discord_username: user.username,
-                    phone_number: phoneNumber,
-                    screenshot_url: uploadData.url,
-                    message: message || undefined
-                })
-            });
-
-            const requestData = await requestResponse.json();
-
-            if (requestData.success) {
-                setSuccess('VIP хүсэлт амжилттай илгээгдлээ! Админ 1-24 цагийн дотор хянана.');
-                setPhoneNumber('');
-                setMessage('');
-                setScreenshot(null);
-                setScreenshotPreview('');
-                fetchCurrentRequest();
+            if (data.success) {
+                setInvoice(data.invoice);
             } else {
-                throw new Error(requestData.error || 'Request submission failed');
+                throw new Error(data.error || 'Нэхэмжлэх үүсгэж чадсангүй');
             }
-        } catch (err: any) {
-            setError(err.message || 'Алдаа гарлаа. Дахин оролдоно уу.');
+        } catch (e: any) {
+            setError(e.message || 'Алдаа гарлаа');
         } finally {
             setSubmitting(false);
-            setUploading(false);
         }
-    };
-
-    const handleCopyAccount = () => {
-        navigator.clipboard.writeText('MN770005005653332153');
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
     };
 
     const isVipActive = !!user?.is_vip && user?.vip_until && new Date(user.vip_until) > new Date();
@@ -231,58 +201,7 @@ export default function VIPPage({ user, backendUrl }: VIPPageProps) {
                         </CardContent>
                     </Card>
 
-                    <Card className="bg-gradient-to-br from-primary/10 to-zinc-950/50 backdrop-blur-sm border-primary/20">
-                        <CardHeader>
-                            <CardTitle className="flex items-center gap-2 text-white">
-                                <Zap className="w-5 h-5 text-primary" />
-                                Үнэ ба төлбөр
-                            </CardTitle>
-                        </CardHeader>
-                        <CardContent className="space-y-4">
-                            <div className="text-center py-4">
-                                <div className="text-5xl font-bold text-primary mb-2">10,000₮</div>
-                                <div className="text-gray-400">/ 1 сар</div>
-                            </div>
-                            <div className="bg-zinc-900/50 p-4 rounded-lg space-y-2 text-sm">
-                                <div className="flex justify-between">
-                                    <span className="text-gray-400">Банк:</span>
-                                    <span className="text-white font-medium">Хаан банк</span>
-                                </div>
-                                <div className="flex justify-between">
-                                    <span className="text-gray-400">Нэр:</span>
-                                    <span className="text-white font-medium">Амаржаргал Ананд</span>
-                                </div>
-                                <div className="flex justify-between items-center group">
-                                    <span className="text-gray-400">Данс:</span>
-                                    <div className="flex items-center gap-2">
-                                        <span className="text-white font-mono text-xs">MN770005005653332153</span>
-                                        <button
-                                            onClick={handleCopyAccount}
-                                            className="p-1 hover:bg-white/10 rounded transition-colors"
-                                            title="Хуулах"
-                                        >
-                                            {copied ? (
-                                                <Check className="w-3 h-3 text-green-500" />
-                                            ) : (
-                                                <Copy className="w-3 h-3 text-gray-400" />
-                                            )}
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                            <div className="bg-yellow-900/20 border border-yellow-500/20 p-3 rounded-lg flex items-start gap-2">
-                                <AlertTriangle className="w-5 h-5 text-yellow-500 shrink-0 mt-0.5" />
-                                <div className="space-y-1">
-                                    <p className="text-xs text-yellow-200">
-                                        <strong>АНХААРУУЛГА:</strong> Зөвхөн дээрх данс руу шилжүүлэг хийнэ үү!
-                                    </p>
-                                    <p className="text-xs text-yellow-400 font-bold">
-                                        Гүйлгээний утга: Өөрийн Discord нэр + Утасны дугаар
-                                    </p>
-                                </div>
-                            </div>
-                        </CardContent>
-                    </Card>
+
                 </div>
 
                 {/* How to Get VIP */}
@@ -370,7 +289,7 @@ export default function VIPPage({ user, backendUrl }: VIPPageProps) {
                                 <p className="text-xs text-gray-500">Автоматаар бөглөгдсөн</p>
                             </div>
 
-                            <div className="space-y-2">
+                            <div className="space-y-4">
                                 <label className="text-sm font-medium text-white flex items-center gap-2">
                                     <Zap className="w-4 h-4 text-primary" />
                                     Утасны дугаар <span className="text-red-500">*</span>
@@ -381,48 +300,80 @@ export default function VIPPage({ user, backendUrl }: VIPPageProps) {
                                     placeholder="99119911"
                                     className="bg-zinc-800/50 border-white/10 text-white"
                                     required
+                                    disabled={!!invoice}
                                 />
                                 <p className="text-[10px] text-gray-500">Бид тантай холбогдоход ашиглана</p>
                             </div>
 
-                            <div className="space-y-2">
-                                <label className="text-sm font-medium text-white">
-                                    Шилжүүлгийн Screenshot <span className="text-red-500">*</span>
-                                </label>
-                                <div className="border-2 border-dashed border-white/10 rounded-lg p-6 text-center hover:border-primary/50 transition-colors">
-                                    <input
-                                        type="file"
-                                        accept="image/*"
-                                        onChange={handleFileChange}
-                                        className="hidden"
-                                        id="screenshot-upload"
-                                    />
-                                    <label htmlFor="screenshot-upload" className="cursor-pointer">
-                                        {screenshotPreview ? (
-                                            <div className="space-y-2">
-                                                <img src={screenshotPreview} alt="Preview" className="max-h-64 mx-auto rounded-lg" />
-                                                <p className="text-sm text-green-500">✓ Зураг сонгогдсон</p>
-                                            </div>
-                                        ) : (
-                                            <div className="space-y-2">
-                                                <Upload className="w-12 h-12 mx-auto text-gray-400" />
-                                                <p className="text-gray-400">Зураг сонгох</p>
-                                                <p className="text-xs text-gray-500">PNG, JPG (max 5MB)</p>
-                                            </div>
-                                        )}
-                                    </label>
-                                </div>
-                            </div>
+                            {/* QPay Section */}
+                            {!invoice ? (
+                                <Button
+                                    onClick={handleCreateInvoice}
+                                    disabled={!phoneNumber || submitting}
+                                    className="w-full bg-gradient-to-r from-yellow-400 to-yellow-600 hover:from-yellow-500 hover:to-yellow-700 text-black font-bold text-lg h-12"
+                                >
+                                    {submitting ? (
+                                        <>
+                                            <div className="h-4 w-4 border-2 border-black/30 border-t-black rounded-full animate-spin mr-2" />
+                                            Нэхэмжлэх үүсгэж байна...
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Crown className="mr-2 h-5 w-5" />
+                                            QPay -ээр төлөх (10,000₮)
+                                        </>
+                                    )}
+                                </Button>
+                            ) : (
+                                <div className="space-y-6 text-center animate-fade-in">
+                                    <div className="bg-white p-4 rounded-xl inline-block">
+                                        <img src={`data:image/png;base64,${invoice.qr_image}`} alt="QPay QR" className="w-48 h-48 md:w-64 md:h-64 mx-auto" />
+                                    </div>
 
-                            <div className="space-y-2">
-                                <label className="text-sm font-medium text-white">Нэмэлт мэдээлэл (заавал биш)</label>
-                                <Textarea
-                                    value={message}
-                                    onChange={(e) => setMessage(e.target.value)}
-                                    placeholder="Хэрэв асуух зүйл байвал энд бичнэ үү..."
-                                    className="bg-zinc-800/50 border-white/10 text-white min-h-[100px]"
-                                />
-                            </div>
+                                    {/* Bank Apps Grid */}
+                                    {invoice.urls && invoice.urls.length > 0 && (
+                                        <div className="space-y-2">
+                                            <p className="text-sm text-gray-400">Эсвэл банкаа сонгон төлнө үү (Use Bank App):</p>
+                                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-48 overflow-y-auto p-2 bg-zinc-900/50 rounded-lg">
+                                                {invoice.urls.map((bank: any) => (
+                                                    <a
+                                                        key={bank.name}
+                                                        href={bank.link}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        className="flex flex-col items-center justify-center p-3 bg-zinc-800 hover:bg-zinc-700 rounded-lg transition-colors gap-2"
+                                                    >
+                                                        {bank.logo ? (
+                                                            <img src={bank.logo} alt={bank.name} className="w-8 h-8 rounded-lg" />
+                                                        ) : (
+                                                            <div className="w-8 h-8 bg-gray-600 rounded-lg flex items-center justify-center text-xs text-white">
+                                                                {bank.name[0]}
+                                                            </div>
+                                                        )}
+                                                        <span className="text-[10px] text-white text-center leading-tight">{bank.name}</span>
+                                                    </a>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    <div className="space-y-2">
+                                        <h3 className="text-xl font-bold text-white">QPay QR кодыг уншуулна уу</h3>
+                                        <p className="text-gray-400 text-sm">Төлбөр төлөгдсөний дараа автоматаар баталгаажна.</p>
+                                    </div>
+
+                                    {checkingPayment && (
+                                        <div className="flex items-center justify-center gap-2 text-yellow-500 text-sm">
+                                            <div className="h-4 w-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                                            Төлбөр шалгаж байна...
+                                        </div>
+                                    )}
+
+                                    <Button variant="ghost" className="text-xs text-gray-500" onClick={() => setInvoice(null)}>
+                                        Буцах / Цуцлах
+                                    </Button>
+                                </div>
+                            )}
 
                             {error && (
                                 <div className="bg-red-900/20 border border-red-500/20 p-3 rounded-lg flex items-start gap-2">
@@ -437,29 +388,6 @@ export default function VIPPage({ user, backendUrl }: VIPPageProps) {
                                     <p className="text-sm text-green-200">{success}</p>
                                 </div>
                             )}
-
-                            <Button
-                                onClick={handleSubmit}
-                                disabled={!screenshot || !phoneNumber || submitting || uploading}
-                                className="w-full bg-gradient-to-r from-yellow-400 to-yellow-600 hover:from-yellow-500 hover:to-yellow-700 text-black font-bold text-lg h-12"
-                            >
-                                {uploading ? (
-                                    <>
-                                        <div className="h-4 w-4 border-2 border-black/30 border-t-black rounded-full animate-spin mr-2" />
-                                        Зураг байршуулж байна...
-                                    </>
-                                ) : submitting ? (
-                                    <>
-                                        <div className="h-4 w-4 border-2 border-black/30 border-t-black rounded-full animate-spin mr-2" />
-                                        Илгээж байна...
-                                    </>
-                                ) : (
-                                    <>
-                                        <Crown className="mr-2 h-5 w-5" />
-                                        VIP ХҮСЭЛТ ИЛГЭЭХ
-                                    </>
-                                )}
-                            </Button>
                         </CardContent>
                     </Card>
                 )}

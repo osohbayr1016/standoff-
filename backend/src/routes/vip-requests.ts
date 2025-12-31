@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { QPayService } from '../utils/qpay';
 
 interface Env {
     DB: D1Database;
@@ -147,6 +148,91 @@ vipRequestsRoutes.post('/upload/vip-screenshot', async (c) => {
         });
     } catch (error: any) {
         console.error('Error uploading screenshot:', error);
+        return c.json({ success: false, error: error.message }, 500);
+    }
+});
+
+// POST /api/vip-requests/invoice - Create QPay invoice for VIP
+vipRequestsRoutes.post('/invoice', async (c) => {
+    const userId = c.req.header('X-User-Id');
+    if (!userId) return c.json({ success: false, error: 'Authentication required' }, 401);
+
+    try {
+        const VIP_PRICE = 10000;
+        const invoice = await QPayService.createInvoice(VIP_PRICE, 'VIP Subscription (1 Month)', userId);
+
+        return c.json({
+            success: true,
+            invoice
+        });
+    } catch (error: any) {
+        return c.json({ success: false, error: error.message }, 500);
+    }
+});
+
+// POST /api/vip-requests/check-payment - Check if QPay invoice is paid and create request
+vipRequestsRoutes.post('/check-payment', async (c) => {
+    const userId = c.req.header('X-User-Id');
+    if (!userId) return c.json({ success: false, error: 'Authentication required' }, 401);
+
+    try {
+        const { invoice_id, phone_number, discord_username, message } = await c.req.json<{
+            invoice_id: string;
+            phone_number: string;
+            discord_username: string;
+            message?: string;
+        }>();
+
+        const isPaid = await QPayService.checkInvoice(invoice_id);
+
+        if (isPaid) {
+            // Create VIP request automatically approved or pending admin check? 
+            // Plan says: "If paid, automatically creates the VIP request"
+            // Since it's paid, maybe set status to 'pending' (for admin to give role) or 'approved' (if auto-role).
+            // Let's stick to 'pending' for safety as per current flow (admin needs to verify logic/assign role).
+            // But actually, if payment is confirmed, we should probably mark it as "paid_pending_role" or similar.
+            // For now, insert as 'pending' but with a note or flag.
+            // Better: Insert into vip_requests with status 'pending' and maybe existing fields.
+            // We don't need screenshot anymore. We can use invoice_id as screenshot_url placeholder or add a column.
+            // Reusing screenshot_url to store "QPAY:{invoice_id}" to indicate it's a QPay payment.
+
+            const requestId = crypto.randomUUID();
+            const now = new Date().toISOString();
+
+            await c.env.DB.prepare(`
+                INSERT INTO vip_requests (
+                    id, user_id, discord_username, phone_number, 
+                    screenshot_url, message, status, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, 'pending', ?)
+            `).bind(
+                requestId, userId, discord_username, phone_number,
+                `QPAY:${invoice_id}`, message || 'Paid via QPay', now
+            ).run();
+
+            // INSTANT VIP ACTIVATION
+            const vipUntilDate = new Date();
+            vipUntilDate.setDate(vipUntilDate.getDate() + 30); // Add 30 days
+            const vipUntilIso = vipUntilDate.toISOString();
+
+            await c.env.DB.prepare(`
+                UPDATE players 
+                SET is_vip = 1, vip_until = ? 
+                WHERE id = ?
+            `).bind(vipUntilIso, userId).run();
+
+            // Mark the request as approved since it was auto-processed
+            await c.env.DB.prepare(`
+                UPDATE vip_requests
+                SET status = 'approved', reviewed_at = ?, reviewed_by = 'SYSTEM'
+                WHERE id = ?
+            `).bind(now, requestId).run();
+
+            return c.json({ success: true, paid: true, message: 'Payment confirmed. Request submitted.' });
+        } else {
+            return c.json({ success: true, paid: false, message: 'Payment not found yet.' });
+        }
+    } catch (error: any) {
+        console.error('Check Payment Error:', error);
         return c.json({ success: false, error: error.message }, 500);
     }
 });

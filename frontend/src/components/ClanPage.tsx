@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Flag, Users, Shield, Plus, Trophy, Crown, Zap, Check, Copy, FileImage, Clock } from 'lucide-react';
+import { Flag, Users, Shield, Plus, Trophy, Crown, Zap, Check, FileImage, Clock } from 'lucide-react';
 import LoadingSpinner from './LoadingSpinner';
 import { useAuth } from '../utils/auth';
 
@@ -44,8 +44,7 @@ export default function ClanPage({ user, backendUrl, onViewLobby, onViewClanProf
     const [loading, setLoading] = useState(true);
     const [activeTab, setActiveTab] = useState(initialTab);
     const [clan, setClan] = useState<Clan | null>(null);
-    const [createForm, setCreateForm] = useState({ name: '', tag: '', size: 20, screenshotUrl: '' });
-    const [screenshotFile, setScreenshotFile] = useState<File | null>(null);
+    const [createForm, setCreateForm] = useState({ name: '', tag: '', size: 20 });
     const [logoFile, setLogoFile] = useState<File | null>(null); // New State
     const [error, setError] = useState<string | null>(null);
     const [success, setSuccess] = useState<string | null>(null);
@@ -53,7 +52,6 @@ export default function ClanPage({ user, backendUrl, onViewLobby, onViewClanProf
     const [addMemberId, setAddMemberId] = useState('');
     const [pendingRequest, setPendingRequest] = useState<any>(null);
     const [activeMatch, setActiveMatch] = useState<any>(null);
-    const [copied, setCopied] = useState(false);
     const [isAddMemberOpen, setIsAddMemberOpen] = useState(false);
     const [clanList, setClanList] = useState<any[]>([]);
     const [editForm, setEditForm] = useState({ name: '', tag: '', logo_url: '' });
@@ -74,11 +72,7 @@ export default function ClanPage({ user, backendUrl, onViewLobby, onViewClanProf
         } catch (e) { console.error(e); }
     };
 
-    const handleCopyAccount = () => {
-        navigator.clipboard.writeText('MN770005005653332153');
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
-    };
+
 
     const fetchActiveMatch = async () => {
         try {
@@ -205,72 +199,64 @@ export default function ClanPage({ user, backendUrl, onViewLobby, onViewClanProf
         }
     }, [activeMatch]);
 
-    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (e.target.files && e.target.files[0]) {
-            setScreenshotFile(e.target.files[0]);
+    useEffect(() => {
+        let interval: any;
+        if (pendingRequest && pendingRequest.invoice_id && !success) {
+            setActionLoading(true); // show spinner or text indicating check
+            interval = setInterval(async () => {
+                try {
+                    const res = await fetch(`${backendUrl}/api/clan-requests/check-payment`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${token}`,
+                            'X-User-Id': user.id
+                        },
+                        body: JSON.stringify({
+                            invoice_id: pendingRequest.invoice_id,
+                            clan_name: createForm.name,
+                            clan_tag: createForm.tag,
+                            clan_size: createForm.size
+                        })
+                    });
+                    const data = await res.json();
+                    if (data.success && data.paid) {
+                        setSuccess('Tөлбөр төлөгдлөөн. Клан хүсэлт илгээгдлээ!');
+                        setPendingRequest(null); // Clear invoice view
+                        fetchMyRequest(); // Fetch actual request status
+                        clearInterval(interval);
+                        setActionLoading(false);
+                    }
+                } catch (e) { console.error(e); }
+            }, 5000);
         }
-    };
+        return () => { if (interval) clearInterval(interval); }
+    }, [pendingRequest, success]);
 
-    const handleSubmitRequest = async () => {
+    const handleCreateInvoice = async () => {
         setError(null);
         setSuccess(null);
         setActionLoading(true);
 
-        if (!screenshotFile) {
-            setError('Please upload a payment screenshot');
-            setActionLoading(false);
-            return;
-        }
-
         try {
-            // 1. Upload Image
-            const formData = new FormData();
-            formData.append('file', screenshotFile);
-
-            const uploadRes = await fetch(`${backendUrl}/api/upload`, {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'X-User-Id': user.id
-                    // Content-Type header is set automatically with boundary for FormData
-                },
-                body: formData
-            });
-
-            const uploadData = await uploadRes.json();
-
-            if (!uploadRes.ok || !uploadData.success) {
-                throw new Error(uploadData.error || 'Failed to upload screenshot');
-            }
-
-            const finalScreenshotUrl = uploadData.url;
-
-            // 2. Submit Request
-            const res = await fetch(`${backendUrl}/api/clan-requests`, {
+            const res = await fetch(`${backendUrl}/api/clan-requests/invoice`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${token}`,
                     'X-User-Id': user.id
                 },
-                body: JSON.stringify({
-                    clan_name: createForm.name,
-                    clan_tag: createForm.tag,
-                    clan_size: createForm.size,
-                    screenshot_url: finalScreenshotUrl
-                })
+                body: JSON.stringify({ clan_size: createForm.size })
             });
-
             const data = await res.json();
-            if (res.ok) {
-                setSuccess('Clan request submitted! Waiting for admin approval.');
-                fetchMyRequest();
-                window.scrollTo(0, 0);
+            if (data.success) {
+                // Use pendingRequest state effectively to show the invoice
+                setPendingRequest({ ...data.invoice, isInvoice: true });
             } else {
-                setError(data.error || 'Failed to submit request');
+                setError(data.error);
             }
         } catch (e: any) {
-            setError(e.message || 'Network error');
+            setError(e.message || 'Error creating invoice');
         } finally {
             setActionLoading(false);
         }
@@ -478,35 +464,6 @@ export default function ClanPage({ user, backendUrl, onViewLobby, onViewClanProf
 
                                 {/* Request Form */}
                                 <div className="space-y-6">
-                                    {/* Bank Details Card */}
-                                    <Card className="bg-gradient-to-br from-zinc-900 to-zinc-950 border-primary/20">
-                                        <CardContent className="p-6">
-                                            <div className="flex justify-between items-center mb-4">
-                                                <div className="text-sm text-gray-400">Шилжүүлэх дүн</div>
-                                                <div className="text-2xl font-bold text-primary">{currentPrice}₮</div>
-                                            </div>
-                                            <div className="bg-black/40 p-4 rounded-lg space-y-3 font-mono text-sm border border-white/5">
-                                                <div className="flex justify-between">
-                                                    <span className="text-gray-500">Bank:</span>
-                                                    <span className="text-white">Хаан банк</span>
-                                                </div>
-                                                <div className="flex justify-between">
-                                                    <span className="text-gray-500">Name:</span>
-                                                    <span className="text-white">Амаржаргал Ананд</span>
-                                                </div>
-                                                <div className="flex justify-between items-center pt-2 border-t border-white/5 mt-2">
-                                                    <span className="text-gray-500">Account:</span>
-                                                    <div className="flex items-center gap-2">
-                                                        <span className="text-white">MN770005005653332153</span>
-                                                        <button onClick={handleCopyAccount} className="hover:text-primary transition-colors">
-                                                            {copied ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
-                                                        </button>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </CardContent>
-                                    </Card>
-
                                     {/* Form */}
                                     <Card className="bg-zinc-950/50 backdrop-blur-sm border-white/10">
                                         <CardHeader>
@@ -521,6 +478,7 @@ export default function ClanPage({ user, backendUrl, onViewLobby, onViewClanProf
                                                         onChange={e => setCreateForm({ ...createForm, name: e.target.value })}
                                                         className="bg-zinc-900 border-white/10"
                                                         maxLength={20}
+                                                        disabled={!!pendingRequest}
                                                     />
                                                 </div>
                                                 <div className="space-y-2">
@@ -530,6 +488,7 @@ export default function ClanPage({ user, backendUrl, onViewLobby, onViewClanProf
                                                         onChange={e => setCreateForm({ ...createForm, tag: e.target.value.toUpperCase() })}
                                                         className="bg-zinc-900 border-white/10 uppercase"
                                                         maxLength={5}
+                                                        disabled={!!pendingRequest}
                                                     />
                                                 </div>
                                             </div>
@@ -554,27 +513,66 @@ export default function ClanPage({ user, backendUrl, onViewLobby, onViewClanProf
                                                 </div>
                                             </div>
 
-                                            <div className="space-y-2">
-                                                <Label className="text-white">Screenshot (Payment Proof)</Label>
-                                                <Input
-                                                    type="file"
-                                                    accept="image/*"
-                                                    onChange={handleFileChange}
-                                                    className="bg-zinc-900 border-white/10 file:bg-primary file:text-black file:font-bold file:mr-4 file:px-4 file:py-2 file:border-none file:rounded-md cursor-pointer hover:file:bg-primary/90"
-                                                />
-                                                <p className="text-xs text-gray-500">Please upload your payment screenshot.</p>
-                                            </div>
-
+                                            {/* QPay Section */}
                                             {error && <p className="text-red-400 text-sm bg-red-900/20 p-3 rounded">{error}</p>}
                                             {success && <p className="text-green-400 text-sm bg-green-900/20 p-3 rounded">{success}</p>}
 
-                                            <Button
-                                                className="w-full bg-primary hover:bg-primary/90 text-black font-bold h-12"
-                                                onClick={handleSubmitRequest}
-                                                disabled={actionLoading || !createForm.name || !createForm.tag || !screenshotFile}
-                                            >
-                                                {actionLoading ? <LoadingSpinner size="sm" /> : 'Хүсэлт илгээнэ (Send Request)'}
-                                            </Button>
+                                            {!pendingRequest ? (
+                                                <Button
+                                                    className="w-full bg-primary hover:bg-primary/90 text-black font-bold h-12"
+                                                    onClick={handleCreateInvoice}
+                                                    disabled={actionLoading || !createForm.name || !createForm.tag}
+                                                >
+                                                    {actionLoading ? <LoadingSpinner size="sm" /> : `QPay -ээр төлөх (${createForm.size === 20 ? '20,000' : '50,000'}₮)`}
+                                                </Button>
+                                            ) : (
+                                                <div className="space-y-6 text-center animate-fade-in mt-4">
+                                                    <div className="bg-white p-4 rounded-xl inline-block">
+                                                        <img src={`data:image/png;base64,${pendingRequest.qr_image}`} alt="QPay QR" className="w-48 h-48 md:w-64 md:h-64 mx-auto" />
+                                                    </div>
+
+                                                    {/* Bank Apps Grid */}
+                                                    {pendingRequest.urls && pendingRequest.urls.length > 0 && (
+                                                        <div className="space-y-2">
+                                                            <p className="text-sm text-gray-400">Эсвэл банкаа сонгон төлнө үү (Use Bank App):</p>
+                                                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-48 overflow-y-auto p-2 bg-zinc-900/50 rounded-lg">
+                                                                {pendingRequest.urls.map((bank: any) => (
+                                                                    <a
+                                                                        key={bank.name}
+                                                                        href={bank.link}
+                                                                        target="_blank"
+                                                                        rel="noopener noreferrer"
+                                                                        className="flex flex-col items-center justify-center p-3 bg-zinc-800 hover:bg-zinc-700 rounded-lg transition-colors gap-2"
+                                                                    >
+                                                                        {bank.logo ? (
+                                                                            <img src={bank.logo} alt={bank.name} className="w-8 h-8 rounded-lg" />
+                                                                        ) : (
+                                                                            <div className="w-8 h-8 bg-gray-600 rounded-lg flex items-center justify-center text-xs text-white">
+                                                                                {bank.name[0]}
+                                                                            </div>
+                                                                        )}
+                                                                        <span className="text-[10px] text-white text-center leading-tight">{bank.name}</span>
+                                                                    </a>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    )}
+
+                                                    <div className="space-y-2">
+                                                        <h3 className="text-xl font-bold text-white">QPay QR кодыг уншуулна уу</h3>
+                                                        <p className="text-gray-400 text-sm">Төлбөр төлөгдсөний дараа автоматаар баталгаажна.</p>
+                                                    </div>
+                                                    {actionLoading && (
+                                                        <div className="flex items-center justify-center gap-2 text-primary text-sm">
+                                                            <div className="h-4 w-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                                                            Төлбөр шалгаж байна...
+                                                        </div>
+                                                    )}
+                                                    <Button variant="ghost" className="text-xs text-gray-500" onClick={() => setPendingRequest(null)}>
+                                                        Буцах / Цуцлах
+                                                    </Button>
+                                                </div>
+                                            )}
                                         </CardContent>
                                     </Card>
                                 </div>
