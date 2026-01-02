@@ -192,16 +192,38 @@ matchesRoutes.get('/', async (c) => {
             ORDER BY m.created_at DESC
         `).bind(status).all();
 
-        // Fetch players for each match
-        const matchesWithPlayers = await Promise.all(
-            (result.results || []).map(async (match: any) => {
-                const players = await getMatchPlayers(match.id, c.env);
-                return {
-                    ...match,
-                    players
-                };
-            })
-        );
+        const matches = result.results || [];
+        const matchIds = matches.map((m: any) => m.id);
+
+        // Optimization: Batch fetch players in ONE query instead of N queries
+        let allPlayers: any[] = [];
+        if (matchIds.length > 0) {
+            const placeholders = matchIds.map(() => '?').join(',');
+            const playersResult = await c.env.DB.prepare(`
+                SELECT 
+                    mp.*,
+                    p.discord_username,
+                    p.discord_avatar,
+                    p.standoff_nickname,
+                    p.elo,
+                    p.role,
+                    p.is_discord_member,
+                    p.discord_id
+                FROM match_players mp
+                LEFT JOIN players p ON mp.player_id = p.id
+                WHERE mp.match_id IN (${placeholders})
+                ORDER BY mp.team, mp.joined_at
+            `).bind(...matchIds).all();
+            allPlayers = playersResult.results || [];
+        }
+
+        // Map players back to their matches
+        const matchesWithPlayers = matches.map((match: any) => {
+            return {
+                ...match,
+                players: allPlayers.filter((p: any) => p.match_id === match.id)
+            };
+        });
 
         return c.json({
             success: true,
@@ -940,8 +962,8 @@ matchesRoutes.post('/:id/result', async (c) => {
         `).bind(
             body.screenshot_url,
             body.winner_team,
-            body.alpha_score || null,
-            body.bravo_score || null,
+            body.alpha_score ?? 0,
+            body.bravo_score ?? 0,
             matchId
         ).run();
 

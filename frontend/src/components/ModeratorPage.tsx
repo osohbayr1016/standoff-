@@ -23,7 +23,7 @@ import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/
 import {
     Users, Activity, FileText, Ban, Check, X, Search,
     Gamepad2, RefreshCw, LayoutDashboard, TrendingUp, Menu, ShieldAlert, Shield,
-    Play, XCircle, Crown, Flag, PlusCircle, Trophy, Swords
+    Play, XCircle, Crown, Flag, PlusCircle, Trophy, Swords, ImageIcon
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, ResponsiveContainer } from 'recharts';
@@ -45,6 +45,7 @@ interface PendingMatch {
     updated_at: string;
     players?: MatchPlayer[];
     match_type: string;
+    map_name?: string;
 }
 
 interface MatchPlayer {
@@ -228,6 +229,7 @@ export default function ModeratorPage({ user, backendUrl, onViewLobby }: Moderat
     const [eloChange, setEloChange] = useState(25);
     const [reviewNotes, setReviewNotes] = useState('');
     const [processing, setProcessing] = useState(false);
+    const [uploadingScreenshot, setUploadingScreenshot] = useState(false);
 
     const [selectedPlayer, setSelectedPlayer] = useState<User | null>(null);
     const [playerHistory, setPlayerHistory] = useState<EloHistoryEntry[]>([]);
@@ -324,6 +326,13 @@ export default function ModeratorPage({ user, backendUrl, onViewLobby }: Moderat
                 setReviewWinner(data.match.winner_team || 'alpha');
                 setAlphaScore(data.match.alpha_score || 0);
                 setBravoScore(data.match.bravo_score || 0);
+
+                // Pre-set correct Elo change based on match type
+                if (data.match.match_type === 'competitive') {
+                    setEloChange(10);
+                } else {
+                    setEloChange(25);
+                }
             }
         } catch (err) {
             console.error('Error fetching match details:', err);
@@ -953,35 +962,114 @@ export default function ModeratorPage({ user, backendUrl, onViewLobby }: Moderat
                     <RefreshCw className="mr-2 h-4 w-4" /> Refresh
                 </Button>
             </div>
-            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-                {pendingMatches.map(match => (
-                    <Card key={match.id} className="cursor-pointer hover:shadow-lg transition-all bg-zinc-950 border-white/10 hover:border-primary/50 group" onClick={() => fetchMatchDetails(match.id)}>
-                        <div className="relative aspect-video w-full bg-zinc-900 overflow-hidden rounded-t-lg">
-                            {match.result_screenshot_url ? (
-                                <img src={match.result_screenshot_url} alt="Result" className="object-cover w-full h-full group-hover:scale-105 transition-transform duration-500" />
-                            ) : (
-                                <div className="flex items-center justify-center h-full text-muted-foreground">No Screenshot</div>
-                            )}
-                            <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent" />
-                            <div className="absolute bottom-2 left-2 right-2 flex justify-between items-center">
-                                <Badge variant="secondary" className="bg-orange-500 text-white border-none">Pending</Badge>
-                                <span className="text-xs text-gray-300">{new Date(match.updated_at).toLocaleDateString()}</span>
+
+            {/* League Reviews */}
+            <div className="space-y-4">
+                <h4 className="text-lg font-bold text-yellow-500 uppercase tracking-widest flex items-center gap-2">
+                    <Trophy className="h-5 w-5" /> League Matches
+                </h4>
+                <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                    {pendingMatches.filter(m => m.match_type === 'league').map(match => (
+                        <Card key={match.id} className="cursor-pointer hover:shadow-lg transition-all bg-zinc-950 border-white/10 hover:border-yellow-500/50 group" onClick={() => fetchMatchDetails(match.id)}>
+                            <div className="relative aspect-video w-full bg-zinc-900 overflow-hidden rounded-t-lg">
+                                {match.result_screenshot_url ? (
+                                    <img src={match.result_screenshot_url} alt="Result" className="object-cover w-full h-full group-hover:scale-105 transition-transform duration-500" />
+                                ) : (
+                                    <div className="flex items-center justify-center h-full text-muted-foreground">No Screenshot</div>
+                                )}
+                                <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent" />
+                                <div className="absolute bottom-2 left-2 right-2 flex justify-between items-center">
+                                    <Badge variant="secondary" className="bg-orange-500 text-white border-none">Pending</Badge>
+                                    <span className="text-xs text-gray-300">{new Date(match.updated_at).toLocaleDateString()}</span>
+                                </div>
                             </div>
+                            <CardContent className="p-4">
+                                <h4 className="font-bold text-white mb-1">Match #{match.id.slice(0, 8)}</h4>
+                                <p className="text-sm text-gray-400 mb-4">Host: {match.host_username}</p>
+                                <Button className="w-full bg-yellow-600 hover:bg-yellow-700 text-white font-bold">Review League</Button>
+                            </CardContent>
+                        </Card>
+                    ))}
+                    {pendingMatches.filter(m => m.match_type === 'league').length === 0 && (
+                        <div className="col-span-full p-8 text-center text-muted-foreground border border-dashed border-white/10 rounded-lg">
+                            No pending league reviews.
                         </div>
-                        <CardContent className="p-4">
-                            <h4 className="font-bold text-white mb-1">Match #{match.id.slice(0, 8)}</h4>
-                            <p className="text-sm text-gray-400 mb-4">Host: {match.host_username}</p>
-                            <Button className="w-full bg-primary hover:bg-primary/90 text-white font-bold">Start Review</Button>
-                        </CardContent>
-                    </Card>
-                ))}
-                {pendingMatches.length === 0 && (
-                    <div className="col-span-full flex flex-col items-center justify-center p-12 text-muted-foreground border border-dashed border-white/10 rounded-lg">
-                        <Check className="h-12 w-12 mb-4 text-green-500" />
-                        <h3 className="text-lg font-medium text-white">All Caught Up</h3>
-                        <p>No matches pending review.</p>
-                    </div>
-                )}
+                    )}
+                </div>
+            </div>
+
+            <div className="w-full h-px bg-white/10 my-4" />
+
+            {/* Competitive Reviews */}
+            <div className="space-y-4">
+                <h4 className="text-lg font-bold text-blue-500 uppercase tracking-widest flex items-center gap-2">
+                    <Swords className="h-5 w-5" /> Competitive Matches
+                </h4>
+                <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                    {pendingMatches.filter(m => m.match_type === 'competitive').map(match => (
+                        <Card key={match.id} className="cursor-pointer hover:shadow-lg transition-all bg-zinc-950 border-white/10 hover:border-blue-500/50 group" onClick={() => fetchMatchDetails(match.id)}>
+                            <div className="relative aspect-video w-full bg-zinc-900 overflow-hidden rounded-t-lg">
+                                {match.result_screenshot_url ? (
+                                    <img src={match.result_screenshot_url} alt="Result" className="object-cover w-full h-full group-hover:scale-105 transition-transform duration-500" />
+                                ) : (
+                                    <div className="flex items-center justify-center h-full text-muted-foreground">No Screenshot</div>
+                                )}
+                                <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent" />
+                                <div className="absolute bottom-2 left-2 right-2 flex justify-between items-center">
+                                    <Badge variant="secondary" className="bg-orange-500 text-white border-none">Pending</Badge>
+                                    <span className="text-xs text-gray-300">{new Date(match.updated_at).toLocaleDateString()}</span>
+                                </div>
+                            </div>
+                            <CardContent className="p-4">
+                                <h4 className="font-bold text-white mb-1">Match #{match.id.slice(0, 8)}</h4>
+                                <p className="text-sm text-gray-400 mb-4">Host: {match.host_username}</p>
+                                <Button className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold">Review Competitive</Button>
+                            </CardContent>
+                        </Card>
+                    ))}
+                    {pendingMatches.filter(m => m.match_type === 'competitive').length === 0 && (
+                        <div className="col-span-full p-8 text-center text-muted-foreground border border-dashed border-white/10 rounded-lg">
+                            No pending competitive reviews.
+                        </div>
+                    )}
+                </div>
+            </div>
+
+            <div className="w-full h-px bg-white/10 my-4" />
+
+            {/* Clan War Reviews */}
+            <div className="space-y-4">
+                <h4 className="text-lg font-bold text-purple-500 uppercase tracking-widest flex items-center gap-2">
+                    <ShieldAlert className="h-5 w-5" /> Clan Wars
+                </h4>
+                <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                    {pendingMatches.filter(m => m.match_type === 'clan_war' || m.match_type === 'clan_match').map(match => (
+                        <Card key={match.id} className="cursor-pointer hover:shadow-lg transition-all bg-zinc-950 border-white/10 hover:border-purple-500/50 group" onClick={() => fetchMatchDetails(match.id)}>
+                            <div className="relative aspect-video w-full bg-zinc-900 overflow-hidden rounded-t-lg">
+                                {match.result_screenshot_url ? (
+                                    <img src={match.result_screenshot_url} alt="Result" className="object-cover w-full h-full group-hover:scale-105 transition-transform duration-500" />
+                                ) : (
+                                    <div className="flex items-center justify-center h-full text-muted-foreground">No Screenshot</div>
+                                )}
+                                <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent" />
+                                <div className="absolute bottom-2 left-2 right-2 flex justify-between items-center">
+                                    <Badge variant="secondary" className="bg-orange-500 text-white border-none">Pending</Badge>
+                                    <span className="text-xs text-gray-300">{new Date(match.updated_at).toLocaleDateString()}</span>
+                                </div>
+                            </div>
+                            <CardContent className="p-4">
+                                <h4 className="font-bold text-white mb-1">Match #{match.id.slice(0, 8)}</h4>
+                                <p className="text-sm text-gray-400 mb-4">Host: {match.host_username}</p>
+                                <Button className="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold">Review Clan War</Button>
+                            </CardContent>
+                        </Card>
+                    ))}
+                    {pendingMatches.filter(m => m.match_type === 'clan_war' || m.match_type === 'clan_match').length === 0 && (
+                        <div className="col-span-full p-8 text-center text-muted-foreground border border-dashed border-white/10 rounded-lg">
+                            No pending clan war reviews.
+                        </div>
+                    )}
+                </div>
             </div>
         </div>
     );
@@ -1295,6 +1383,44 @@ export default function ModeratorPage({ user, backendUrl, onViewLobby }: Moderat
         screenshot_url: ''
     });
 
+    // Screenshot Upload Handler
+    const handleScreenshotUpload = async (file: File, isReview: boolean = false) => {
+        setUploadingScreenshot(true);
+        try {
+            const formData = new FormData();
+            formData.append('file', file);
+
+            const response = await fetch(`${backendUrl}/api/upload`, {
+                method: 'POST',
+                headers: {
+                    'X-User-Id': user?.id || ''
+                },
+                body: formData
+            });
+
+            const data = await response.json();
+            if (data.success) {
+                if (isReview) {
+                    // Update the selected match's screenshot URL for review
+                    if (selectedMatch) {
+                        setSelectedMatch({ ...selectedMatch, result_screenshot_url: data.url });
+                    }
+                } else {
+                    // Update submit result form
+                    setSubmitResultForm({ ...submitResultForm, screenshot_url: data.url });
+                }
+            } else {
+                setErrorMessage(data.error || 'Failed to upload screenshot');
+                setErrorDialogOpen(true);
+            }
+        } catch (error) {
+            setErrorMessage('Network error during upload');
+            setErrorDialogOpen(true);
+        } finally {
+            setUploadingScreenshot(false);
+        }
+    };
+
     const handleSubmitResult = async () => {
         if (!submitResultMatch) return;
         setProcessing(true);
@@ -1402,41 +1528,138 @@ export default function ModeratorPage({ user, backendUrl, onViewLobby }: Moderat
 
             {/* Submit Result Modal */}
             <Dialog open={!!submitResultMatch} onOpenChange={(open) => !open && setSubmitResultMatch(null)}>
-                <DialogContent>
+                <DialogContent className="max-w-2xl bg-zinc-950 border-white/10 text-white">
                     <DialogHeader>
-                        <DialogTitle>Force Submit Result</DialogTitle>
-                        <DialogDescription>Manually submit the result for match #{submitResultMatch?.id.slice(0, 8)}</DialogDescription>
+                        <DialogTitle className="text-2xl font-display flex items-center gap-2">
+                            <Swords className="h-6 w-6 text-primary" />
+                            Manual Result Submission
+                        </DialogTitle>
+                        <DialogDescription className="text-gray-400">
+                            Manually override and submit the final score for this match.
+                        </DialogDescription>
                     </DialogHeader>
-                    <div className="space-y-4 py-4">
-                        <div className="space-y-2">
-                            <label className="text-sm font-bold text-white">Winner Team</label>
-                            <Select value={submitResultForm.winner_team} onValueChange={(v) => setSubmitResultForm({ ...submitResultForm, winner_team: v })}>
-                                <SelectTrigger><SelectValue /></SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="alpha">Team Alpha (Counter-Terrorist)</SelectItem>
-                                    <SelectItem value="bravo">Team Bravo (Terrorist)</SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </div>
-                        <div className="grid grid-cols-2 gap-4">
-                            <div className="space-y-2">
-                                <label className="text-sm text-gray-400">Alpha Score</label>
-                                <Input type="number" value={submitResultForm.alpha_score} onChange={(e) => setSubmitResultForm({ ...submitResultForm, alpha_score: parseInt(e.target.value) })} />
+
+                    {submitResultMatch && (
+                        <div className="space-y-6 pt-2">
+                            {/* Match Context Banner */}
+                            <div className="bg-zinc-900/50 border border-white/5 rounded-lg p-4 flex items-center justify-between">
+                                <div className="flex items-center gap-3">
+                                    <div className="h-10 w-16 bg-zinc-800 rounded overflow-hidden relative">
+                                        {/* Placeholder for Map Image if available, or just icon */}
+                                        <div className="absolute inset-0 flex items-center justify-center text-xs font-bold uppercase text-white/20">
+                                            {submitResultMatch.map_name || 'Map'}
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <div className="font-bold text-white mb-0.5">{submitResultMatch.map_name || 'Unknown Map'}</div>
+                                        <div className="text-xs text-muted-foreground flex items-center gap-2">
+                                            <span className="font-mono">#{submitResultMatch.id.slice(0, 8)}</span>
+                                            <span className="w-1 h-1 rounded-full bg-gray-500"></span>
+                                            <span className="uppercase text-yellow-500">{submitResultMatch.match_type}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="text-right">
+                                    <div className="text-xs text-gray-400 uppercase tracking-widest mb-1">Status</div>
+                                    <Badge variant="outline" className="border-white/10 text-white">{submitResultMatch.status}</Badge>
+                                </div>
                             </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                {/* Team Alpha Input */}
+                                <Card className={`bg-cyan-950/10 border-cyan-500/20 transition-all ${submitResultForm.winner_team === 'alpha' ? 'ring-2 ring-cyan-500 shadow-lg shadow-cyan-900/20' : ''}`}>
+                                    <CardHeader className="pb-2">
+                                        <CardTitle className="text-sm font-bold text-cyan-400 uppercase tracking-wider flex justify-between items-center">
+                                            Team Alpha (CT)
+                                            {submitResultForm.winner_team === 'alpha' && <Crown className="h-4 w-4 text-cyan-400" />}
+                                        </CardTitle>
+                                    </CardHeader>
+                                    <CardContent className="space-y-4">
+                                        <div className="space-y-2">
+                                            <label className="text-xs font-bold text-gray-500 uppercase">Score</label>
+                                            <Input
+                                                type="number"
+                                                className="bg-zinc-900/80 border-cyan-500/10 text-3xl font-black text-center h-16 text-cyan-400 focus-visible:ring-cyan-500/50"
+                                                value={submitResultForm.alpha_score}
+                                                onChange={(e) => setSubmitResultForm({ ...submitResultForm, alpha_score: parseInt(e.target.value) || 0 })}
+                                            />
+                                        </div>
+                                        <Button
+                                            variant={submitResultForm.winner_team === 'alpha' ? 'default' : 'outline'}
+                                            className={`w-full ${submitResultForm.winner_team === 'alpha' ? 'bg-cyan-600 hover:bg-cyan-700 text-white' : 'border-cyan-500/20 text-cyan-500 hover:bg-cyan-950/30'}`}
+                                            onClick={() => setSubmitResultForm({ ...submitResultForm, winner_team: 'alpha' })}
+                                        >
+                                            Mark as Winner
+                                        </Button>
+                                    </CardContent>
+                                </Card>
+
+                                {/* Team Bravo Input */}
+                                <Card className={`bg-orange-950/10 border-orange-500/20 transition-all ${submitResultForm.winner_team === 'bravo' ? 'ring-2 ring-orange-500 shadow-lg shadow-orange-900/20' : ''}`}>
+                                    <CardHeader className="pb-2">
+                                        <CardTitle className="text-sm font-bold text-orange-400 uppercase tracking-wider flex justify-between items-center">
+                                            Team Bravo (T)
+                                            {submitResultForm.winner_team === 'bravo' && <Crown className="h-4 w-4 text-orange-400" />}
+                                        </CardTitle>
+                                    </CardHeader>
+                                    <CardContent className="space-y-4">
+                                        <div className="space-y-2">
+                                            <label className="text-xs font-bold text-gray-500 uppercase">Score</label>
+                                            <Input
+                                                type="number"
+                                                className="bg-zinc-900/80 border-orange-500/10 text-3xl font-black text-center h-16 text-orange-400 focus-visible:ring-orange-500/50"
+                                                value={submitResultForm.bravo_score}
+                                                onChange={(e) => setSubmitResultForm({ ...submitResultForm, bravo_score: parseInt(e.target.value) || 0 })}
+                                            />
+                                        </div>
+                                        <Button
+                                            variant={submitResultForm.winner_team === 'bravo' ? 'default' : 'outline'}
+                                            className={`w-full ${submitResultForm.winner_team === 'bravo' ? 'bg-orange-600 hover:bg-orange-700 text-white' : 'border-orange-500/20 text-orange-500 hover:bg-orange-950/30'}`}
+                                            onClick={() => setSubmitResultForm({ ...submitResultForm, winner_team: 'bravo' })}
+                                        >
+                                            Mark as Winner
+                                        </Button>
+                                    </CardContent>
+                                </Card>
+                            </div>
+
                             <div className="space-y-2">
-                                <label className="text-sm text-gray-400">Bravo Score</label>
-                                <Input type="number" value={submitResultForm.bravo_score} onChange={(e) => setSubmitResultForm({ ...submitResultForm, bravo_score: parseInt(e.target.value) })} />
+                                <label className="text-sm font-medium text-gray-300">Proof / Screenshot</label>
+                                <div className="flex gap-2">
+                                    <Input
+                                        type="file"
+                                        accept="image/*"
+                                        onChange={(e) => {
+                                            const file = e.target.files?.[0];
+                                            if (file) handleScreenshotUpload(file, false);
+                                        }}
+                                        className="bg-zinc-900 border-white/10 text-white file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-primary file:text-white hover:file:bg-primary/90"
+                                        disabled={uploadingScreenshot}
+                                    />
+                                    {submitResultForm.screenshot_url && (
+                                        <Button variant="outline" size="icon" onClick={() => window.open(submitResultForm.screenshot_url, '_blank')}>
+                                            <ImageIcon className="h-4 w-4" />
+                                        </Button>
+                                    )}
+                                </div>
+                                {uploadingScreenshot && <p className="text-xs text-yellow-500">Uploading...</p>}
+                                {submitResultForm.screenshot_url && <p className="text-xs text-green-500">✓ Screenshot uploaded</p>}
                             </div>
                         </div>
-                        <div className="space-y-2">
-                            <label className="text-sm text-gray-400">Screenshot URL (Optional)</label>
-                            <Input value={submitResultForm.screenshot_url} onChange={(e) => setSubmitResultForm({ ...submitResultForm, screenshot_url: e.target.value })} placeholder="https://..." />
-                        </div>
-                    </div>
-                    <DialogFooter>
-                        <Button variant="outline" onClick={() => setSubmitResultMatch(null)}>Cancel</Button>
-                        <Button onClick={handleSubmitResult} disabled={processing}>
-                            {processing ? 'Submitting...' : 'Submit Result'}
+                    )}
+
+                    <DialogFooter className="mt-4">
+                        <Button variant="ghost" onClick={() => setSubmitResultMatch(null)} className="text-gray-400 hover:text-white">Cancel</Button>
+                        <Button onClick={handleSubmitResult} disabled={processing} className="bg-primary hover:bg-primary/90 min-w-[150px]">
+                            {processing ? (
+                                <>
+                                    <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> Submitting...
+                                </>
+                            ) : (
+                                <>
+                                    <Check className="mr-2 h-4 w-4" /> Finalize Result
+                                </>
+                            )}
                         </Button>
                     </DialogFooter>
                 </DialogContent>
@@ -1449,20 +1672,24 @@ export default function ModeratorPage({ user, backendUrl, onViewLobby }: Moderat
             yellow: 'border-yellow-500/20 shadow-yellow-900/10 hover:border-yellow-500/50',
             blue: 'border-blue-500/20 shadow-blue-900/10 hover:border-blue-500/50',
             purple: 'border-purple-500/20 shadow-purple-900/10 hover:border-purple-500/50',
-            gray: 'border-white/10 hover:border-white/20'
+            gray: 'border-white/10 hover:border-white/20',
+            green: 'border-green-500/20 shadow-green-900/10 hover:border-green-500/50'
         };
         const badgeClasses: any = {
             yellow: 'text-yellow-500 border-yellow-500/50',
             blue: 'text-blue-500 border-blue-500/50',
             purple: 'text-purple-500 border-purple-500/50',
-            gray: 'text-gray-400 border-gray-500/50'
+            gray: 'text-gray-400 border-gray-500/50',
+            green: 'text-green-500 border-green-500/50'
         };
+
+        const isCompleted = match.status === 'completed';
 
         return (
             <Card className={`hover:shadow-lg transition-all bg-zinc-950 ${colorClasses[color] || colorClasses.gray}`}>
                 <CardHeader className="pb-2">
                     <div className="flex justify-between items-start">
-                        <Badge variant={match.status === 'in_progress' ? 'default' : 'secondary'} className={match.status === 'in_progress' ? 'bg-green-600' : ''}>
+                        <Badge variant={match.status === 'in_progress' ? 'default' : 'secondary'} className={match.status === 'in_progress' ? 'bg-green-600' : match.status === 'completed' ? 'bg-green-600/20 text-green-500' : ''}>
                             {match.status.replace('_', ' ')}
                         </Badge>
                         <span className="text-xs text-muted-foreground font-mono">#{match.id.slice(0, 6)}</span>
@@ -1473,6 +1700,20 @@ export default function ModeratorPage({ user, backendUrl, onViewLobby }: Moderat
                 </CardHeader>
                 <CardContent>
                     <div className="text-sm text-gray-400 mb-4">
+                        {isCompleted && match.winner_team && (
+                            <div className="mb-3 p-3 rounded-lg bg-zinc-900/50 border border-white/5">
+                                <div className="flex justify-between items-center mb-2">
+                                    <span className={`font-bold ${match.winner_team === 'alpha' ? 'text-cyan-400' : 'text-orange-400'}`}>
+                                        {match.winner_team === 'alpha' ? '🏆 Alpha Won' : '🏆 Bravo Won'}
+                                    </span>
+                                </div>
+                                <div className="flex justify-between items-center text-lg font-mono">
+                                    <span className="text-cyan-400">{match.alpha_score || 0}</span>
+                                    <span className="text-gray-600">-</span>
+                                    <span className="text-orange-400">{match.bravo_score || 0}</span>
+                                </div>
+                            </div>
+                        )}
                         <div className="flex justify-between">
                             <span>Players:</span>
                             <span>{match.player_count}/10</span>
@@ -1484,24 +1725,38 @@ export default function ModeratorPage({ user, backendUrl, onViewLobby }: Moderat
                             </Badge>
                         </div>
                         <div className="text-xs text-gray-500 mt-2">
-                            Created: {new Date(match.created_at).toLocaleTimeString()}
+                            {isCompleted ? `Completed: ${new Date(match.updated_at).toLocaleString()}` : `Created: ${new Date(match.created_at).toLocaleTimeString()}`}
                         </div>
                     </div>
                     <div className="grid grid-cols-2 gap-2">
-                        <Button size="sm" className="bg-zinc-800 hover:bg-zinc-700 w-full" onClick={() => onViewLobby?.(match.id)}>
-                            View Lobby
-                        </Button>
-                        <Button size="sm" variant="outline" className="text-blue-500 border-blue-500/20 hover:bg-blue-500/10 w-full" onClick={() => onSubmitResult(match)}>
-                            Result
-                        </Button>
-                        {match.status === 'waiting' && (
-                            <Button size="sm" variant="outline" className="text-green-500 border-green-500/20 hover:bg-green-500/10 col-span-2" onClick={() => onForceStart(match.id)}>
-                                <Play className="h-4 w-4 mr-1" /> Force Start
-                            </Button>
+                        {!isCompleted && (
+                            <>
+                                <Button size="sm" className="bg-zinc-800 hover:bg-zinc-700 w-full" onClick={() => onViewLobby?.(match.id)}>
+                                    View Lobby
+                                </Button>
+                                <Button size="sm" variant="outline" className="text-blue-500 border-blue-500/20 hover:bg-blue-500/10 w-full" onClick={() => onSubmitResult(match)}>
+                                    Result
+                                </Button>
+                                {match.status === 'waiting' && (
+                                    <Button size="sm" variant="outline" className="text-green-500 border-green-500/20 hover:bg-green-500/10 col-span-2" onClick={() => onForceStart(match.id)}>
+                                        <Play className="h-4 w-4 mr-1" /> Force Start
+                                    </Button>
+                                )}
+                                <Button size="sm" variant="outline" className="text-red-500 border-red-500/20 hover:bg-red-500/10 col-span-2" onClick={() => onCancel(match.id)}>
+                                    <XCircle className="h-4 w-4 mr-1" /> Cancel Match
+                                </Button>
+                            </>
                         )}
-                        <Button size="sm" variant="outline" className="text-red-500 border-red-500/20 hover:bg-red-500/10 col-span-2" onClick={() => onCancel(match.id)}>
-                            <XCircle className="h-4 w-4 mr-1" /> Cancel Match
-                        </Button>
+                        {isCompleted && (
+                            <>
+                                <Button size="sm" className="bg-zinc-800 hover:bg-zinc-700 w-full" onClick={() => onViewLobby?.(match.id)}>
+                                    View Details
+                                </Button>
+                                <Button size="sm" variant="outline" className="text-yellow-500 border-yellow-500/20 hover:bg-yellow-500/10 w-full" onClick={() => onSubmitResult(match)}>
+                                    Edit Result
+                                </Button>
+                            </>
+                        )}
                     </div>
                 </CardContent>
             </Card>
@@ -1684,7 +1939,7 @@ export default function ModeratorPage({ user, backendUrl, onViewLobby }: Moderat
 
                     {selectedMatch && (
                         <div className="space-y-6">
-                            <div className="rounded-lg border border-white/10 bg-black p-4 flex justify-center">
+                            <div className="rounded-lg border border-white/10 bg-black p-4 flex flex-col items-center gap-4">
                                 {selectedMatch.result_screenshot_url ? (
                                     <img src={selectedMatch.result_screenshot_url} alt="Proof" className="max-h-[400px] w-auto object-contain rounded-md" />
                                 ) : (
@@ -1693,6 +1948,28 @@ export default function ModeratorPage({ user, backendUrl, onViewLobby }: Moderat
                                         No Screenshot Provided
                                     </div>
                                 )}
+                                <div className="flex items-center gap-2">
+                                    <label htmlFor="review-upload" className="cursor-pointer inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 bg-secondary text-secondary-foreground shadow-sm hover:bg-secondary/80 h-9 px-4 py-2">
+                                        <ImageIcon className="mr-2 h-4 w-4" />
+                                        {uploadingScreenshot ? 'Uploading...' : 'Upload/Replace Screenshot'}
+                                    </label>
+                                    <input
+                                        id="review-upload"
+                                        type="file"
+                                        accept="image/*"
+                                        className="hidden"
+                                        onChange={(e) => {
+                                            const file = e.target.files?.[0];
+                                            if (file) handleScreenshotUpload(file, true);
+                                        }}
+                                        disabled={uploadingScreenshot}
+                                    />
+                                    {selectedMatch.result_screenshot_url && (
+                                        <Button variant="ghost" size="sm" onClick={() => window.open(selectedMatch.result_screenshot_url, '_blank')}>
+                                            Open Original
+                                        </Button>
+                                    )}
+                                </div>
                             </div>
 
                             <div className="grid grid-cols-2 gap-4">

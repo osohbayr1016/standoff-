@@ -526,10 +526,10 @@ export class MatchQueueDO {
           }
 
 
-          // C. CASUAL MATCH AUTO-DELETE (10 Minutes)
+          // C. CASUAL MATCH AUTO-DELETE (15 Minutes)
           if (lobby.matchType === 'casual' && lobby.status === 'in_progress' && lobby.startedAt) {
             const elapsed = (Date.now() - lobby.startedAt) / 1000;
-            const timeout = 10 * 60; // 10 minutes
+            const timeout = 15 * 60; // 15 minutes
 
             if (elapsed > timeout) {
               console.log(`⏰ [${lobbyId}] Casual match timeout (${elapsed.toFixed(1)}s > ${timeout}s). Cancelling...`);
@@ -546,7 +546,7 @@ export class MatchQueueDO {
               // 2. Notify Clients
               this.broadcastToLobby(lobbyId, JSON.stringify({
                 type: 'MATCH_CANCELLED',
-                reason: 'Match time expired (10 minutes)'
+                reason: 'Match time expired (15 minutes)'
               }));
 
               // 3. Clean up Memory
@@ -618,6 +618,7 @@ export class MatchQueueDO {
       lobby.players.forEach(p => {
         if (p.id) activePlayerIds.add(p.id);
         if (p.discord_id) activePlayerIds.add(p.discord_id);
+        if ((p as any).player_id) activePlayerIds.add((p as any).player_id);
       });
     }
 
@@ -736,7 +737,10 @@ export class MatchQueueDO {
     if (!lobby) return;
 
     lobby.players.forEach(p => {
-      const socketKey = p.id || p.discord_id;
+      // Handle both raw player objects and match_players joined objects
+      // match_players join returns { player_id: ... } but p.id might be row ID
+      const socketKey = (p as any).player_id || p.id || p.discord_id;
+
       if (socketKey && this.userSockets.has(socketKey)) {
         const ws = this.userSockets.get(socketKey);
         if (ws && ws.readyState === WebSocket.READY_STATE_OPEN) {
@@ -1041,16 +1045,16 @@ export class MatchQueueDO {
             const lobby = this.activeLobbies.get(lobbyId); // Using provided lobbyId
             if (lobby) {
               // Check if user is in this lobby
-              const pIndex = lobby.players.findIndex(p => p.id === userId || p.discord_id === userId);
+              const pIndex = lobby.players.findIndex(p => p.id === userId || p.discord_id === userId || (p as any).player_id === userId);
               if (pIndex !== -1) {
                 // Remove from main list
                 lobby.players.splice(pIndex, 1);
 
                 // Remove from Teams
-                const tA = lobby.teamA.findIndex(p => p.id === userId || p.discord_id === userId);
+                const tA = lobby.teamA.findIndex(p => p.id === userId || p.discord_id === userId || (p as any).player_id === userId);
                 if (tA !== -1) lobby.teamA.splice(tA, 1);
 
-                const tB = lobby.teamB.findIndex(p => p.id === userId || p.discord_id === userId);
+                const tB = lobby.teamB.findIndex(p => p.id === userId || p.discord_id === userId || (p as any).player_id === userId);
                 if (tB !== -1) lobby.teamB.splice(tB, 1);
 
                 // Remove from Ready

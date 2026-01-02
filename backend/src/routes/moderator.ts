@@ -85,7 +85,7 @@ moderatorRoutes.get('/cancelled-matches', async (c) => {
                 p.discord_avatar as host_avatar
             FROM matches m
             LEFT JOIN players p ON m.host_id = p.id
-            WHERE m.status = 'cancelled' AND m.match_type = 'league'
+            WHERE m.status = 'cancelled' AND m.match_type != 'casual'
             ORDER BY m.updated_at DESC
             LIMIT 50
         `).all();
@@ -383,6 +383,8 @@ moderatorRoutes.post('/matches/:id/review', async (c) => {
         // For Competitive matches, FORCE rigid +/- 10 ELO change (both VIP and Free)
         if (match.match_type === 'competitive') {
             eloChange = 10;
+        } else if (match.match_type === 'league') {
+            eloChange = 25;
         }
 
         if (!winnerTeam) {
@@ -420,6 +422,11 @@ moderatorRoutes.post('/matches/:id/review', async (c) => {
             }
 
             // Record ELO history
+            // Verify moderator exists in players table before using as foreign key
+            const moderatorExists = await c.env.DB.prepare(
+                'SELECT id FROM players WHERE id = ?'
+            ).bind(moderatorId).first();
+
             await c.env.DB.prepare(`
                 INSERT INTO elo_history (user_id, match_id, elo_before, elo_after, elo_change, reason, created_by, notes, created_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
@@ -430,7 +437,7 @@ moderatorRoutes.post('/matches/:id/review', async (c) => {
                 newElo,
                 change,
                 reason,
-                moderatorId,
+                moderatorExists ? moderatorId : null,
                 body.notes || null
             ).run();
 

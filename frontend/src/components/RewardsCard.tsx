@@ -89,7 +89,7 @@ const RewardTier: React.FC<RewardTierProps> = ({ rank, amount, label }) => {
                         <div className="flex items-center gap-1.5 mt-0.5">
                             <Coins className={cn("h-4 w-4", styles.text)} />
                             <span className={cn("text-xl font-black font-display tracking-tight", styles.text)}>
-                                {amount.toLocaleString()} <span className="text-xs ml-0.5 opacity-70">MNT</span>
+                                {amount.toLocaleString()} <span className="text-xs ml-0.5 opacity-70">GOLD</span>
                             </span>
                         </div>
                     </div>
@@ -115,7 +115,7 @@ const RewardsCard = () => {
                             Weekly Rewards
                         </h2>
                         <p className="text-sm text-zinc-400 mt-1">
-                            Top 3 players receive MNT prizes every week
+                            Top 3 players receive GOLD prizes every week
                         </p>
                     </div>
                     <div className="px-3 py-1 rounded-full bg-[#ff5500]/10 border border-[#ff5500]/20 text-[#ff5500] text-xs font-bold uppercase tracking-wider animate-pulse">
@@ -125,18 +125,23 @@ const RewardsCard = () => {
 
                 {/* Rewards List */}
                 <div className="grid gap-3">
-                    <RewardTier rank={1} amount={20000} label="Champion" />
-                    <RewardTier rank={2} amount={10000} label="Runner Up" />
-                    <RewardTier rank={3} amount={5000} label="Third Place" />
+                    <RewardTier rank={1} amount={1500} label="Champion" />
+                    <RewardTier rank={2} amount={1000} label="Runner Up" />
+                    <RewardTier rank={3} amount={500} label="Third Place" />
                 </div>
 
                 {/* Footer Info */}
-                <div className="mt-4 pt-4 border-t border-white/5 flex items-center justify-between text-xs text-zinc-500">
-                    <div>
-                        Resets every Sunday at 00:00 UTC
+                <div className="mt-4 pt-4 border-t border-white/5 flex flex-col gap-2">
+                    <div className="flex items-center justify-between text-xs text-zinc-500">
+                        <div>
+                            Resets every Sunday at 00:00 UTC
+                        </div>
+                        <div className="flex items-center gap-1">
+                            Total Pool: <span className="text-white font-bold">3,000 GOLD</span>
+                        </div>
                     </div>
-                    <div className="flex items-center gap-1">
-                        Total Pool: <span className="text-white font-bold">35,000 MNT</span>
+                    <div className="text-center text-xs text-zinc-600 bg-zinc-900/50 py-1.5 rounded-lg border border-white/5">
+                        Sponsored by <a href="https://daisuke.mn/" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline hover:text-primary/80 font-bold">daisuke.mn</a>
                     </div>
                 </div>
             </div>
