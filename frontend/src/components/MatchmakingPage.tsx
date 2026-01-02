@@ -71,10 +71,10 @@ const MatchmakingPage: React.FC<MatchmakingPageProps> = ({ user, backendUrl, onV
 
     const MAPS = [
         { name: 'Hanami', image: '/maps/hanami.png' },
-        { name: 'Sandstone', image: '/maps/sandstone.png' },
-        { name: 'Rust', image: '/maps/rust.jpg' },
-        { name: 'Breeze', image: '/maps/breeze.png' },
-        { name: 'Dune', image: '/maps/dune.jpg' },
+        { name: 'Sandstone', image: '/maps/rust.jpg' },
+        { name: 'Rust', image: '/maps/sandstone.png' },
+        { name: 'Breeze', image: '/maps/dune.jpg' },
+        { name: 'Dune', image: '/maps/breeze.png' },
         { name: 'Province', image: '/maps/dust.jpg' },
         { name: 'Zone 7', image: '/maps/zone7.jpg' }
     ];
@@ -372,7 +372,7 @@ const MatchmakingPage: React.FC<MatchmakingPageProps> = ({ user, backendUrl, onV
                     {/* Daily Slots Counter */}
                     <div className="bg-zinc-900/50 border border-white/10 rounded-lg px-4 py-2 flex items-center gap-3">
                         <div className="flex flex-col items-end">
-                            <span className="text-[10px] uppercase text-zinc-500 font-bold tracking-widest leading-tight">Daily Slots</span>
+                            <span className="text-[10px] uppercase text-zinc-500 font-bold tracking-widest leading-tight">Comp. Slots</span>
                             <span className={`text-sm font-mono font-bold ${dailySlotsUsed >= 3 && !user.is_vip ? 'text-red-500' : 'text-green-500'}`}>
                                 {user.is_vip ? '∞' : `${Math.max(0, 3 - dailySlotsUsed)}/3`}
                             </span>

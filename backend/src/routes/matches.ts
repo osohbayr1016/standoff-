@@ -47,6 +47,21 @@ async function validateMatchAction(
     if (!player) return { allowed: false, error: 'Player not found', status: 404 };
     if (player.banned === 1) return { allowed: false, error: 'You are banned from this action', status: 403 };
 
+    // Check for existing active matches (waiting or in_progress)
+    if (action === 'create') {
+        const activeMatch = await env.DB.prepare(
+            "SELECT id FROM matches WHERE host_id = ? AND status IN ('waiting', 'in_progress')"
+        ).bind(userId).first();
+
+        if (activeMatch) {
+            return {
+                allowed: false,
+                error: 'You already have an active match. Please finish or cancel it before creating a new one.',
+                status: 400
+            };
+        }
+    }
+
     const isAdmin = player.role === 'admin';
     const isVip = player.is_vip === 1 || player.is_vip === true || String(player.is_vip) === '1' || String(player.is_vip) === 'true';
     const vipUntil = player.vip_until ? new Date(player.vip_until as string) : null;
@@ -349,17 +364,19 @@ matchesRoutes.post('/', async (c) => {
 
         const matchId = crypto.randomUUID();
 
-        // Create match
-        await c.env.DB.prepare(`
+        // Create match (Atomic Batch)
+        const insertMatch = c.env.DB.prepare(`
             INSERT INTO matches (id, lobby_url, host_id, map_name, match_type, status, player_count, max_players, min_rank, clan_id, created_at, updated_at)
             VALUES (?, ?, ?, ?, ?, 'waiting', 1, ?, ?, ?, datetime('now'), datetime('now'))
-        `).bind(matchId, body.lobby_url, body.host_id, body.map_name || null, matchType, maxPlayers, minRank, clanId).run();
+        `).bind(matchId, body.lobby_url, host.id, body.map_name || null, matchType, maxPlayers, minRank, clanId);
 
-        // Add host as first player (alpha team, captain) - For Clan Lobby, team is irrelevant initially, but let's say 'alpha'
-        await c.env.DB.prepare(`
+        // Add host as first player (alpha team, captain)
+        const insertPlayer = c.env.DB.prepare(`
             INSERT INTO match_players (match_id, player_id, team, is_captain, joined_at)
             VALUES (?, ?, 'alpha', 1, datetime('now'))
-        `).bind(matchId, body.host_id).run();
+        `).bind(matchId, host.id);
+
+        await c.env.DB.batch([insertMatch, insertPlayer]);
 
         // Notify real-time
         await notifyGlobalUpdate(c.env);
@@ -894,8 +911,8 @@ matchesRoutes.post('/:id/result', async (c) => {
         }
 
         // Validate screenshot requirement based on match type
-        if (match.match_type === 'league' && !body.screenshot_url) {
-            return c.json({ success: false, error: 'Screenshot is required for league matches' }, 400);
+        if ((match.match_type === 'league' || match.match_type === 'competitive') && !body.screenshot_url) {
+            return c.json({ success: false, error: 'Screenshot is required for league and competitive matches' }, 400);
         }
 
         if (!body.winner_team) {

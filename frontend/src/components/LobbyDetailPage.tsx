@@ -1033,7 +1033,7 @@ const LobbyDetailPage: React.FC<LobbyDetailPageProps> = ({ matchId, user, backen
                             {match.status === 'in_progress' && isHost && (
                                 <div className="w-full flex flex-col md:flex-row items-center gap-4">
                                     <div className="flex-1 w-full p-4 bg-muted/30 rounded-lg border border-border/50">
-                                        {match.match_type === 'league' ? (
+                                        {match.match_type === 'league' || match.match_type === 'competitive' ? (
                                             <>
                                                 <h3 className="text-sm font-black uppercase tracking-widest mb-4 flex items-center gap-2 text-primary">
                                                     <Trophy className="h-4 w-4" /> Submit Match Result

@@ -13,7 +13,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
-import { LogOut, Swords, Trophy, Target, Pencil, X, Check, Users, ImageIcon, ArrowLeft } from "lucide-react";
+import { LogOut, Swords, Trophy, Target, Pencil, X, Check, Users, ImageIcon, ArrowLeft, UserPlus } from "lucide-react";
 import LevelBadge from "./LevelBadge";
 import EloProgressBar from "./EloProgressBar";
 import { VerifiedBadge } from "./VerifiedBadge";
@@ -118,6 +118,8 @@ export default function ProfilePage({
   const [showCasualHistory, setShowCasualHistory] = useState(false);
   const [casualMatches, setCasualMatches] = useState<MatchHistoryItem[]>([]);
   const [loadingCasualHistory, setLoadingCasualHistory] = useState(false);
+  const [sendingFriendRequest, setSendingFriendRequest] = useState(false);
+  const [friendRequestSent, setFriendRequestSent] = useState(false);
 
   // Determine which user ID to fetch (target or logged-in)
   const profileId = targetUserId || user?.id;
@@ -275,6 +277,35 @@ export default function ProfilePage({
       fetchCasualMatches();
     }
   }, [showCasualHistory, profileId]);
+
+  const handleSendFriendRequest = async () => {
+    if (!user || !profileId || isOwnProfile) return;
+
+    setSendingFriendRequest(true);
+    setFriendRequestSent(false);
+    try {
+      const res = await fetch(
+        `${import.meta.env.VITE_BACKEND_URL || "http://localhost:8787"}/api/friends/request`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ userId: user.id, targetId: profileId }),
+        }
+      );
+
+      if (res.ok) {
+        setFriendRequestSent(true);
+        setSuccessMsg("Friend request sent!");
+      } else {
+        const data = await res.json();
+        setError(data.error || "Failed to send friend request");
+      }
+    } catch (err) {
+      setError("Network error");
+    } finally {
+      setSendingFriendRequest(false);
+    }
+  };
 
   if (!user && !targetUserId) {
     return (
@@ -477,6 +508,28 @@ export default function ProfilePage({
                   <LogOut className="h-5 w-5" />
                 </Button>
               </div>
+            )}
+            {!isOwnProfile && user && (
+              <Button 
+                onClick={handleSendFriendRequest}
+                disabled={sendingFriendRequest || friendRequestSent}
+                className="h-12 px-6 bg-[#ff5500] hover:bg-[#ff5500]/90 text-white font-black uppercase tracking-wider text-sm shadow-xl shadow-[#ff5500]/20 rounded-xl transition-all hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {sendingFriendRequest ? (
+                  <>
+                    <div className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin mr-2" />
+                    Sending...
+                  </>
+                ) : friendRequestSent ? (
+                  <>
+                    <Check className="mr-2 h-4 w-4" /> Request Sent
+                  </>
+                ) : (
+                  <>
+                    <UserPlus className="mr-2 h-4 w-4" /> Send Friend Request
+                  </>
+                )}
+              </Button>
             )}
           </div>
         </div>

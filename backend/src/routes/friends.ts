@@ -164,7 +164,45 @@ export function setupFriendsRoutes(app: Hono<any>) {
                 .filter(f => f.status === 'pending' && f.requester_id === userId)
                 .map(f => ({ ...f.friend, friendship_id: f.friendship_id }));
 
-            return c.json({ friends, pendingIncoming, pendingOutgoing });
+            // Check online status for all friends via Durable Object
+            let onlineStatus: Record<string, boolean> = {};
+            if (friends.length > 0) {
+                try {
+                    const friendIds = friends.map(f => f.id).filter(Boolean);
+                    if (friendIds.length > 0) {
+                        const id = c.env.MATCH_QUEUE.idFromName('global-matchmaking-v2');
+                        const obj = c.env.MATCH_QUEUE.get(id);
+                        
+                        const doUrl = new URL(c.req.raw.url);
+                        doUrl.pathname = '/check-online';
+                        const doRequest = new Request(doUrl.toString(), {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ userIds: friendIds })
+                        });
+                        
+                        const onlineRes = await obj.fetch(doRequest);
+                        if (onlineRes.ok) {
+                            const onlineData = await onlineRes.json();
+                            onlineStatus = onlineData.onlineStatus || {};
+                        }
+                    }
+                } catch (err) {
+                    console.error('Failed to fetch online status:', err);
+                }
+            }
+
+            // Add online status to friends
+            const friendsWithStatus = friends.map(f => ({
+                ...f,
+                is_online: onlineStatus[f.id] || false
+            }));
+
+            return c.json({ 
+                friends: friendsWithStatus, 
+                pendingIncoming, 
+                pendingOutgoing 
+            });
 
         } catch (error) {
             console.error('Fetch friends error:', error);
