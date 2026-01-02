@@ -137,6 +137,10 @@ export class MatchQueueDO {
       return this.handleServerInfo(request);
     }
 
+    if (url.pathname.endsWith('/check-online') && request.method === 'POST') {
+      return this.handleCheckOnline(request);
+    }
+
     if (url.pathname.endsWith('/broadcast') && request.method === 'POST') {
       const body = await request.json() as { type: string; data: any };
       console.log('📢 DO Internal Broadcast:', body.type);
@@ -211,6 +215,36 @@ export class MatchQueueDO {
     this.handleSession(server);
 
     return new Response(null, { status: 101, webSocket: client });
+  }
+
+  async handleCheckOnline(request: Request) {
+    try {
+      const body = await request.json() as { userIds: string[] };
+      const { userIds } = body;
+
+      if (!Array.isArray(userIds)) {
+        return new Response(JSON.stringify({ error: 'userIds must be an array' }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+
+      const onlineStatus: Record<string, boolean> = {};
+      for (const userId of userIds) {
+        const ws = this.userSockets.get(userId);
+        onlineStatus[userId] = !!(ws && ws.readyState === WebSocket.READY_STATE_OPEN);
+      }
+
+      return new Response(JSON.stringify({ onlineStatus }), {
+        headers: { 'Content-Type': 'application/json' }
+      });
+    } catch (error: any) {
+      console.error('Check online error:', error);
+      return new Response(JSON.stringify({ error: 'Failed to check online status' }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
   }
 
   async handleServerInfo(request: Request) {
@@ -1835,6 +1869,33 @@ app.post('/api/match/server-info', async (c) => {
       success: false,
       error: error.message || 'Internal server error'
     }, 500);
+  }
+});
+
+// API endpoint to check online status for multiple users
+app.post('/api/users/check-online', async (c) => {
+  try {
+    const { userIds } = await c.req.json();
+
+    if (!Array.isArray(userIds)) {
+      return c.json({ error: 'userIds must be an array' }, 400);
+    }
+
+    const id = c.env.MATCH_QUEUE.idFromName('global-matchmaking-v2');
+    const obj = c.env.MATCH_QUEUE.get(id);
+
+    const doUrl = new URL(c.req.raw.url);
+    doUrl.pathname = '/check-online';
+    const doRequest = new Request(doUrl.toString(), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userIds })
+    });
+
+    return obj.fetch(doRequest);
+  } catch (error: any) {
+    console.error('Error checking online status:', error);
+    return c.json({ error: 'Failed to check online status' }, 500);
   }
 });
 
