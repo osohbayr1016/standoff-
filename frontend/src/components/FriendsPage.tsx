@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,6 +22,7 @@ interface Friend {
   is_discord_member?: boolean;
   status: string;
   is_vip?: boolean | number;
+  is_online?: boolean;
 }
 
 interface SearchResult {
@@ -47,6 +48,7 @@ export default function FriendsPage({ onViewProfile }: FriendsPageProps) {
   const [loading, setLoading] = useState(false);
   const [searchLoading, setSearchLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const activeFriendsRef = useRef<Friend[]>([]);
 
   useEffect(() => {
     const savedUser = localStorage.getItem("user");
@@ -56,6 +58,54 @@ export default function FriendsPage({ onViewProfile }: FriendsPageProps) {
       fetchFriends(user.id);
     }
   }, []);
+
+  // Keep ref in sync with state
+  useEffect(() => {
+    activeFriendsRef.current = activeFriends;
+  }, [activeFriends]);
+
+  // Poll for online status updates every 10 seconds
+  useEffect(() => {
+    if (!currentUser) return;
+
+    const updateOnlineStatus = async () => {
+      const friends = activeFriendsRef.current;
+      if (friends.length === 0) return;
+
+      try {
+        const friendIds = friends.map(f => f.id).filter(Boolean);
+        if (friendIds.length === 0) return;
+
+        const res = await fetch(
+          `${import.meta.env.VITE_BACKEND_URL || "http://localhost:8787"}/api/users/check-online`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ userIds: friendIds }),
+          }
+        );
+
+        if (res.ok) {
+          const data = await res.json();
+          const onlineStatus = data.onlineStatus || {};
+
+          // Update friends with new online status
+          setActiveFriends(prev => prev.map(friend => ({
+            ...friend,
+            is_online: onlineStatus[friend.id] || false
+          })));
+        }
+      } catch (err) {
+        console.error("Failed to update online status:", err);
+      }
+    };
+
+    // Update immediately, then every 10 seconds
+    updateOnlineStatus();
+    const interval = setInterval(updateOnlineStatus, 10000);
+
+    return () => clearInterval(interval);
+  }, [currentUser?.id]);
 
   const fetchFriends = async (userId: string) => {
     setLoading(true);
@@ -229,10 +279,17 @@ export default function FriendsPage({ onViewProfile }: FriendsPageProps) {
                             </span>
                           </div>
                           <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                            <span className="flex items-center gap-1 text-green-500">
-                              <span className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse" />
-                              Online
-                            </span>
+                            {friend.is_online ? (
+                              <span className="flex items-center gap-1 text-green-500">
+                                <span className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse" />
+                                Online
+                              </span>
+                            ) : (
+                              <span className="flex items-center gap-1 text-gray-500">
+                                <span className="h-1.5 w-1.5 rounded-full bg-gray-500" />
+                                Offline
+                              </span>
+                            )}
                             <span>•</span>
                             <span className="font-mono text-primary">ELO {friend.elo}</span>
                           </div>

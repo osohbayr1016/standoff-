@@ -71,10 +71,10 @@ const MatchmakingPage: React.FC<MatchmakingPageProps> = ({ user, backendUrl, onV
 
     const MAPS = [
         { name: 'Hanami', image: '/maps/hanami.png' },
-        { name: 'Sandstone', image: '/maps/sandstone.png' },
-        { name: 'Rust', image: '/maps/rust.jpg' },
-        { name: 'Breeze', image: '/maps/breeze.png' },
-        { name: 'Dune', image: '/maps/dune.jpg' },
+        { name: 'Sandstone', image: '/maps/rust.jpg' },
+        { name: 'Rust', image: '/maps/sandstone.png' },
+        { name: 'Breeze', image: '/maps/dune.jpg' },
+        { name: 'Dune', image: '/maps/breeze.png' },
         { name: 'Province', image: '/maps/dust.jpg' },
         { name: 'Zone 7', image: '/maps/zone7.jpg' }
     ];
