@@ -357,8 +357,7 @@ app.post('/update', verifyAuth, async (c) => {
             .set({
                 name,
                 tag,
-                logo_url: logo_url || null,
-                updated_at: new Date().toISOString()
+                logo_url: logo_url || null
             })
             .where(eq(clans.id, member.clan_id))
             .execute();

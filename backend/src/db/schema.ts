@@ -173,3 +173,13 @@ export const goldOrders = sqliteTable('gold_orders', {
 
 export const idxGoldOrdersUser = index('idx_gold_orders_user').on(goldOrders.user_id);
 export const idxGoldOrdersStatus = index('idx_gold_orders_status').on(goldOrders.status);
+
+// Ad Reward Claims (e.g., +1 Competitve Match)
+export const rewardClaims = sqliteTable('reward_claims', {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    user_id: text('user_id').notNull().references(() => players.id),
+    reward_type: text('reward_type').notNull(), // 'competitive_match'
+    claimed_at: text('claimed_at').default(sql`CURRENT_TIMESTAMP`),
+}, (table) => ({
+    idxRewardUserId: index('idx_reward_user_id').on(table.user_id),
+}));

@@ -1,5 +1,6 @@
 
 import { drizzle } from 'drizzle-orm/d1';
+import { TIERS, updateDiscordRole } from './discord';
 
 export interface Env {
     DB: D1Database;
@@ -65,7 +66,10 @@ export async function syncDiscordMembers(env: Env) {
             THEN excluded.vip_until 
             ELSE players.vip_until 
          END,
-         elo = CASE WHEN excluded.elo > players.elo THEN excluded.elo ELSE players.elo END`
+         elo = CASE 
+            WHEN excluded.elo > 1000 AND excluded.elo > players.elo THEN excluded.elo 
+            ELSE players.elo 
+         END`
     );
 
     const humans = allMembers.filter(m => !m.user.bot);
@@ -113,6 +117,33 @@ export async function syncDiscordMembers(env: Env) {
         await env.DB.batch(batch);
         addedCount += chunk.length;
     }
+
+    // SELF-HEALING: Grant VIP role to DB-VIPs missing it on Discord
+    console.log('Self-healing: Checking VIPs for Discord role sync...');
+
+    const dbVips = await env.DB.prepare("SELECT id FROM players WHERE is_vip = 1").all();
+    const vipsInDb = dbVips.results || [];
+
+    console.log(`Self-healing: Found ${vipsInDb.length} VIPs in database`);
+
+    for (const vip of vipsInDb) {
+        const discordId = vip.id as string;
+        const member = humans.find(m => m.user.id === discordId);
+
+        if (member) {
+            const hasVipRole = (member.roles || []).includes(TIERS.VIP);
+            if (!hasVipRole) {
+                console.log(`Self-healing: Granting VIP role to ${member.user.username} (${discordId})`);
+                try {
+                    await updateDiscordRole(env, discordId, TIERS.VIP, true);
+                } catch (e) {
+                    console.error(`Failed to grant self-healing VIP role to ${discordId}:`, e);
+                }
+            }
+        }
+    }
+
+    console.log('Self-healing: VIP role sync completed');
 
     return { totalFetched: allMembers.length, humansImported: addedCount };
 }

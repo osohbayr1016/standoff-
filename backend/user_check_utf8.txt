@@ -1,0 +1,62 @@
+﻿
+ Γ¢à∩╕Å wrangler 4.54.0
+ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+Resource location: remote 
+
+≡ƒîÇ Executing on remote database standoff-db (61935a7f-d78f-466a-867e-8179b7292a94):
+≡ƒîÇ To execute on your local development database, remove the --remote flag from your wrangler command.
+≡ƒÜú Executed 1 command in 1.47ms
+[
+  {
+    "results": [
+      {
+        "id": "1309050621965369385",
+        "discord_username": "baykaa132_75035",
+        "is_vip": 1,
+        "vip_until": "2026-01-31T06:48:56.100Z"
+      },
+      {
+        "id": "1453402704230748211",
+        "discord_username": "bayrjavhlan0761_10417",
+        "is_vip": null,
+        "vip_until": null
+      },
+      {
+        "id": "1328032255871815787",
+        "discord_username": "bayka1107_48524",
+        "is_vip": null,
+        "vip_until": null
+      },
+      {
+        "id": "1180388539981111339",
+        "discord_username": "bayrjavhlan__26777",
+        "is_vip": 0,
+        "vip_until": null
+      },
+      {
+        "id": "1149636361725431869",
+        "discord_username": "bayrjavhlan0137",
+        "is_vip": 0,
+        "vip_until": null
+      }
+    ],
+    "success": true,
+    "meta": {
+      "served_by": "v3-prod",
+      "served_by_region": "EEUR",
+      "served_by_colo": "ZRH",
+      "served_by_primary": true,
+      "timings": {
+        "sql_duration_ms": 1.468
+      },
+      "duration": 1.468,
+      "changes": 0,
+      "last_row_id": 19491,
+      "changed_db": false,
+      "size_after": 6213632,
+      "rows_read": 6335,
+      "rows_written": 0,
+      "total_attempts": 1
+    }
+  }
+]

@@ -26,10 +26,10 @@ const StreamerDashboard = lazy(() => import("./components/StreamerDashboard"));
 const ClanPage = lazy(() => import("@/components/ClanPage"));
 const ClanProfilePage = lazy(() => import("@/components/ClanProfilePage"));
 const GoldPage = lazy(() => import("./components/GoldPage"));
+const RewardsPage = lazy(() => import("./components/RewardsPage"));
 
 // Placeholder components (to be implemented)
 const DailyRewards = () => <div className="placeholder-card">Daily Rewards - Coming Soon</div>;
-const RewardsPage = () => <div className="placeholder-page">Rewards Page - Coming Soon</div>;
 const MapBanPage = (_props: any) => <div className="placeholder-page">Map Ban - Coming Soon</div>;
 const MatchLobbyPage = (_props: any) => <div className="placeholder-page">Match Lobby - Coming Soon</div>;
 
@@ -447,7 +447,7 @@ function AppContent() {
           )}
           {currentPage === "profile" && <ProfilePage user={user} targetUserId={viewUserId || user?.id} onFindMatch={handleFindMatch} onLogout={handleLogout} onBack={handleProfileBack} />}
           {currentPage === "leaderboard" && <LeaderboardPage onViewProfile={handleViewProfile} />}
-          {currentPage === "rewards" && <RewardsPage />}
+          {currentPage === "rewards" && <RewardsPage user={user} backendUrl={import.meta.env.VITE_BACKEND_URL || "http://localhost:8787"} />}
           {currentPage === "friends" && <FriendsPage onViewProfile={handleViewProfile} />}
           {currentPage === "clans" && <ClanPage user={user} backendUrl={import.meta.env.VITE_BACKEND_URL || "http://localhost:8787"} onViewLobby={handleViewLobby} onViewClanProfile={handleViewClanProfile} initialTab={clanInitialTab} />}
           {currentPage === "clan-profile" && viewClanId && <ClanProfilePage backendUrl={import.meta.env.VITE_BACKEND_URL || "http://localhost:8787"} clanId={viewClanId} onBack={() => handleNavigate('clans')} onManage={() => { setClanInitialTab('settings'); handleNavigate('clans'); }} />}

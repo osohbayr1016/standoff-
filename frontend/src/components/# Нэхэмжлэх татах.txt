@@ -1,0 +1,72 @@
+# Нэхэмжлэх татах
+#### Үүсгэсэн нэхэмжлэлийн мэдээллийг харах
+Query Parameter -д qPay invoice_id -ийг илгээнэ.
+
+```
+GET https://merchant-sandbox.qpay.mn/v2/invoice/:invoice_id
+```
+
+
+```
+GET https://merchant-sandbox.qpay.mn/v2/invoice/:invoice_id
+```
+
+
+```
+{}
+```
+
+
+```
+{}
+```
+
+# Нэхэмжлэх цуцлах
+#### Төлбөрийн нэхэмжлэл цуцлах
+Query Parameter -д qPay invoice_id -ийг илгээнэ.
+
+```
+DELETE https://merchant-sandbox.qpay.mn/v2/invoice/:invoice_id
+```
+
+
+```
+DELETE https://merchant-sandbox.qpay.mn/v2/invoice/:invoice_id
+```
+
+
+```
+{}
+```
+
+
+```
+{}
+```
+
+# Төлбөр татах
+#### Төлбөрийн мэдээлэл авах
+Query Parameter -д qPay payment_id -ийг илгээнэ.
+
+```
+GET https://merchant-sandbox.qpay.mn/v2/payment/:payment_id
+```
+
+
+```
+GET https://merchant-sandbox.qpay.mn/v2/payment/:payment_id
+```
+
+
+```
+{}
+```
+
+
+```
+{}
+```
+
+# Төлбөр шалгах
+#### Төлбөр төлөгдсөн эсэхийг шалгах
+Нэхэмжлэлийн төлбөр шалгах бол object_type=INVOICE

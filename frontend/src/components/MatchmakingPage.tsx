@@ -16,7 +16,7 @@ import {
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Gamepad2, Plus, Users, Map as MapIcon, Loader2, Trophy, AlertTriangle, ExternalLink, Check, ShieldAlert, Swords, Crown } from "lucide-react";
+import { Gamepad2, Plus, Users, Map as MapIcon, Loader2, Trophy, AlertTriangle, ExternalLink, Check, ShieldAlert, Swords, Lock } from "lucide-react";
 import {
     Carousel,
     CarouselContent,
@@ -38,7 +38,7 @@ interface Match {
     map_name?: string;
     current_players?: number;
     created_at: string;
-    match_type?: 'casual' | 'league' | 'clan_war';
+    match_type?: 'casual' | 'league' | 'clan_war' | 'competitive';
     min_rank?: 'Bronze' | 'Silver' | 'Gold';
     host_elo?: number;
     clan_id?: string;
@@ -52,6 +52,7 @@ interface MatchmakingPageProps {
         is_vip?: number | boolean;
         vip_until?: string;
         role?: string;
+        elo?: number;
     } | null;
     backendUrl: string;
     onViewProfile?: (userId: string) => void;
@@ -66,7 +67,7 @@ const MatchmakingPage: React.FC<MatchmakingPageProps> = ({ user, backendUrl, onV
     const [showCreateModal, setShowCreateModal] = useState(false);
     const [lobbyUrl, setLobbyUrl] = useState('');
     const [selectedMap, setSelectedMap] = useState<string | null>(null);
-    const [matchType, setMatchType] = useState<'casual' | 'league' | 'clan_war'>('casual');
+    const [matchType, setMatchType] = useState<'casual' | 'league' | 'clan_war' | 'competitive'>('casual');
 
     const MAPS = [
         { name: 'Hanami', image: '/maps/hanami.png' },
@@ -407,6 +408,132 @@ const MatchmakingPage: React.FC<MatchmakingPageProps> = ({ user, backendUrl, onV
                 </div>
             ) : (
                 <div className="space-y-10">
+                    {/* COMPETITIVE MATCHES SECTION */}
+                    <div className="space-y-4">
+                        <div className="flex items-center gap-2 border-b border-blue-500/20 pb-2">
+                            <Swords className="h-5 w-5 text-blue-500" />
+                            <h2 className="text-xl font-bold font-display tracking-tight text-white">Competitive Matches</h2>
+                            <Badge variant="outline" className="ml-auto border-blue-500/20 text-blue-400 text-[10px] uppercase">Ranked (Bronze/Silver)</Badge>
+                        </div>
+
+                        {matches.filter(m => m.match_type === 'competitive').length === 0 ? (
+                            <div className="text-center py-8 text-muted-foreground text-sm bg-blue-500/5 rounded-lg border border-dashed border-blue-500/20">
+                                No active competitive matches. Create one to climb the ranks!
+                            </div>
+                        ) : (
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                {matches.filter(m => m.match_type === 'competitive').map((match) => (
+                                    <Card
+                                        key={match.id}
+                                        onClick={() => setSelectedMatchId(match.id)}
+                                        className="bg-zinc-950/80 backdrop-blur-sm border-blue-500/20 hover:border-blue-500/50 transition-all cursor-pointer group overflow-hidden relative hover:shadow-[0_0_20px_rgba(59,130,246,0.15)]"
+                                    >
+                                        <div className="absolute top-0 right-0 w-24 h-24 bg-blue-500/10 blur-3xl rounded-full -mr-12 -mt-12 pointer-events-none" />
+
+                                        {/* Map Background Image Overlay */}
+                                        {match.map_name && (
+                                            <div className="absolute inset-0 z-0 opacity-20 group-hover:opacity-40 transition-opacity">
+                                                <img
+                                                    src={MAPS.find(m => m.name === match.map_name)?.image || `/maps/${match.map_name.toLowerCase()}.jpg`}
+                                                    className="w-full h-full object-cover grayscale mix-blend-overlay"
+                                                    onError={(e) => e.currentTarget.style.display = 'none'}
+                                                />
+                                            </div>
+                                        )}
+
+                                        <CardHeader className="flex flex-row items-center justify-between pb-3 z-10 relative">
+                                            <div className="flex items-center gap-3">
+                                                <div className="relative">
+                                                    <Avatar className="h-10 w-10 border-2 border-blue-500/50">
+                                                        <AvatarImage src={`https://cdn.discordapp.com/avatars/${match.host_id}/${match.host_avatar}.png`} />
+                                                        <AvatarFallback className="bg-blue-950 text-blue-200 font-bold">{match.host_username?.[0]?.toUpperCase() || 'H'}</AvatarFallback>
+                                                    </Avatar>
+                                                </div>
+                                                <div className="flex flex-col">
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="text-sm font-bold leading-none text-white group-hover:text-blue-400 transition-colors">
+                                                            {match.host_username || 'Unknown Host'}
+                                                        </span>
+                                                        <LevelBadge elo={match.host_elo || 1000} className="scale-75 origin-left" />
+                                                    </div>
+                                                    <span className="text-xs text-zinc-400">Host</span>
+                                                </div>
+                                            </div>
+                                            <Badge
+                                                variant={match.status === 'in_progress' ? 'secondary' : 'default'}
+                                                className={`${match.status === 'waiting' ? 'bg-green-500/10 text-green-500 hover:bg-green-500/20' : ''} uppercase text-[10px] tracking-wider font-bold`}
+                                            >
+                                                {match.status.replace('_', ' ')}
+                                            </Badge>
+                                        </CardHeader>
+
+                                        <CardContent className="space-y-4 pb-4 z-10 relative">
+                                            <div className="flex items-center justify-between text-sm border-t border-white/5 pt-4">
+                                                <div className="flex items-center gap-2 text-zinc-400">
+                                                    <Users className="h-4 w-4" />
+                                                    <span>Players</span>
+                                                </div>
+                                                <div className="font-mono font-medium text-white bg-black/20 px-2 py-0.5 rounded border border-white/5 flex items-center gap-1.5">
+                                                    <span className={match.current_players === match.max_players ? "text-blue-400" : ""}>
+                                                        {match.current_players || match.player_count}
+                                                    </span>
+                                                    <span className="text-zinc-600">/</span>
+                                                    <span className="text-zinc-500">{match.max_players}</span>
+                                                </div>
+                                            </div>
+
+                                            <div className="flex items-center justify-between text-sm">
+                                                <div className="flex items-center gap-2 text-zinc-400">
+                                                    <MapIcon className="h-4 w-4" />
+                                                    <span>Map</span>
+                                                </div>
+                                                <span className="font-medium text-white">{match.map_name || 'Random'}</span>
+                                            </div>
+                                        </CardContent>
+
+                                        <CardFooter className="pt-2 z-10 relative">
+                                            {match.host_id === user.id ? (
+                                                <div className="w-full flex gap-2">
+                                                    <Button
+                                                        className="w-full flex-1 bg-blue-600 hover:bg-blue-700 text-white border-none font-bold"
+                                                        onClick={(e) => { e.stopPropagation(); handleStartMatch(match.id); }}
+                                                        disabled={(match.current_players || match.player_count) < 10 || processingId === match.id}
+                                                    >
+                                                        Start Match
+                                                    </Button>
+                                                    <Button
+                                                        className="w-full flex-1 transition-all active:scale-95 bg-zinc-800 hover:bg-red-900/50"
+                                                        variant="ghost"
+                                                        onClick={(e) => { e.stopPropagation(); handleLeaveLobby(match.id); }}
+                                                        disabled={processingId === match.id}
+                                                    >
+                                                        {processingId === match.id ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Cancel'}
+                                                    </Button>
+                                                </div>
+                                            ) : (
+                                                <Button
+                                                    className="w-full bg-blue-500/10 hover:bg-blue-500 hover:text-white border border-blue-500/30 transition-all font-bold active:scale-95 group"
+                                                    onClick={(e) => { e.stopPropagation(); handleJoinLobby(match.id); }}
+                                                    disabled={(match.current_players || match.player_count) >= match.max_players || processingId === match.id}
+                                                >
+                                                    {processingId === match.id ? (
+                                                        <Loader2 className="h-4 w-4 animate-spin" />
+                                                    ) : (
+                                                        (match.current_players || match.player_count) >= match.max_players ? 'Lobby Full' : (
+                                                            <span className="flex items-center gap-2">
+                                                                Join Match <Swords className="w-3 h-3 opacity-50 group-hover:opacity-100" />
+                                                            </span>
+                                                        )
+                                                    )}
+                                                </Button>
+                                            )}
+                                        </CardFooter>
+                                    </Card>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+
                     {/* LEAGUE MATCHES SECTION */}
                     <div className="space-y-4">
                         <div className="flex items-center gap-2 border-b border-white/10 pb-2">
@@ -669,13 +796,13 @@ const MatchmakingPage: React.FC<MatchmakingPageProps> = ({ user, backendUrl, onV
                             <Badge variant="outline" className="ml-auto border-white/20 text-muted-foreground text-[10px] uppercase">Unranked</Badge>
                         </div>
 
-                        {matches.filter(m => m.match_type !== 'league' && m.match_type !== 'clan_war').length === 0 ? (
+                        {matches.filter(m => m.match_type !== 'league' && m.match_type !== 'clan_war' && m.match_type !== 'competitive').length === 0 ? (
                             <div className="text-center py-8 text-muted-foreground text-sm bg-white/5 rounded-lg border border-dashed border-white/10">
                                 No active casual matches.
                             </div>
                         ) : (
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                                {matches.filter(m => m.match_type !== 'league' && m.match_type !== 'clan_war').map((match) => (
+                                {matches.filter(m => m.match_type !== 'league' && m.match_type !== 'clan_war' && m.match_type !== 'competitive').map((match) => (
                                     <Card
                                         key={match.id}
                                         onClick={() => setSelectedMatchId(match.id)}
@@ -812,137 +939,165 @@ const MatchmakingPage: React.FC<MatchmakingPageProps> = ({ user, backendUrl, onV
                             <label className="text-xs sm:text-sm font-medium leading-none text-white block">
                                 Match Type <span className="text-destructive">*</span>
                             </label>
-                            <div className="grid grid-cols-3 gap-2 sm:gap-3">
-                                <button
-                                    type="button"
-                                    onClick={() => setMatchType('casual')}
-                                    className={`
-                                        relative p-3 sm:p-4 rounded-lg border-2 transition-all text-left min-h-[72px] sm:min-h-[80px]
-                                        ${matchType === 'casual'
-                                            ? 'border-primary bg-primary/10 shadow-lg shadow-primary/20'
-                                            : 'border-white/10 bg-zinc-800/50 hover:border-white/20'
-                                        }
-                                    `}
-                                >
-                                    <div className="flex items-center gap-2 mb-1">
-                                        <Gamepad2 className="h-4 w-4 text-primary" />
-                                        <span className="font-bold text-sm sm:text-base text-white">Casual</span>
-                                    </div>
-                                    <p className="text-[10px] sm:text-xs text-gray-400">Quick match, no ELO changes</p>
-                                    {matchType === 'casual' && (
-                                        <div className="absolute top-2 right-2">
-                                            <Check className="h-4 w-4 text-primary" />
-                                        </div>
-                                    )}
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        const isVip = !!user?.is_vip;
-                                        const isAdmin = user?.role === 'admin';
-                                        const vipUntil = user?.vip_until ? new Date(user.vip_until) : null;
-                                        const now = new Date();
-                                        const isVipValid = isVip && (!vipUntil || vipUntil > now);
-                                        const isActive = isVipValid || isAdmin;
-
-                                        if (isActive) {
-                                            setMatchType('league');
-                                        } else {
-                                            setError('League matches require an active VIP membership. Contact an administrator to upgrade.');
-                                        }
+                            <div className="w-full px-2 sm:px-10">
+                                <Carousel
+                                    className="w-full max-w-full"
+                                    opts={{
+                                        align: "start",
+                                        loop: false,
                                     }}
-                                    className={`
-                                        relative p-3 sm:p-4 rounded-lg border-2 transition-all text-left group min-h-[72px] sm:min-h-[80px]
-                                        ${matchType === 'league'
-                                            ? 'border-primary bg-primary/10 shadow-lg shadow-primary/20'
-                                            : ((!!user?.is_vip && user.vip_until && new Date(user.vip_until) > new Date()) || user?.role === 'admin')
-                                                ? 'border-white/10 bg-zinc-800/50 hover:border-white/20'
-                                                : 'border-white/5 bg-zinc-900/30 opacity-60 cursor-not-allowed'
-                                        }
-                                    `}
                                 >
-                                    <div className="flex items-center gap-2 mb-1">
-                                        <Trophy className="h-4 w-4 text-primary" />
-                                        <span className="font-bold text-sm sm:text-base text-white">League</span>
-                                        {(() => {
-                                            const isVip = !!user?.is_vip;
-                                            const isAdmin = user?.role === 'admin';
-                                            const vipUntil = user?.vip_until ? new Date(user.vip_until) : null;
-                                            const now = new Date();
-                                            const isVipValid = isVip && (!vipUntil || vipUntil > now);
-                                            const isActive = isVipValid || isAdmin;
+                                    <CarouselContent className="-ml-2">
+                                        {[
+                                            {
+                                                id: 'casual',
+                                                label: 'Casual',
+                                                icon: Gamepad2,
+                                                color: 'text-primary',
+                                                borderColor: 'border-primary',
+                                                bgGradient: 'from-primary/20 via-primary/5 to-transparent',
+                                                description: 'Quick match'
+                                            },
+                                            {
+                                                id: 'competitive',
+                                                label: 'Competitive',
+                                                icon: Swords,
+                                                color: 'text-blue-500',
+                                                borderColor: 'border-blue-500',
+                                                bgGradient: 'from-blue-500/20 via-blue-500/5 to-transparent',
+                                                description: 'Ranked'
+                                            },
+                                            {
+                                                id: 'league',
+                                                label: 'League',
+                                                icon: Trophy,
+                                                color: 'text-yellow-500',
+                                                borderColor: 'border-yellow-500',
+                                                bgGradient: 'from-yellow-500/20 via-yellow-500/5 to-transparent',
+                                                description: 'VIP Ranked'
+                                            },
+                                            {
+                                                id: 'clan_war',
+                                                label: 'Clan War',
+                                                icon: Swords,
+                                                color: 'text-purple-500',
+                                                borderColor: 'border-purple-500',
+                                                bgGradient: 'from-purple-500/20 via-purple-500/5 to-transparent',
+                                                description: '5v5 Clan'
+                                            },
+                                        ].map((type) => (
+                                            <CarouselItem key={type.id} className="pl-2 basis-1/2 sm:basis-1/3">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        // Logic for each type
+                                                        if (type.id === 'casual') {
+                                                            setMatchType('casual');
+                                                        } else if (type.id === 'competitive') {
+                                                            const elo = user?.elo || 1000;
+                                                            if (elo < 1600) {
+                                                                setMatchType('competitive');
+                                                            } else {
+                                                                setError('Competitive matches are for Bronze/Silver players only (Elo < 1600). Gold players cannot participate.');
+                                                            }
+                                                        } else if (type.id === 'league') {
+                                                            const isVip = !!user?.is_vip;
+                                                            const isAdmin = user?.role === 'admin';
+                                                            const vipUntil = user?.vip_until ? new Date(user.vip_until) : null;
+                                                            const now = new Date();
+                                                            const isVipValid = isVip && (!vipUntil || vipUntil > now);
+                                                            const isActive = isVipValid || isAdmin;
 
-                                            if (!isActive) {
-                                                return <ShieldAlert className="h-3 w-3 text-yellow-500" />;
-                                            }
-                                            return null;
-                                        })()}
-                                    </div>
-                                    <p className="text-[10px] sm:text-xs text-gray-400">Ranked, ELO changes apply</p>
-                                    {matchType === 'league' && (
-                                        <div className="absolute top-2 right-2">
-                                            <Check className="h-4 w-4 text-primary" />
-                                        </div>
-                                    )}
-                                    {(() => {
-                                        const isVip = !!user?.is_vip;
-                                        const isAdmin = user?.role === 'admin';
-                                        const vipUntil = user?.vip_until ? new Date(user.vip_until) : null;
-                                        const now = new Date();
-                                        const isVipValid = isVip && (!vipUntil || vipUntil > now);
-                                        const isActive = isVipValid || isAdmin;
+                                                            if (isActive) {
+                                                                setMatchType('league');
+                                                            } else {
+                                                                setError('League matches require an active VIP membership. Contact an administrator to upgrade.');
+                                                            }
+                                                        } else if (type.id === 'clan_war') {
+                                                            setMatchType('clan_war');
+                                                        }
+                                                    }}
+                                                    className="w-full text-left group flex flex-col items-center"
+                                                >
+                                                    <div className={`
+                                                        overflow-hidden rounded-md w-full aspect-video transition-all bg-zinc-900 border-2 relative flex flex-col items-center justify-center
+                                                        ${matchType === type.id
+                                                            ? `${type.borderColor} ring-2 ring-opacity-20 scale-105`
+                                                            : 'border-white/5 bg-zinc-900/50 opacity-70 hover:opacity-100 hover:scale-105 hover:border-white/20'
+                                                        }
+                                                    `}>
+                                                        {/* Background Gradient */}
+                                                        <div className={`absolute inset-0 bg-gradient-to-br ${type.bgGradient} opacity-20`} />
 
-                                        if (!isActive) {
-                                            return (
-                                                <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-zinc-950/80 backdrop-blur-[2px] rounded-lg transition-all opacity-0 group-hover:opacity-100 p-2 border border-yellow-500/30">
-                                                    <div className="text-yellow-500 font-bold text-sm mb-2 uppercase tracking-widest flex items-center gap-2">
-                                                        <ShieldAlert className="w-4 h-4" /> VIP Only
+                                                        {/* Icon */}
+                                                        <type.icon className={`h-8 w-8 sm:h-10 sm:w-10 ${type.color} mb-1 sm:mb-2 relative z-10`} />
+
+                                                        {/* Description (Small) */}
+                                                        <span className="text-[9px] sm:text-[10px] text-gray-400 font-medium uppercase tracking-wider relative z-10">
+                                                            {type.description}
+                                                        </span>
+
+                                                        {/* Selected Checkmark Overlay */}
+                                                        {matchType === type.id && (
+                                                            <div className={`absolute inset-0 ${type.color.replace('text-', 'bg-')}/10 flex items-center justify-center z-20`}>
+                                                                <div className={`${type.color.replace('text-', 'bg-')} rounded-full p-1 shadow-lg`}>
+                                                                    <Check className="h-4 w-4 text-black" />
+                                                                </div>
+                                                            </div>
+                                                        )}
+
+                                                        {/* Locked/Restricted Overlays */}
+                                                        {type.id === 'competitive' && ((user?.elo || 1000) >= 1600) && (
+                                                            <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-zinc-950/90 backdrop-blur-[1px]">
+                                                                <ShieldAlert className="w-5 h-5 sm:w-6 sm:h-6 text-blue-500 mb-1" />
+                                                                <span className="text-[9px] sm:text-[10px] font-bold text-blue-500 uppercase tracking-wider text-center px-1">
+                                                                    Elo &lt; 1600
+                                                                </span>
+                                                            </div>
+                                                        )}
+
+                                                        {type.id === 'league' && (() => {
+                                                            const isVip = !!user?.is_vip;
+                                                            const isAdmin = user?.role === 'admin';
+                                                            const vipUntil = user?.vip_until ? new Date(user.vip_until) : null;
+                                                            const now = new Date();
+                                                            const isVipValid = isVip && (!vipUntil || vipUntil > now);
+                                                            const isActive = isVipValid || isAdmin;
+
+                                                            if (!isActive) {
+                                                                return (
+                                                                    <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-zinc-950/90 backdrop-blur-[1px]">
+                                                                        <Lock className="w-5 h-5 sm:w-6 sm:h-6 text-yellow-500 mb-2" />
+                                                                        <Button
+                                                                            size="sm"
+                                                                            variant="default"
+                                                                            className="h-6 text-[10px] bg-yellow-500 hover:bg-yellow-400 text-black font-bold px-2 rounded-full"
+                                                                            onClick={(e) => {
+                                                                                e.stopPropagation();
+                                                                                setShowCreateModal(false);
+                                                                                if (onNavigateToVip) onNavigateToVip();
+                                                                            }}
+                                                                        >
+                                                                            GET VIP
+                                                                        </Button>
+                                                                    </div>
+                                                                );
+                                                            }
+                                                            return null;
+                                                        })()}
                                                     </div>
-                                                    <Button
-                                                        size="sm"
-                                                        variant="default"
-                                                        className="w-full bg-yellow-500 hover:bg-yellow-400 text-black font-bold h-8 text-xs sm:h-9 sm:text-sm animate-pulse shadow-[0_0_15px_rgba(234,179,8,0.3)]"
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            e.preventDefault();
-                                                            setShowCreateModal(false);
-                                                            if (onNavigateToVip) onNavigateToVip();
-                                                        }}
-                                                    >
-                                                        <Crown className="w-3 h-3 sm:w-4 sm:h-4 mr-1.5" />
-                                                        GET VIP
-                                                    </Button>
-                                                </div>
-                                            );
-                                        }
-                                        return null;
-                                    })()}
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        // Clan War selection
-                                        setMatchType('clan_war');
-                                    }}
-                                    className={`
-                                        relative p-3 sm:p-4 rounded-lg border-2 transition-all text-left group min-h-[72px] sm:min-h-[80px]
-                                        ${matchType === 'clan_war'
-                                            ? 'border-purple-500 bg-purple-500/10 shadow-lg shadow-purple-500/20'
-                                            : 'border-white/10 bg-zinc-800/50 hover:border-purple-500/50'
-                                        }
-                                    `}
-                                >
-                                    <div className="flex items-center gap-2 mb-1">
-                                        <Swords className="h-4 w-4 text-purple-500" />
-                                        <span className="font-bold text-sm sm:text-base text-white">Clan War</span>
-                                    </div>
-                                    <p className="text-[10px] sm:text-xs text-gray-400">5v5 Clan vs Clan</p>
-                                    {matchType === 'clan_war' && (
-                                        <div className="absolute top-2 right-2">
-                                            <Check className="h-4 w-4 text-purple-500" />
-                                        </div>
-                                    )}
-                                </button>
+
+                                                    {/* Label below card */}
+                                                    <p className={`text-[10px] sm:text-xs text-center mt-1 sm:mt-2 font-medium ${matchType === type.id ? type.color : 'text-gray-400'}`}>
+                                                        {type.label}
+                                                    </p>
+                                                </button>
+                                            </CarouselItem>
+                                        ))}
+                                    </CarouselContent>
+                                    <CarouselPrevious className="bg-zinc-800 border-white/10 text-white hover:bg-zinc-700 hover:text-white h-8 w-8 sm:h-10 sm:w-10 -left-2" />
+                                    <CarouselNext className="bg-zinc-800 border-white/10 text-white hover:bg-zinc-700 hover:text-white h-8 w-8 sm:h-10 sm:w-10 -right-2" />
+                                </Carousel>
                             </div>
                         </div>
 

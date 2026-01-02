@@ -3,6 +3,12 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Gamepad2, Users, Bell, ArrowRight } from "lucide-react";
 
+const Badge = ({ children, className }: { children: React.ReactNode, className?: string }) => (
+  <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${className}`}>
+    {children}
+  </span>
+);
+
 export default function AuthPage() {
   return (
     <div className="min-h-screen flex items-center justify-center relative overflow-hidden bg-[#050505]">
@@ -101,11 +107,5 @@ export default function AuthPage() {
     </div>
   );
 }
-
-const Badge = ({ children, className }: { children: React.ReactNode, className?: string }) => (
-  <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${className}`}>
-    {children}
-  </span>
-);
 
 

@@ -1,0 +1,18 @@
+## Webhooks
+
+>Webhooks receive information about a match as it is being setup.
+> Each webhook will contain an "action" key in the payload.
+> Currently supported actions are:
+> - JOIN_QUEUE
+> - LEAVE_QUEUE
+> - MATCH_STARTED
+> - TEAMS_CREATED
+> - MATCH_COMPLETED
+> - SUBSTITUTION
+> 
+> Additionally, if you have `/requireregister mode: Custom API`, you will receive a webhook with action
+> - REGISTER_PLAYER
+> 
+> containing various information about the user, as well as the account they are attempting to register.
+> You must either reply with a json object containing at least a "rating" key (ex: {"rating": 1000}), to specify the
+> rating that the player should be registered with, or any non 200 status response to display to the user.

@@ -18,7 +18,9 @@ import { streamerRoutes } from './routes/streamers';
 import { clanRoutes } from './routes/clans';
 import { clanRequestsRoutes } from './routes/clan-requests';
 import goldRoutes from './routes/gold';
+import rewardsRoutes from './routes/rewards';
 import { syncDiscordMembers } from './utils/sync';
+import { TIERS, updateDiscordRole } from './utils/discord';
 
 
 // ============= Type Definitions =============
@@ -68,6 +70,9 @@ interface Lobby {
   mapBanState: MapBanState;
   readyPhaseState: ReadyPhaseState;
   serverInfo?: ServerInfo;
+  matchType?: string;
+  status?: string;
+  startedAt?: number;
 }
 
 interface ChatMessage {
@@ -161,7 +166,10 @@ export class MatchQueueDO {
             teamB: players.filter((p: any) => p.team === 'bravo'),
             readyPlayers: [],
             mapBanState: { bannedMaps: [], currentBanTeam: 'alpha', banHistory: [], mapBanPhase: false, banTimeout: 15 },
-            readyPhaseState: { phaseActive: false, readyPlayers: [], readyPhaseTimeout: 30 }
+            readyPhaseState: { phaseActive: false, readyPlayers: [], readyPhaseTimeout: 30 },
+            matchType: msgData.matchType,
+            status: msgData.status,
+            startedAt: msgData.startedAt
           } as any);
           console.log(`📌 Synced manual lobby ${matchId} with ${players.length} players`);
         }
@@ -480,6 +488,42 @@ export class MatchQueueDO {
               });
               await this.saveMatchState();
               console.log(`🗑️ [${lobbyId}] Lobby deleted due to timeout.`);
+            }
+          }
+
+
+          // C. CASUAL MATCH AUTO-DELETE (10 Minutes)
+          if (lobby.matchType === 'casual' && lobby.status === 'in_progress' && lobby.startedAt) {
+            const elapsed = (Date.now() - lobby.startedAt) / 1000;
+            const timeout = 10 * 60; // 10 minutes
+
+            if (elapsed > timeout) {
+              console.log(`⏰ [${lobbyId}] Casual match timeout (${elapsed.toFixed(1)}s > ${timeout}s). Cancelling...`);
+
+              // 1. Update DB (Soft Delete/Cancel)
+              try {
+                await this.env.DB.prepare(
+                  "UPDATE matches SET status = 'cancelled', updated_at = datetime('now') WHERE id = ?"
+                ).bind(lobbyId).run();
+              } catch (dbErr) {
+                console.error(`❌ [${lobbyId}] Failed to update DB on timeout:`, dbErr);
+              }
+
+              // 2. Notify Clients
+              this.broadcastToLobby(lobbyId, JSON.stringify({
+                type: 'MATCH_CANCELLED',
+                reason: 'Match time expired (10 minutes)'
+              }));
+
+              // 3. Clean up Memory
+              this.activeLobbies.delete(lobbyId);
+              lobby.players.forEach(p => {
+                const pid = p.id || p.discord_id;
+                if (pid) this.playerLobbyMap.delete(pid);
+              });
+
+              await this.saveMatchState();
+              console.log(`🗑️ [${lobbyId}] Casual match deleted due to 10m timeout.`);
             }
           }
         } catch (err) {
@@ -1625,7 +1669,10 @@ app.get('/api/auth/callback', async (c) => {
             ELSE players.vip_until 
          END,
          discord_roles = excluded.discord_roles,
-         elo = CASE WHEN excluded.elo > players.elo THEN excluded.elo ELSE players.elo END`
+         elo = CASE 
+            WHEN excluded.elo > 1000 AND excluded.elo > players.elo THEN excluded.elo 
+            ELSE players.elo 
+          END`
       ).bind(
         userData.id,
         userData.id,
@@ -1645,6 +1692,17 @@ app.get('/api/auth/callback', async (c) => {
 
       if (results && results.length > 0) {
         player = results[0];
+
+        // SELF-HEALING DISCORD ROLES
+        // If user is VIP in DB, ensure they have the VIP role on Discord
+        if (player.is_vip) {
+          try {
+            // We don't await this to keep the login fast, but we fire-and-forget
+            updateDiscordRole(c.env, userData.id, TIERS.VIP, true);
+          } catch (discordErr) {
+            console.error('Self-healing VIP role failed:', discordErr);
+          }
+        }
       }
     } catch (dbError) {
       console.error('Database error:', dbError);
@@ -1849,6 +1907,7 @@ app.route('/api/streamers', streamerRoutes);
 app.route('/api/clans', clanRoutes);
 app.route('/api/clan-requests', clanRequestsRoutes);
 app.route('/api/gold', goldRoutes);
+app.route('/api/rewards', rewardsRoutes);
 
 const handler = {
   async fetch(request: Request, env: Env, ctx: ExecutionContext) {

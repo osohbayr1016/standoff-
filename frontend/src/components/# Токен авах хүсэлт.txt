@@ -1,0 +1,49 @@
+# Токен авах хүсэлт
+#### Access token авах API.
+username: client_id, password: client_secret -ийг qPay -ээс авна.
+
+```
+POST https://merchant-sandbox.qpay.mn/v2/auth/token
+```
+
+
+```
+POST https://merchant-sandbox.qpay.mn/v2/auth/token
+```
+
+
+```
+{}
+```
+
+
+```
+{}
+```
+
+# Токен шинэчилэх хүсэлт
+#### Access token шинэчлэн авах API.
+refresh_token -ийг ашиглана.
+
+```
+POST https://merchant-sandbox.qpay.mn/v2/auth/refresh
+```
+
+
+```
+POST https://merchant-sandbox.qpay.mn/v2/auth/refresh
+```
+
+
+```
+{}
+```
+
+
+```
+{}
+```
+
+# Нэхэмжлэх үүсгэх
+#### Төлбөрийн нэхэмжлэл үүсгэх.
+invoice_code -ийг qPay -ээс олгоно.

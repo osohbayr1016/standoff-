@@ -35,7 +35,19 @@ export function setupProfileRoutes(app: Hono<any>) {
                 is_discord_member: user.is_discord_member === 1,
                 created_at: user.created_at,
                 discord_roles: user.discord_roles ? JSON.parse(user.discord_roles as string) : [],
-                gold: user.gold || 0
+                gold: user.gold || 0,
+                daily_comp_matches_used: await (async () => {
+                    const today = new Date().toISOString().split('T')[0];
+                    const count = await c.env.DB.prepare(`
+                        SELECT COUNT(*) as count FROM matches m
+                        JOIN match_players mp ON m.id = mp.match_id
+                        WHERE (mp.player_id = ? OR mp.player_id = ?)
+                        AND m.match_type = 'competitive'
+                        AND m.status = 'completed'
+                        AND m.updated_at LIKE ?
+                    `).bind(user.id, user.discord_id, `${today}%`).first() as { count: number } | null;
+                    return count?.count || 0;
+                })()
             });
         } catch (error) {
             console.error('❌ Profile fetch error:', error);

@@ -23,7 +23,7 @@ import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/
 import {
     Users, Activity, FileText, Ban, Check, X, Search,
     Gamepad2, RefreshCw, LayoutDashboard, TrendingUp, Menu, ShieldAlert, Shield,
-    Play, XCircle, Crown, Flag, PlusCircle
+    Play, XCircle, Crown, Flag, PlusCircle, Trophy, Swords
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, ResponsiveContainer } from 'recharts';
@@ -118,7 +118,8 @@ export default function ModeratorPage({ user, backendUrl, onViewLobby }: Moderat
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
     const [pendingMatches, setPendingMatches] = useState<PendingMatch[]>([]);
     const [activeMatchesList, setActiveMatchesList] = useState<PendingMatch[]>([]);
-    const [cancelledMatches, setCancelledMatches] = useState<PendingMatch[]>([]); // New State
+    const [cancelledMatches, setCancelledMatches] = useState<PendingMatch[]>([]);
+    const [completedMatches, setCompletedMatches] = useState<PendingMatch[]>([]); // New: Recent completed
     const [users, setUsers] = useState<User[]>([]);
     const [stats, setStats] = useState<ModeratorStats | null>(null);
     const [currentPage, setCurrentPage] = useState(1);
@@ -126,6 +127,14 @@ export default function ModeratorPage({ user, backendUrl, onViewLobby }: Moderat
     const [searchQuery, setSearchQuery] = useState('');
     const [vipRequests, setVipRequests] = useState<VIPRequest[]>([]);
     const [vipFilter, setVipFilter] = useState<'pending' | 'approved' | 'rejected'>('pending');
+
+    // Edit Result State
+    const [editResultMatch, setEditResultMatch] = useState<PendingMatch | null>(null);
+    const [editResultForm, setEditResultForm] = useState({
+        winner_team: 'alpha',
+        alpha_score: 0,
+        bravo_score: 0
+    });
 
     // Clan State
     const [clans, setClans] = useState<any[]>([]);
@@ -171,6 +180,19 @@ export default function ModeratorPage({ user, backendUrl, onViewLobby }: Moderat
             }
         } catch (e) { console.error(e); }
         finally { setProcessing(false); }
+    };
+
+    // Fetch Completed Matches (Recent)
+    const fetchRecentMatches = async () => {
+        try {
+            const res = await fetch(`${backendUrl}/api/moderator/recent-matches`, {
+                headers: { 'X-User-Id': user!.id }
+            });
+            const data = await res.json();
+            if (data.success) {
+                setCompletedMatches(data.matches);
+            }
+        } catch (e) { console.error(e); }
     };
 
     // Fetch Cancelled Matches
@@ -432,8 +454,9 @@ export default function ModeratorPage({ user, backendUrl, onViewLobby }: Moderat
     useEffect(() => {
         if (activeView === 'clans') {
             fetchClans(1);
-        } else if (activeView === 'cancelled') {
+        } else if (activeView === 'history') { // Changed from cancelled
             fetchCancelledMatches();
+            fetchRecentMatches(); // Fetch completed too
         }
     }, [activeView]);
 
@@ -446,9 +469,36 @@ export default function ModeratorPage({ user, backendUrl, onViewLobby }: Moderat
         { id: 'players', label: 'Players', icon: Users },
         { id: 'clans', label: 'Clans', icon: Flag },
         { id: 'matches', label: 'Active Matches', icon: Gamepad2 },
-        { id: 'cancelled', label: 'History (Cancelled)', icon: XCircle },
+        { id: 'history', label: 'History', icon: XCircle }, // Changed ID and Label
         { id: 'matchmaking', label: 'Match Creation', icon: PlusCircle },
     ];
+
+    const handleEditResultSubmit = async () => {
+        if (!editResultMatch) return;
+        setProcessing(true);
+        try {
+            const res = await fetch(`${backendUrl}/api/moderator/matches/${editResultMatch.id}/edit-result`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-User-Id': user?.id || '' },
+                body: JSON.stringify(editResultForm)
+            });
+            const data = await res.json();
+            if (data.success) {
+                setEditResultMatch(null);
+                setErrorMessage("Match Result Updated Successfully"); // Reuse for success
+                setErrorDialogOpen(true);
+                fetchRecentMatches(); // Refresh list
+            } else {
+                setErrorMessage(data.error);
+                setErrorDialogOpen(true);
+            }
+        } catch (e) {
+            setErrorMessage('Network error');
+            setErrorDialogOpen(true);
+        } finally {
+            setProcessing(false);
+        }
+    };
 
     const handleReviewMatch = async (approved: boolean) => {
         if (!selectedMatch) return;
@@ -1236,6 +1286,42 @@ export default function ModeratorPage({ user, backendUrl, onViewLobby }: Moderat
         </div>
     );
 
+    // Submit Result State
+    const [submitResultMatch, setSubmitResultMatch] = useState<PendingMatch | null>(null);
+    const [submitResultForm, setSubmitResultForm] = useState({
+        winner_team: 'alpha',
+        alpha_score: 10,
+        bravo_score: 8,
+        screenshot_url: ''
+    });
+
+    const handleSubmitResult = async () => {
+        if (!submitResultMatch) return;
+        setProcessing(true);
+        try {
+            const res = await fetch(`${backendUrl}/api/moderator/matches/${submitResultMatch.id}/force-result`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-User-Id': user?.id || '' },
+                body: JSON.stringify(submitResultForm)
+            });
+            const data = await res.json();
+            if (data.success) {
+                setErrorMessage('Result Submitted Successfully'); // Use existing error dialog for success
+                setErrorDialogOpen(true);
+                setSubmitResultMatch(null);
+                fetchActiveMatches();
+            } else {
+                setErrorMessage(data.error || 'Failed to submit result');
+                setErrorDialogOpen(true);
+            }
+        } catch (e) {
+            setErrorMessage('Network error');
+            setErrorDialogOpen(true);
+        } finally {
+            setProcessing(false);
+        }
+    };
+
     const renderMatches = () => (
         <div className="space-y-6 animate-fade-in">
             <div className="flex items-center justify-between">
@@ -1251,53 +1337,48 @@ export default function ModeratorPage({ user, backendUrl, onViewLobby }: Moderat
             {/* League Matches */}
             <div className="space-y-4">
                 <h4 className="text-lg font-bold text-yellow-500 uppercase tracking-widest flex items-center gap-2">
-                    <Crown className="h-5 w-5" /> League Matches
+                    <Trophy className="h-5 w-5" /> League Matches
                 </h4>
                 <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
                     {activeMatchesList.filter(m => m.match_type === 'league').map(match => (
-                        <Card key={match.id} className="hover:shadow-lg transition-all bg-zinc-950 border-yellow-500/20 shadow-yellow-900/10">
-                            <CardHeader className="pb-2">
-                                <div className="flex justify-between items-start">
-                                    <Badge variant={match.status === 'in_progress' ? 'default' : 'secondary'} className={match.status === 'in_progress' ? 'bg-green-500' : ''}>
-                                        {match.status.replace('_', ' ')}
-                                    </Badge>
-                                    <span className="text-xs text-muted-foreground font-mono">#{match.id.slice(0, 6)}</span>
-                                </div>
-                                <CardTitle className="text-base mt-2 text-white">
-                                    {match.host_username}'s Lobby
-                                </CardTitle>
-                            </CardHeader>
-                            <CardContent>
-                                <div className="text-sm text-gray-400 mb-4">
-                                    <div className="flex justify-between">
-                                        <span>Players:</span>
-                                        <span>{match.player_count}/10</span>
-                                    </div>
-                                    <div className="flex justify-between mt-1">
-                                        <span>Type:</span>
-                                        <Badge variant="outline" className="text-yellow-500 border-yellow-500/50">LEAGUE</Badge>
-                                    </div>
-                                </div>
-                                <div className="flex gap-2">
-                                    <Button size="sm" className="flex-1 bg-zinc-800 hover:bg-zinc-700 transition-colors" onClick={() => onViewLobby?.(match.id)}>
-                                        View Lobby
-                                    </Button>
-                                    {match.status === 'waiting' && (
-                                        <Button size="sm" variant="outline" className="text-green-500 border-green-500/20 hover:bg-green-500/10" onClick={() => handleForceStartMatch(match.id)}>
-                                            <Play className="h-4 w-4" />
-                                        </Button>
-                                    )}
-                                    <Button size="sm" variant="outline" className="text-red-500 border-red-500/20 hover:bg-red-500/10" onClick={() => handleCancelMatch(match.id)}>
-                                        <XCircle className="h-4 w-4" />
-                                    </Button>
-                                </div>
-                            </CardContent>
-                        </Card>
+                        <MatchCard key={match.id} match={match} color="yellow" icon={<Trophy className="h-4 w-4" />} onViewLobby={onViewLobby} onForceStart={handleForceStartMatch} onCancel={handleCancelMatch} onSubmitResult={(m: any) => setSubmitResultMatch(m)} />
                     ))}
                     {activeMatchesList.filter(m => m.match_type === 'league').length === 0 && (
-                        <div className="col-span-full text-center p-8 text-muted-foreground border border-dashed border-white/10 rounded-lg bg-zinc-900/20">
-                            No active league matches.
-                        </div>
+                        <EmptyPlaceholder text="No active league matches." />
+                    )}
+                </div>
+            </div>
+
+            <div className="w-full h-px bg-white/10 my-4" />
+
+            {/* Competitive Matches */}
+            <div className="space-y-4">
+                <h4 className="text-lg font-bold text-blue-500 uppercase tracking-widest flex items-center gap-2">
+                    <Swords className="h-5 w-5" /> Competitive Matches
+                </h4>
+                <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                    {activeMatchesList.filter(m => m.match_type === 'competitive').map(match => (
+                        <MatchCard key={match.id} match={match} color="blue" icon={<Swords className="h-4 w-4" />} onViewLobby={onViewLobby} onForceStart={handleForceStartMatch} onCancel={handleCancelMatch} onSubmitResult={(m: any) => setSubmitResultMatch(m)} />
+                    ))}
+                    {activeMatchesList.filter(m => m.match_type === 'competitive').length === 0 && (
+                        <EmptyPlaceholder text="No active competitive matches." />
+                    )}
+                </div>
+            </div>
+
+            <div className="w-full h-px bg-white/10 my-4" />
+
+            {/* Clan War Matches */}
+            <div className="space-y-4">
+                <h4 className="text-lg font-bold text-purple-500 uppercase tracking-widest flex items-center gap-2">
+                    <Swords className="h-5 w-5" /> Clan Wars
+                </h4>
+                <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                    {activeMatchesList.filter(m => m.match_type === 'clan_war' || m.match_type === 'clan_match').map(match => (
+                        <MatchCard key={match.id} match={match} color="purple" icon={<Swords className="h-4 w-4" />} onViewLobby={onViewLobby} onForceStart={handleForceStartMatch} onCancel={handleCancelMatch} onSubmitResult={(m: any) => setSubmitResultMatch(m)} />
+                    ))}
+                    {activeMatchesList.filter(m => m.match_type === 'clan_war' || m.match_type === 'clan_match').length === 0 && (
+                        <EmptyPlaceholder text="No active clan wars." />
                     )}
                 </div>
             </div>
@@ -1306,103 +1387,215 @@ export default function ModeratorPage({ user, backendUrl, onViewLobby }: Moderat
 
             {/* Casual Matches */}
             <div className="space-y-4">
-                <h4 className="text-lg font-bold text-blue-400 uppercase tracking-widest flex items-center gap-2">
+                <h4 className="text-lg font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
                     <Gamepad2 className="h-5 w-5" /> Casual Matches
                 </h4>
                 <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-                    {activeMatchesList.filter(m => m.match_type !== 'league').map(match => (
-                        <Card key={match.id} className="hover:shadow-lg transition-all bg-zinc-950 border-white/10">
+                    {activeMatchesList.filter(m => ['league', 'competitive', 'clan_war', 'clan_match'].indexOf(m.match_type) === -1).map(match => (
+                        <MatchCard key={match.id} match={match} color="gray" icon={<Gamepad2 className="h-4 w-4" />} onViewLobby={onViewLobby} onForceStart={handleForceStartMatch} onCancel={handleCancelMatch} onSubmitResult={(m: any) => setSubmitResultMatch(m)} />
+                    ))}
+                    {activeMatchesList.filter(m => ['league', 'competitive', 'clan_war', 'clan_match'].indexOf(m.match_type) === -1).length === 0 && (
+                        <EmptyPlaceholder text="No active casual matches." />
+                    )}
+                </div>
+            </div>
+
+            {/* Submit Result Modal */}
+            <Dialog open={!!submitResultMatch} onOpenChange={(open) => !open && setSubmitResultMatch(null)}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Force Submit Result</DialogTitle>
+                        <DialogDescription>Manually submit the result for match #{submitResultMatch?.id.slice(0, 8)}</DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4 py-4">
+                        <div className="space-y-2">
+                            <label className="text-sm font-bold text-white">Winner Team</label>
+                            <Select value={submitResultForm.winner_team} onValueChange={(v) => setSubmitResultForm({ ...submitResultForm, winner_team: v })}>
+                                <SelectTrigger><SelectValue /></SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="alpha">Team Alpha (Counter-Terrorist)</SelectItem>
+                                    <SelectItem value="bravo">Team Bravo (Terrorist)</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <label className="text-sm text-gray-400">Alpha Score</label>
+                                <Input type="number" value={submitResultForm.alpha_score} onChange={(e) => setSubmitResultForm({ ...submitResultForm, alpha_score: parseInt(e.target.value) })} />
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-sm text-gray-400">Bravo Score</label>
+                                <Input type="number" value={submitResultForm.bravo_score} onChange={(e) => setSubmitResultForm({ ...submitResultForm, bravo_score: parseInt(e.target.value) })} />
+                            </div>
+                        </div>
+                        <div className="space-y-2">
+                            <label className="text-sm text-gray-400">Screenshot URL (Optional)</label>
+                            <Input value={submitResultForm.screenshot_url} onChange={(e) => setSubmitResultForm({ ...submitResultForm, screenshot_url: e.target.value })} placeholder="https://..." />
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setSubmitResultMatch(null)}>Cancel</Button>
+                        <Button onClick={handleSubmitResult} disabled={processing}>
+                            {processing ? 'Submitting...' : 'Submit Result'}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+        </div>
+    );
+
+    const MatchCard = ({ match, color, icon, onViewLobby, onForceStart, onCancel, onSubmitResult }: any) => {
+        const colorClasses: any = {
+            yellow: 'border-yellow-500/20 shadow-yellow-900/10 hover:border-yellow-500/50',
+            blue: 'border-blue-500/20 shadow-blue-900/10 hover:border-blue-500/50',
+            purple: 'border-purple-500/20 shadow-purple-900/10 hover:border-purple-500/50',
+            gray: 'border-white/10 hover:border-white/20'
+        };
+        const badgeClasses: any = {
+            yellow: 'text-yellow-500 border-yellow-500/50',
+            blue: 'text-blue-500 border-blue-500/50',
+            purple: 'text-purple-500 border-purple-500/50',
+            gray: 'text-gray-400 border-gray-500/50'
+        };
+
+        return (
+            <Card className={`hover:shadow-lg transition-all bg-zinc-950 ${colorClasses[color] || colorClasses.gray}`}>
+                <CardHeader className="pb-2">
+                    <div className="flex justify-between items-start">
+                        <Badge variant={match.status === 'in_progress' ? 'default' : 'secondary'} className={match.status === 'in_progress' ? 'bg-green-600' : ''}>
+                            {match.status.replace('_', ' ')}
+                        </Badge>
+                        <span className="text-xs text-muted-foreground font-mono">#{match.id.slice(0, 6)}</span>
+                    </div>
+                    <CardTitle className="text-base mt-2 text-white">
+                        {match.host_username || 'Unknown'}'s Lobby
+                    </CardTitle>
+                </CardHeader>
+                <CardContent>
+                    <div className="text-sm text-gray-400 mb-4">
+                        <div className="flex justify-between">
+                            <span>Players:</span>
+                            <span>{match.player_count}/10</span>
+                        </div>
+                        <div className="flex justify-between mt-1">
+                            <span>Type:</span>
+                            <Badge variant="outline" className={badgeClasses[color] || badgeClasses.gray}>
+                                {icon} <span className="ml-1 uppercase">{match.match_type}</span>
+                            </Badge>
+                        </div>
+                        <div className="text-xs text-gray-500 mt-2">
+                            Created: {new Date(match.created_at).toLocaleTimeString()}
+                        </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                        <Button size="sm" className="bg-zinc-800 hover:bg-zinc-700 w-full" onClick={() => onViewLobby?.(match.id)}>
+                            View Lobby
+                        </Button>
+                        <Button size="sm" variant="outline" className="text-blue-500 border-blue-500/20 hover:bg-blue-500/10 w-full" onClick={() => onSubmitResult(match)}>
+                            Result
+                        </Button>
+                        {match.status === 'waiting' && (
+                            <Button size="sm" variant="outline" className="text-green-500 border-green-500/20 hover:bg-green-500/10 col-span-2" onClick={() => onForceStart(match.id)}>
+                                <Play className="h-4 w-4 mr-1" /> Force Start
+                            </Button>
+                        )}
+                        <Button size="sm" variant="outline" className="text-red-500 border-red-500/20 hover:bg-red-500/10 col-span-2" onClick={() => onCancel(match.id)}>
+                            <XCircle className="h-4 w-4 mr-1" /> Cancel Match
+                        </Button>
+                    </div>
+                </CardContent>
+            </Card>
+        );
+    };
+
+    const EmptyPlaceholder = ({ text }: { text: string }) => (
+        <div className="col-span-full text-center p-8 text-muted-foreground border border-dashed border-white/10 rounded-lg bg-zinc-900/20">
+            {text}
+        </div>
+    );
+
+    const renderHistory = () => (
+        <div className="space-y-8 animate-fade-in">
+            {/* Completed Matches Section */}
+            <div>
+                <div className="flex items-center justify-between mb-6">
+                    <div>
+                        <h3 className="text-2xl font-bold font-display text-white">Match History</h3>
+                        <p className="text-muted-foreground">Recently completed and cancelled matches</p>
+                    </div>
+                    <Button variant="outline" onClick={() => { fetchRecentMatches(); fetchCancelledMatches(); }}>
+                        <RefreshCw className="mr-2 h-4 w-4" /> Refresh
+                    </Button>
+                </div>
+
+
+                <div className="space-y-4">
+                    <h4 className="text-lg font-bold text-green-500 uppercase tracking-widest flex items-center gap-2">
+                        <Check className="h-5 w-5" /> Recently Completed
+                    </h4>
+                    <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                        {completedMatches.filter(m => m.status === 'completed').map(match => (
+                            <MatchCard
+                                key={match.id}
+                                match={match}
+                                color="green"
+                                icon={<Check className="h-4 w-4" />}
+                                onViewLobby={onViewLobby}
+                                onForceStart={() => { }}
+                                onCancel={() => { }}
+                                onSubmitResult={() => {
+                                    setEditResultMatch(match);
+                                    setEditResultForm({
+                                        winner_team: (match.winner_team as 'alpha' | 'bravo') || 'alpha',
+                                        alpha_score: match.alpha_score || 0,
+                                        bravo_score: match.bravo_score || 0
+                                    });
+                                }}
+                            />
+                        ))}
+                        {completedMatches.filter(m => m.status === 'completed').length === 0 && (
+                            <EmptyPlaceholder text="No recently completed matches found." />
+                        )}
+                    </div>
+                </div>
+            </div>
+
+            <div className="w-full h-px bg-white/10 my-4" />
+
+            {/* Cancelled Section */}
+            <div className="space-y-4">
+                <h4 className="text-lg font-bold text-red-500 uppercase tracking-widest flex items-center gap-2">
+                    <XCircle className="h-5 w-5" /> Cancelled Matches
+                </h4>
+                <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                    {cancelledMatches.map(match => (
+                        // Using simple card for cancelled since actions differ
+                        <Card key={match.id} className="bg-zinc-950 border-red-900/20 opacity-75 hover:opacity-100 transition-opacity">
                             <CardHeader className="pb-2">
                                 <div className="flex justify-between items-start">
-                                    <Badge variant={match.status === 'in_progress' ? 'default' : 'secondary'} className={match.status === 'in_progress' ? 'bg-green-500' : ''}>
-                                        {match.status.replace('_', ' ')}
-                                    </Badge>
+                                    <Badge variant="secondary" className="bg-red-500/10 text-red-500">CANCELLED</Badge>
                                     <span className="text-xs text-muted-foreground font-mono">#{match.id.slice(0, 6)}</span>
                                 </div>
-                                <CardTitle className="text-base mt-2 text-white">
+                                <CardTitle className="text-base mt-2 text-white flex items-center gap-2">
+                                    <Avatar className="h-6 w-6">
+                                        <AvatarImage src={`https://cdn.discordapp.com/avatars/${match.host_id}/${match.host_avatar}.png`} />
+                                        <AvatarFallback>H</AvatarFallback>
+                                    </Avatar>
                                     {match.host_username}'s Lobby
                                 </CardTitle>
                             </CardHeader>
                             <CardContent>
-                                <div className="text-sm text-gray-400 mb-4">
-                                    <div className="flex justify-between">
-                                        <span>Players:</span>
-                                        <span>{match.player_count}/10</span>
-                                    </div>
-                                    <div className="flex justify-between mt-1">
-                                        <span>Type:</span>
-                                        <Badge variant="secondary" className="bg-zinc-800 text-gray-400">CASUAL</Badge>
-                                    </div>
-                                </div>
-                                <div className="flex gap-2">
-                                    <Button size="sm" className="flex-1 bg-zinc-800 hover:bg-zinc-700 transition-colors" onClick={() => onViewLobby?.(match.id)}>
-                                        View Lobby
-                                    </Button>
-                                    {match.status === 'waiting' && (
-                                        <Button size="sm" variant="outline" className="text-green-500 border-green-500/20 hover:bg-green-500/10" onClick={() => handleForceStartMatch(match.id)}>
-                                            <Play className="h-4 w-4" />
-                                        </Button>
-                                    )}
-                                    <Button size="sm" variant="outline" className="text-red-500 border-red-500/20 hover:bg-red-500/10" onClick={() => handleCancelMatch(match.id)}>
-                                        <XCircle className="h-4 w-4" />
-                                    </Button>
+                                <div className="text-sm text-gray-400">
+                                    <p>Type: <span className="text-yellow-500 font-bold uppercase">{match.match_type}</span></p>
+                                    <p>Date: {new Date(match.updated_at).toLocaleString()}</p>
                                 </div>
                             </CardContent>
                         </Card>
                     ))}
-                    {activeMatchesList.filter(m => m.match_type !== 'league').length === 0 && (
-                        <div className="col-span-full text-center p-8 text-muted-foreground border border-dashed border-white/10 rounded-lg bg-zinc-900/20">
-                            No active casual matches.
-                        </div>
+                    {cancelledMatches.length === 0 && (
+                        <EmptyPlaceholder text="No cancelled matches found." />
                     )}
                 </div>
-            </div>
-        </div>
-    );
-
-    const renderCancelledMatches = () => (
-        <div className="space-y-6 animate-fade-in">
-            <div className="flex items-center justify-between">
-                <div>
-                    <h3 className="text-2xl font-bold font-display text-white">Cancelled History</h3>
-                    <p className="text-muted-foreground">League lobbies that were cancelled by the host</p>
-                </div>
-                <Button variant="outline" onClick={fetchCancelledMatches}>
-                    <RefreshCw className="mr-2 h-4 w-4" /> Refresh
-                </Button>
-            </div>
-
-            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-                {cancelledMatches.map(match => (
-                    <Card key={match.id} className="bg-zinc-950 border-red-900/20 opacity-75 hover:opacity-100 transition-opacity">
-                        <CardHeader className="pb-2">
-                            <div className="flex justify-between items-start">
-                                <Badge variant="secondary" className="bg-red-500/10 text-red-500">
-                                    CANCELLED
-                                </Badge>
-                                <span className="text-xs text-muted-foreground font-mono">#{match.id.slice(0, 6)}</span>
-                            </div>
-                            <CardTitle className="text-base mt-2 text-white flex items-center gap-2">
-                                <Avatar className="h-6 w-6">
-                                    <AvatarImage src={`https://cdn.discordapp.com/avatars/${match.host_id}/${match.host_avatar}.png`} />
-                                    <AvatarFallback>H</AvatarFallback>
-                                </Avatar>
-                                {match.host_username}'s Lobby
-                            </CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            <div className="text-sm text-gray-400">
-                                <p>Type: <span className="text-yellow-500 font-bold">LEAGUE</span></p>
-                                <p>Date: {new Date(match.updated_at).toLocaleString()}</p>
-                            </div>
-                        </CardContent>
-                    </Card>
-                ))}
-                {cancelledMatches.length === 0 && (
-                    <div className="col-span-full text-center p-8 text-muted-foreground border border-dashed border-white/10 rounded-lg bg-zinc-900/20">
-                        No cancelled league matches found.
-                    </div>
-                )}
             </div>
         </div>
     );
@@ -1473,7 +1666,7 @@ export default function ModeratorPage({ user, backendUrl, onViewLobby }: Moderat
                     {activeView === 'vip-requests' && renderVipRequests()}
                     {activeView === 'players' && renderPlayers()}
                     {activeView === 'matches' && renderMatches()}
-                    {activeView === 'cancelled' && renderCancelledMatches()}
+                    {activeView === 'history' && renderHistory()}
                     {activeView === 'clans' && renderClans()}
                     {activeView === 'matchmaking' && renderMatchmaking()}
                 </div>
@@ -1847,6 +2040,66 @@ export default function ModeratorPage({ user, backendUrl, onViewLobby }: Moderat
                             </div>
                         </div>
                     )}
+                </DialogContent>
+            </Dialog>
+
+            {/* Edit Result Dialog */}
+            <Dialog open={!!editResultMatch} onOpenChange={(open) => !open && setEditResultMatch(null)}>
+                <DialogContent className="max-w-2xl bg-zinc-950 border-white/10 text-white">
+                    <DialogHeader>
+                        <DialogTitle className="text-2xl font-display">Edit Match Result</DialogTitle>
+                        <DialogDescription className="text-gray-400">
+                            Correct the winner and scores for Match #{editResultMatch?.id.slice(0, 8)}
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <div className="space-y-4">
+                        <div>
+                            <label className="text-sm font-medium text-white block mb-2">Winner Team</label>
+                            <Select
+                                value={editResultForm.winner_team}
+                                onValueChange={(val) => setEditResultForm({ ...editResultForm, winner_team: val as 'alpha' | 'bravo' })}
+                            >
+                                <SelectTrigger className="bg-zinc-900 border-white/10 text-white">
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent className="bg-zinc-900 border-white/10">
+                                    <SelectItem value="alpha">Team Alpha</SelectItem>
+                                    <SelectItem value="bravo">Team Bravo</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label className="text-sm font-medium text-white block mb-2">Alpha Score</label>
+                                <Input
+                                    type="number"
+                                    value={editResultForm.alpha_score}
+                                    onChange={(e) => setEditResultForm({ ...editResultForm, alpha_score: parseInt(e.target.value) || 0 })}
+                                    className="bg-zinc-900 border-white/10 text-white"
+                                />
+                            </div>
+                            <div>
+                                <label className="text-sm font-medium text-white block mb-2">Bravo Score</label>
+                                <Input
+                                    type="number"
+                                    value={editResultForm.bravo_score}
+                                    onChange={(e) => setEditResultForm({ ...editResultForm, bravo_score: parseInt(e.target.value) || 0 })}
+                                    className="bg-zinc-900 border-white/10 text-white"
+                                />
+                            </div>
+                        </div>
+                    </div>
+
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setEditResultMatch(null)} disabled={processing}>
+                            Cancel
+                        </Button>
+                        <Button onClick={handleEditResultSubmit} disabled={processing} className="bg-primary hover:bg-primary/90">
+                            {processing ? 'Updating...' : 'Update Result'}
+                        </Button>
+                    </DialogFooter>
                 </DialogContent>
             </Dialog>
         </div >

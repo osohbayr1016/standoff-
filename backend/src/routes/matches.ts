@@ -219,7 +219,7 @@ matchesRoutes.post('/', async (c) => {
             lobby_url: string;
             host_id: string;
             map_name?: string;
-            match_type?: 'casual' | 'league' | 'clan_lobby' | 'clan_war';
+            match_type?: 'casual' | 'league' | 'clan_lobby' | 'clan_war' | 'competitive';
             max_players?: number;
         }>();
 
@@ -246,6 +246,7 @@ matchesRoutes.post('/', async (c) => {
         let maxPlayers = body.max_players || 10;
         let minRank = null;
 
+
         // Check VIP status for League matches
         if (matchType === 'league') {
             const isVip = host.is_vip === 1 || host.is_vip === true || host.is_vip === '1' || host.is_vip === 'true';
@@ -265,9 +266,58 @@ matchesRoutes.post('/', async (c) => {
 
             // Calculate Rank
             const elo = (host.elo as number) || 1000;
-            if (elo >= 2001) minRank = 'Gold';
+            if (elo >= 1600) minRank = 'Gold'; // Harmonized to 1600
             else if (elo >= 1201) minRank = 'Silver';
             else minRank = 'Bronze';
+        }
+
+        // Competitive Match Logic
+        if (matchType === 'competitive') {
+            // 1. Elo Check: Host must be < 1600
+            const elo = (host.elo as number) || 1000;
+            if (elo >= 1600) {
+                return c.json({
+                    success: false,
+                    error: 'Competitive matches are for Bronze/Silver players only (Elo < 1600). Gold players cannot participate.'
+                }, 403);
+            }
+
+            // 2. Daily Limit Check for Free Users
+            const isVip = host.is_vip === 1 || host.is_vip === true || host.is_vip === '1' || host.is_vip === 'true';
+            const vipUntil = host.vip_until ? new Date(host.vip_until as string) : null;
+            const now = new Date();
+            const hasActiveVip = isVip && (!vipUntil || vipUntil > now);
+            const isAdmin = host.role === 'admin';
+
+            if (!isAdmin && !hasActiveVip) {
+                const today = new Date().toISOString().split('T')[0];
+                const countResult = await c.env.DB.prepare(`
+                    SELECT COUNT(*) as count FROM matches m
+                    JOIN match_players mp ON m.id = mp.match_id
+                    WHERE (mp.player_id = ? OR mp.player_id = ?)
+                    AND m.match_type = 'competitive'
+                    AND m.status = 'completed'
+                    AND m.updated_at LIKE ?
+                `).bind(body.host_id, body.host_id, `${today}%`).first<{ count: number }>();
+
+                // Get bonus matches from ad rewards
+                const rewardResult = await c.env.DB.prepare(`
+                    SELECT COUNT(*) as count FROM reward_claims 
+                    WHERE user_id = ? AND reward_type = 'competitive_match' AND claimed_at LIKE ?
+                `).bind(body.host_id, `${today}%`).first<{ count: number }>();
+
+                const bonusMatches = rewardResult?.count || 0;
+                const totalAllowed = 3 + bonusMatches;
+
+                if ((countResult?.count || 0) >= totalAllowed) {
+                    return c.json({
+                        success: false,
+                        error: bonusMatches >= 2
+                            ? 'Daily limit reached (including bonus matches). Upgrade to VIP for unlimited access.'
+                            : 'Daily limit reached. Basic members can play 3 competitive matches per day. You can watch an AD to get +1 match (limited twice) or upgrade to VIP for unlimited access.'
+                    }, 403);
+                }
+            }
         }
 
         if (matchType === 'clan_lobby') {
@@ -422,17 +472,51 @@ matchesRoutes.post('/:id/join', async (c) => {
             if (match.min_rank) {
                 const playerElo = player.elo || 1000;
                 let playerRank = 'Bronze';
-                if (playerElo >= 1600) playerRank = 'Gold';
+                if (playerElo >= 1600) playerRank = 'Gold'; // Harmonized to 1600
                 else if (playerElo >= 1200) playerRank = 'Silver';
-
-                // Allow joining if player's rank matches or is higher? 
-                // Strict Faceit style: Must match the tier exactly to ensure balance.
-                // Or allow higher ranks to join lower? No, separates by skill.
 
                 if (playerRank !== match.min_rank) {
                     return c.json({
                         success: false,
                         error: `Rank mismatch. This lobby is for ${match.min_rank} players (You are ${playerRank}).`
+                    }, 403);
+                }
+            }
+        }
+
+        // Competitive Match Logic
+        if (match.match_type === 'competitive') {
+            // 1. Elo Check: Player must be < 1600
+            const elo = (player.elo as number) || 1000;
+            if (elo >= 1600) {
+                return c.json({
+                    success: false,
+                    error: 'Competitive matches are for Bronze/Silver players only (Elo < 1600). Gold players cannot participate.'
+                }, 403);
+            }
+
+            // 2. Daily Limit Check for Free Users
+            const isVip = player.is_vip === 1 || player.is_vip === true || String(player.is_vip) === '1' || String(player.is_vip) === 'true';
+            const vipUntil = player.vip_until ? new Date(player.vip_until) : null;
+            const now = new Date();
+            const hasActiveVip = isVip && (!vipUntil || vipUntil > now);
+            const isAdmin = player.role === 'admin';
+
+            if (!isAdmin && !hasActiveVip) {
+                const today = new Date().toISOString().split('T')[0];
+                const countResult = await c.env.DB.prepare(`
+                     SELECT COUNT(*) as count FROM matches m
+                     JOIN match_players mp ON m.id = mp.match_id
+                     WHERE (mp.player_id = ? OR mp.player_id = ?)
+                     AND m.match_type = 'competitive'
+                     AND m.status = 'completed'
+                     AND m.updated_at LIKE ?
+                 `).bind(player.id, player.discord_id, `${today}%`).first<{ count: number }>();
+
+                if ((countResult?.count || 0) >= 3) {
+                    return c.json({
+                        success: false,
+                        error: 'Daily limit reached. Basic members can only play 3 competitive matches per day. Upgrade to VIP for unlimited access.'
                     }, 403);
                 }
             }
@@ -834,7 +918,12 @@ matchesRoutes.patch('/:id/status', async (c) => {
         ).bind(body.status, matchId).run();
 
         // Notify real-time
-        await notifyLobbyUpdate(matchId, c.env, 'LOBBY_UPDATED');
+        const extraData: any = { status: body.status };
+        if (body.status === 'in_progress') {
+            extraData.startedAt = Date.now();
+            extraData.matchType = match.match_type;
+        }
+        await notifyLobbyUpdate(matchId, c.env, 'LOBBY_UPDATED', extraData);
 
         return c.json({
             success: true,

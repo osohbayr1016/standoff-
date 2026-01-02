@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { QPayService } from '../utils/qpay';
+import { TIERS, updateDiscordRole } from '../utils/discord';
 
 interface Env {
     DB: D1Database;
@@ -227,7 +228,27 @@ vipRequestsRoutes.post('/check-payment', async (c) => {
                 WHERE id = ?
             `).bind(now, requestId).run();
 
-            return c.json({ success: true, paid: true, message: 'Payment confirmed. Request submitted.' });
+            // ASSIGN DISCORD VIP ROLE INSTANTLY
+            console.log(`VIP Purchase: Attempting to grant Discord VIP role to user ${userId}`);
+            let discordRoleGranted = false;
+            try {
+                const roleResult = await updateDiscordRole(c.env, userId, TIERS.VIP, true);
+                if (roleResult) {
+                    console.log(`VIP Purchase: Successfully granted Discord VIP role to user ${userId}`);
+                    discordRoleGranted = true;
+                } else {
+                    console.error(`VIP Purchase: Failed to grant Discord VIP role to user ${userId} - updateDiscordRole returned false`);
+                }
+            } catch (discordErr) {
+                console.error(`VIP Purchase: Exception while granting Discord VIP role to user ${userId}:`, discordErr);
+            }
+
+            return c.json({
+                success: true,
+                paid: true,
+                message: 'Payment confirmed. VIP activated!',
+                discord_role_granted: discordRoleGranted
+            });
         } else {
             return c.json({ success: true, paid: false, message: 'Payment not found yet.' });
         }
