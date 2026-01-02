@@ -60,8 +60,10 @@ interface Match {
     player_count: number;
     max_players: number;
     map_name?: string;
-    match_type?: 'casual' | 'league';
+    match_type?: 'casual' | 'league' | 'competitive' | 'clan_lobby' | 'clan_war';
     created_at: string;
+    alpha_avg_elo?: number;
+    bravo_avg_elo?: number;
 }
 
 interface LobbyDetailPageProps {
@@ -261,6 +263,32 @@ const LobbyDetailPage: React.FC<LobbyDetailPageProps> = ({ matchId, user, backen
                 fetchMatchDetails();
             } else {
                 setErrorMessage(data.error || 'Failed to start match');
+                setErrorDialogOpen(true);
+            }
+        } catch (err) {
+            setErrorMessage('Network error');
+            setErrorDialogOpen(true);
+        } finally {
+            setIsProcessing(false);
+        }
+    };
+
+    // Balance teams (host only)
+    const handleBalanceTeams = async () => {
+        if (!user || !match || !isHost) return;
+        setIsProcessing(true);
+        try {
+            const response = await fetch(`${backendUrl}/api/matches/${matchId}/balance`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ host_id: user.id })
+            });
+
+            const data = await response.json();
+            if (data.success) {
+                fetchMatchDetails();
+            } else {
+                setErrorMessage(data.error || 'Failed to balance teams');
                 setErrorDialogOpen(true);
             }
         } catch (err) {
@@ -662,9 +690,12 @@ const LobbyDetailPage: React.FC<LobbyDetailPageProps> = ({ matchId, user, backen
                     <div className="flex items-center justify-between px-4 lg:px-5 py-3 lg:py-4 bg-[#23252a] rounded-lg border-l-4 border-[#5b9bd5]">
                         <div className="flex items-center gap-2 lg:gap-3">
                             <div className="w-2 h-2 lg:w-3 lg:h-3 rounded-full bg-[#5b9bd5] animate-pulse"></div>
-                            <h2 className="text-sm lg:text-base font-bold uppercase tracking-wider text-[#5b9bd5] truncate max-w-[200px]">
-                                {alphaTeamName}
-                            </h2>
+                            <div className="flex flex-col">
+                                <h2 className="text-sm lg:text-base font-bold uppercase tracking-wider text-[#5b9bd5] truncate max-w-[200px]">
+                                    {alphaTeamName}
+                                </h2>
+                                <span className="text-[10px] text-white/40 uppercase font-bold tracking-tighter">Avg Elo: {match.alpha_avg_elo || 1000}</span>
+                            </div>
                         </div>
                         <Badge variant="secondary" className="bg-[#5b9bd5]/20 text-[#5b9bd5] font-mono text-xs lg:text-sm">
                             {alphaPlayers.length}/5
@@ -724,11 +755,14 @@ const LobbyDetailPage: React.FC<LobbyDetailPageProps> = ({ matchId, user, backen
                 {/* Bravo Team */}
                 <div className="lg:col-span-4 space-y-3">
                     <div className="flex items-center justify-between px-4 lg:px-5 py-3 lg:py-4 bg-[#23252a] rounded-lg border-r-4 border-[#e74c3c] lg:flex-row-reverse">
-                        <div className="flex items-center gap-2 lg:gap-3 lg:flex-row-reverse">
+                        <div className="flex items-center gap-2 lg:gap-3 lg:flex-row-reverse text-right">
                             <div className="w-2 h-2 lg:w-3 lg:h-3 rounded-full bg-[#e74c3c] animate-pulse"></div>
-                            <h2 className="text-sm lg:text-base font-bold uppercase tracking-wider text-[#e74c3c] truncate max-w-[200px]">
-                                {bravoTeamName}
-                            </h2>
+                            <div className="flex flex-col items-end">
+                                <h2 className="text-sm lg:text-base font-bold uppercase tracking-wider text-[#e74c3c] truncate max-w-[200px]">
+                                    {bravoTeamName}
+                                </h2>
+                                <span className="text-[10px] text-white/40 uppercase font-bold tracking-tighter">Avg Elo: {match.bravo_avg_elo || 1000}</span>
+                            </div>
                         </div>
                         <Badge variant="secondary" className="bg-[#e74c3c]/20 text-[#e74c3c] font-mono text-xs lg:text-sm">
                             {bravoPlayers.length}/5
@@ -787,7 +821,18 @@ const LobbyDetailPage: React.FC<LobbyDetailPageProps> = ({ matchId, user, backen
                             {match.status === 'waiting' && (
                                 <div className="w-full flex flex-col md:flex-row md:items-center md:justify-between gap-3 md:gap-4">
                                     {/* Left Side: Primary Actions */}
-                                    <div className="flex flex-col sm:flex-row gap-3 md:gap-4 flex-1 min-w-0">
+                                    <div className="flex flex-col sm:flex-row gap-2 md:gap-4 flex-1 min-w-0">
+                                        {isHost && players.length > 2 && (
+                                            <Button
+                                                variant="outline"
+                                                onClick={handleBalanceTeams}
+                                                disabled={isProcessing}
+                                                className="flex-shrink-0 h-12 md:h-11 border-white/10 hover:bg-white/5 text-xs font-bold uppercase"
+                                            >
+                                                {isProcessing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="mr-2 h-4 w-4" />}
+                                                Balance Teams
+                                            </Button>
+                                        )}
                                         {/* Start Match Button - Host Only */}
                                         {isHost && (
                                             <Button

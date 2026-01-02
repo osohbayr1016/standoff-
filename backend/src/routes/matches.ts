@@ -13,21 +13,110 @@ const matchesRoutes = new Hono<{ Bindings: Env }>();
 
 // ============= HELPERS =============
 
+async function getMatchPlayers(matchId: string, env: Env) {
+    const playersResult = await env.DB.prepare(`
+        SELECT 
+            mp.*,
+            p.discord_username,
+            p.discord_avatar,
+            p.standoff_nickname,
+            p.elo,
+            p.role,
+            p.is_discord_member,
+            p.discord_id
+        FROM match_players mp
+        LEFT JOIN players p ON mp.player_id = p.id
+        WHERE mp.match_id = ?
+        ORDER BY mp.team, mp.joined_at
+    `).bind(matchId).all();
+    return playersResult.results || [];
+}
+
+async function validateMatchAction(
+    userId: string,
+    matchType: string,
+    env: Env,
+    action: 'create' | 'join',
+    matchData?: any
+) {
+    // 1. Fetch Player
+    const player = await env.DB.prepare(
+        'SELECT id, discord_id, banned, is_vip, vip_until, elo, role, discord_roles FROM players WHERE id = ? OR discord_id = ?'
+    ).bind(userId, userId).first();
+
+    if (!player) return { allowed: false, error: 'Player not found', status: 404 };
+    if (player.banned === 1) return { allowed: false, error: 'You are banned from this action', status: 403 };
+
+    const isAdmin = player.role === 'admin';
+    const isVip = player.is_vip === 1 || player.is_vip === true || String(player.is_vip) === '1' || String(player.is_vip) === 'true';
+    const vipUntil = player.vip_until ? new Date(player.vip_until as string) : null;
+    const now = new Date();
+    const hasActiveVip = isVip && (!vipUntil || vipUntil > now);
+
+    // 2. League Restrictions
+    if (matchType === 'league') {
+        if (!isAdmin && !hasActiveVip) {
+            return { allowed: false, error: 'League matches require an active VIP membership. Contact an administrator to upgrade.', status: 403 };
+        }
+
+        const elo = (player.elo as number) || 1000;
+        let playerRank = 'Bronze';
+        if (elo >= 1600) playerRank = 'Gold';
+        else if (elo >= 1201) playerRank = 'Silver';
+
+        if (action === 'join' && matchData?.min_rank && playerRank !== matchData.min_rank) {
+            return { allowed: false, error: `Rank mismatch. This lobby is for ${matchData.min_rank} players (You are ${playerRank}).`, status: 403 };
+        }
+    }
+
+    // 3. Competitive Restrictions
+    if (matchType === 'competitive') {
+        const elo = (player.elo as number) || 1000;
+        if (elo >= 1600) {
+            return { allowed: false, error: 'Competitive matches are for Bronze/Silver players only (Elo < 1600). Gold players cannot participate.', status: 403 };
+        }
+
+        if (!isAdmin && !hasActiveVip) {
+            const today = new Date().toISOString().split('T')[0];
+
+            // Count completed matches
+            const countResult = await env.DB.prepare(`
+                SELECT COUNT(*) as count FROM matches m
+                JOIN match_players mp ON m.id = mp.match_id
+                WHERE (mp.player_id = ? OR mp.player_id = ?)
+                AND m.match_type = 'competitive'
+                AND m.status = 'completed'
+                AND m.updated_at LIKE ?
+            `).bind(player.id, player.discord_id, `${today}%`).first<{ count: number }>();
+
+            // Get bonus matches from ad rewards
+            const rewardResult = await env.DB.prepare(`
+                SELECT COUNT(*) as count FROM reward_claims 
+                WHERE user_id = ? AND reward_type = 'competitive_match' AND claimed_at LIKE ?
+            `).bind(player.id, `${today}%`).first<{ count: number }>();
+
+            const bonusMatches = rewardResult?.count || 0;
+            const totalAllowed = 3 + bonusMatches;
+
+            if ((countResult?.count || 0) >= totalAllowed) {
+                return {
+                    allowed: false,
+                    error: bonusMatches >= 2
+                        ? 'Daily limit reached (including bonus matches). Upgrade to VIP for unlimited access.'
+                        : 'Daily limit reached. Basic members can play 3 competitive matches per day. You can watch an AD to get +1 match (limited twice) or upgrade to VIP for unlimited access.',
+                    status: 403
+                };
+            }
+        }
+    }
+
+    return { allowed: true, player };
+}
+
 async function notifyLobbyUpdate(matchId: string, env: Env, type: string = 'LOBBY_UPDATED', extraData: any = {}) {
     try {
-        // Get all players in this match with their Discord info
-        const playersResult = await env.DB.prepare(`
-            SELECT 
-                mp.player_id as id,
-                p.discord_username as username,
-                p.discord_id
-            FROM match_players mp
-            LEFT JOIN players p ON mp.player_id = p.id
-            WHERE mp.match_id = ?
-        `).bind(matchId).all();
-
-        const players = playersResult.results || [];
-        const userIds = players.map((p: any) => p.id);
+        const players = await getMatchPlayers(matchId, env);
+        const userIds = players.map((p: any) => p.player_id);
 
         if (userIds.length > 0) {
             const doId = env.MATCH_QUEUE.idFromName('global-matchmaking-v2');
@@ -41,7 +130,7 @@ async function notifyLobbyUpdate(matchId: string, env: Env, type: string = 'LOBB
                         userIds,
                         type,
                         matchId,
-                        players, // Include full player list for DO state sync
+                        players,
                         ...extraData
                     }
                 })
@@ -72,7 +161,6 @@ async function notifyGlobalUpdate(env: Env, type: string = 'NEATQUEUE_LOBBY_CREA
 
 // GET /api/matches - List all active matches
 matchesRoutes.get('/', async (c) => {
-    const db = drizzle(c.env.DB);
     const status = c.req.query('status') || 'waiting';
 
     try {
@@ -92,32 +180,10 @@ matchesRoutes.get('/', async (c) => {
         // Fetch players for each match
         const matchesWithPlayers = await Promise.all(
             (result.results || []).map(async (match: any) => {
-                const playersResult = await c.env.DB.prepare(`
-                    SELECT 
-                        mp.*,
-                        p.discord_username,
-                        p.discord_avatar,
-                        p.standoff_nickname,
-                        p.elo,
-                        p.standoff_nickname,
-                        p.elo,
-                        p.standoff_nickname,
-                        p.elo,
-                        p.standoff_nickname,
-                        p.elo,
-                        p.discord_id,
-                        p.is_discord_member,
-                        p.is_discord_member,
-                        p.is_discord_member
-                    FROM match_players mp
-                    LEFT JOIN players p ON mp.player_id = p.id
-                    WHERE mp.match_id = ?
-                    ORDER BY mp.team, mp.joined_at
-                `).bind(match.id).all();
-
+                const players = await getMatchPlayers(match.id, c.env);
                 return {
                     ...match,
-                    players: playersResult.results || []
+                    players
                 };
             })
         );
@@ -152,34 +218,30 @@ matchesRoutes.get('/:id', async (c) => {
             return c.json({ success: false, error: 'Match not found' }, 404);
         }
 
-        // Get match players
-        const playersResult = await c.env.DB.prepare(`
-            SELECT 
-                mp.*,
-                p.discord_username,
-                p.discord_avatar,
-                p.standoff_nickname,
-                p.elo,
-                p.standoff_nickname,
-                p.elo,
-                p.standoff_nickname,
-                p.elo,
-                p.standoff_nickname,
-                p.elo,
-                p.role,
-                p.is_discord_member,
-                p.is_discord_member,
-                p.is_discord_member
-            FROM match_players mp
-            LEFT JOIN players p ON mp.player_id = p.id
-            WHERE mp.match_id = ?
-            ORDER BY mp.team, mp.joined_at
-        `).bind(matchId).all();
+        const players = await getMatchPlayers(matchId, c.env);
+
+        // Calculate team stats
+        let alphaElo = 0, alphaCount = 0;
+        let bravoElo = 0, bravoCount = 0;
+
+        players.forEach((p: any) => {
+            if (p.team === 'alpha') {
+                alphaElo += (p.elo || 1000);
+                alphaCount++;
+            } else if (p.team === 'bravo') {
+                bravoElo += (p.elo || 1000);
+                bravoCount++;
+            }
+        });
 
         return c.json({
             success: true,
-            match: matchResult,
-            players: playersResult.results || []
+            match: {
+                ...matchResult,
+                alpha_avg_elo: alphaCount > 0 ? Math.round(alphaElo / alphaCount) : 1000,
+                bravo_avg_elo: bravoCount > 0 ? Math.round(bravoElo / bravoCount) : 1000
+            },
+            players
         });
     } catch (error: any) {
         console.error('Error fetching match:', error);
@@ -227,139 +289,47 @@ matchesRoutes.post('/', async (c) => {
             return c.json({ success: false, error: 'lobby_url and host_id are required' }, 400);
         }
 
-
-        // Check if host exists
-        const host = await c.env.DB.prepare(
-            'SELECT id, banned, is_vip, vip_until, elo, role, discord_roles FROM players WHERE id = ? OR discord_id = ?'
-        ).bind(body.host_id, body.host_id).first();
-
-        if (!host) {
-            return c.json({ success: false, error: 'Host not found' }, 404);
-        }
-
-        if (host.banned === 1) {
-            return c.json({ success: false, error: 'You are banned from creating matches' }, 403);
-        }
-
         const matchType = body.match_type || 'casual';
+
+        // Unified Validation
+        const validation = await validateMatchAction(body.host_id as string, matchType, c.env, 'create');
+        if (!validation.allowed) {
+            return c.json({ success: false, error: validation.error }, (validation.status || 400) as any);
+        }
+
+        const host = validation.player!;
         let clanId: string | null = null;
         let maxPlayers = body.max_players || 10;
         let minRank = null;
 
-
-        // Check VIP status for League matches
         if (matchType === 'league') {
-            const isVip = host.is_vip === 1 || host.is_vip === true || host.is_vip === '1' || host.is_vip === 'true';
-            const isAdmin = host.role === 'admin';
-            const vipUntil = host.vip_until ? new Date(host.vip_until as string) : null;
-            const now = new Date();
-
-            // Allow if isVip is true AND (either no expiry date OR expiry is in the future)
-            const hasActiveVip = isVip && (!vipUntil || vipUntil > now);
-
-            if (!isAdmin && !hasActiveVip) {
-                return c.json({
-                    success: false,
-                    error: 'League matches require an active VIP membership. Contact an administrator to upgrade.'
-                }, 403);
-            }
-
             // Calculate Rank
             const elo = (host.elo as number) || 1000;
-            if (elo >= 1600) minRank = 'Gold'; // Harmonized to 1600
+            if (elo >= 1600) minRank = 'Gold';
             else if (elo >= 1201) minRank = 'Silver';
             else minRank = 'Bronze';
         }
 
-        // Competitive Match Logic
-        if (matchType === 'competitive') {
-            // 1. Elo Check: Host must be < 1600
-            const elo = (host.elo as number) || 1000;
-            if (elo >= 1600) {
-                return c.json({
-                    success: false,
-                    error: 'Competitive matches are for Bronze/Silver players only (Elo < 1600). Gold players cannot participate.'
-                }, 403);
-            }
-
-            // 2. Daily Limit Check for Free Users
-            const isVip = host.is_vip === 1 || host.is_vip === true || host.is_vip === '1' || host.is_vip === 'true';
-            const vipUntil = host.vip_until ? new Date(host.vip_until as string) : null;
-            const now = new Date();
-            const hasActiveVip = isVip && (!vipUntil || vipUntil > now);
-            const isAdmin = host.role === 'admin';
-
-            if (!isAdmin && !hasActiveVip) {
-                const today = new Date().toISOString().split('T')[0];
-                const countResult = await c.env.DB.prepare(`
-                    SELECT COUNT(*) as count FROM matches m
-                    JOIN match_players mp ON m.id = mp.match_id
-                    WHERE (mp.player_id = ? OR mp.player_id = ?)
-                    AND m.match_type = 'competitive'
-                    AND m.status = 'completed'
-                    AND m.updated_at LIKE ?
-                `).bind(body.host_id, body.host_id, `${today}%`).first<{ count: number }>();
-
-                // Get bonus matches from ad rewards
-                const rewardResult = await c.env.DB.prepare(`
-                    SELECT COUNT(*) as count FROM reward_claims 
-                    WHERE user_id = ? AND reward_type = 'competitive_match' AND claimed_at LIKE ?
-                `).bind(body.host_id, `${today}%`).first<{ count: number }>();
-
-                const bonusMatches = rewardResult?.count || 0;
-                const totalAllowed = 3 + bonusMatches;
-
-                if ((countResult?.count || 0) >= totalAllowed) {
-                    return c.json({
-                        success: false,
-                        error: bonusMatches >= 2
-                            ? 'Daily limit reached (including bonus matches). Upgrade to VIP for unlimited access.'
-                            : 'Daily limit reached. Basic members can play 3 competitive matches per day. You can watch an AD to get +1 match (limited twice) or upgrade to VIP for unlimited access.'
-                    }, 403);
-                }
-            }
-        }
-
-        if (matchType === 'clan_lobby') {
+        if (matchType === 'clan_lobby' || matchType === 'clan_war') {
             const member = await c.env.DB.prepare('SELECT clan_id, role FROM clan_members WHERE user_id = ?').bind(body.host_id).first<{ clan_id: string, role: string }>();
-            if (!member) return c.json({ success: false, error: 'You must be in a clan to start a Clan Lobby' }, 403);
-            if (!['leader', 'coleader'].includes(member.role)) return c.json({ success: false, error: 'Only Clan Leaders/Co-Leaders can start a lobby' }, 403);
+            if (!member) return c.json({ success: false, error: 'You must be in a clan to start this match type' }, 403);
 
-            clanId = member.clan_id;
-            maxPlayers = 5; // Clan Lobby is for 5 members
-        }
-
-        // Clan War: 5v5 Clan vs Clan matches
-        if (matchType === 'clan_war') {
-            // Check if host has required Discord role (1454773734073438362)
-            const CLAN_WAR_ROLE_ID = '1454773734073438362';
-            let hasRequiredRole = false;
-
-            try {
-                const rolesJson = host.discord_roles as string | null;
-                if (rolesJson) {
-                    const roles = JSON.parse(rolesJson);
+            if (matchType === 'clan_lobby') {
+                if (!['leader', 'coleader'].includes(member.role)) return c.json({ success: false, error: 'Only Clan Leaders/Co-Leaders can start a lobby' }, 403);
+                maxPlayers = 5;
+            } else {
+                // Clan War role check
+                const CLAN_WAR_ROLE_ID = '1454773734073438362';
+                let hasRequiredRole = false;
+                try {
+                    const roles = JSON.parse(host.discord_roles as string || '[]');
                     hasRequiredRole = Array.isArray(roles) && roles.includes(CLAN_WAR_ROLE_ID);
-                }
-            } catch (e) {
-                console.error('Error parsing discord_roles:', e);
-            }
+                } catch (e) { }
 
-            if (!hasRequiredRole) {
-                return c.json({
-                    success: false,
-                    error: 'You do not have permission to create Clan War lobbies. Contact an administrator.'
-                }, 403);
+                if (!hasRequiredRole) return c.json({ success: false, error: 'You do not have permission to create Clan War lobbies.' }, 403);
+                maxPlayers = 10;
             }
-
-            // Check if host is in a clan
-            const member = await c.env.DB.prepare('SELECT clan_id FROM clan_members WHERE user_id = ?').bind(body.host_id).first<{ clan_id: string }>();
-            if (!member) {
-                return c.json({ success: false, error: 'You must be in a clan to create a Clan War lobby' }, 403);
-            }
-
             clanId = member.clan_id;
-            maxPlayers = 10; // Clan War is 5v5
         }
 
         // Check if host is already in an active match
@@ -428,102 +398,13 @@ matchesRoutes.post('/:id/join', async (c) => {
             return c.json({ success: false, error: 'Match not found or not accepting players' }, 404);
         }
 
-        // Check if player exists and not banned
-        const player = await c.env.DB.prepare(
-            'SELECT id, discord_id, banned, is_vip, vip_until, role, elo FROM players WHERE id = ? OR discord_id = ?'
-        ).bind(body.player_id, body.player_id).first<{
-            id: string;
-            discord_id: string;
-            banned: number;
-            is_vip: any;
-            vip_until: string | null;
-            role: string;
-            elo: number;
-        }>();
-
-        if (!player) {
-            return c.json({ success: false, error: 'Player not found' }, 404);
+        // Unified Validation
+        const validation = await validateMatchAction(body.player_id as string, match.match_type as string, c.env, 'join', match);
+        if (!validation.allowed) {
+            return c.json({ success: false, error: validation.error }, (validation.status || 400) as any);
         }
 
-        if (player.banned === 1) {
-            return c.json({ success: false, error: 'You are banned from joining matches' }, 403);
-        }
-
-        // ============================================
-        // Start: Faceit-style Restrictions (VIP & Rank)
-        // ============================================
-        if (match.match_type === 'league') {
-            // 1. VIP Check
-            const isVip = player.is_vip === 1 || player.is_vip === true || String(player.is_vip) === '1' || String(player.is_vip) === 'true';
-            const isAdmin = player.role === 'admin';
-            const vipUntil = player.vip_until ? new Date(player.vip_until) : null;
-            const now = new Date();
-
-            const hasActiveVip = isVip && (!vipUntil || vipUntil > now);
-
-            if (!isAdmin && !hasActiveVip) {
-                return c.json({
-                    success: false,
-                    error: 'VIP status required to join League matches. Please upgrade to VIP.'
-                }, 403);
-            }
-
-            // 2. Rank Check (Min Rank Enforcement)
-            if (match.min_rank) {
-                const playerElo = player.elo || 1000;
-                let playerRank = 'Bronze';
-                if (playerElo >= 1600) playerRank = 'Gold'; // Harmonized to 1600
-                else if (playerElo >= 1200) playerRank = 'Silver';
-
-                if (playerRank !== match.min_rank) {
-                    return c.json({
-                        success: false,
-                        error: `Rank mismatch. This lobby is for ${match.min_rank} players (You are ${playerRank}).`
-                    }, 403);
-                }
-            }
-        }
-
-        // Competitive Match Logic
-        if (match.match_type === 'competitive') {
-            // 1. Elo Check: Player must be < 1600
-            const elo = (player.elo as number) || 1000;
-            if (elo >= 1600) {
-                return c.json({
-                    success: false,
-                    error: 'Competitive matches are for Bronze/Silver players only (Elo < 1600). Gold players cannot participate.'
-                }, 403);
-            }
-
-            // 2. Daily Limit Check for Free Users
-            const isVip = player.is_vip === 1 || player.is_vip === true || String(player.is_vip) === '1' || String(player.is_vip) === 'true';
-            const vipUntil = player.vip_until ? new Date(player.vip_until) : null;
-            const now = new Date();
-            const hasActiveVip = isVip && (!vipUntil || vipUntil > now);
-            const isAdmin = player.role === 'admin';
-
-            if (!isAdmin && !hasActiveVip) {
-                const today = new Date().toISOString().split('T')[0];
-                const countResult = await c.env.DB.prepare(`
-                     SELECT COUNT(*) as count FROM matches m
-                     JOIN match_players mp ON m.id = mp.match_id
-                     WHERE (mp.player_id = ? OR mp.player_id = ?)
-                     AND m.match_type = 'competitive'
-                     AND m.status = 'completed'
-                     AND m.updated_at LIKE ?
-                 `).bind(player.id, player.discord_id, `${today}%`).first<{ count: number }>();
-
-                if ((countResult?.count || 0) >= 3) {
-                    return c.json({
-                        success: false,
-                        error: 'Daily limit reached. Basic members can only play 3 competitive matches per day. Upgrade to VIP for unlimited access.'
-                    }, 403);
-                }
-            }
-        }
-        // ============================================
-        // End: Faceit-style Restrictions
-        // ============================================
+        const player = validation.player!;
 
         // Clan Lobby Restriction
         if (match.match_type === 'clan_lobby') {
@@ -1126,7 +1007,48 @@ matchesRoutes.post('/:id/queue', async (c) => {
             await notifyLobbyUpdate(matchId, c.env, 'LOBBY_UPDATED'); // Status changed
             return c.json({ success: true, matchFound: false, message: 'Queued for Clan Match' });
         }
+    } catch (e: any) {
+        return c.json({ success: false, error: e.message }, 500);
+    }
+});
 
+// POST /api/matches/:id/balance - Balance teams by Elo (host only)
+matchesRoutes.post('/:id/balance', async (c) => {
+    const matchId = c.req.param('id');
+    try {
+        const body = await c.req.json<{ host_id: string }>();
+        const match = await c.env.DB.prepare('SELECT host_id, status FROM matches WHERE id = ?').bind(matchId).first();
+        if (!match || match.host_id !== body.host_id) return c.json({ success: false, error: 'Unauthorized' }, 403);
+        if (match.status !== 'waiting') return c.json({ success: false, error: 'Cannot balance after match started' }, 400);
+
+        const players = await getMatchPlayers(matchId, c.env);
+        // Sort by Elo descending
+        const sorted = [...players].sort((a: any, b: any) => (b.elo || 1000) - (a.elo || 1000));
+
+        // Snake draft distribution
+        const alpha: string[] = [];
+        const bravo: string[] = [];
+
+        sorted.forEach((p, i) => {
+            if (i % 2 === 0) alpha.push(String(p.player_id));
+            else bravo.push(String(p.player_id));
+        });
+
+        // Update DB
+        const queries = [];
+        for (const pid of alpha) {
+            queries.push(c.env.DB.prepare('UPDATE match_players SET team = "alpha" WHERE match_id = ? AND player_id = ?').bind(matchId as string, String(pid)));
+        }
+        for (const pid of bravo) {
+            queries.push(c.env.DB.prepare('UPDATE match_players SET team = "bravo" WHERE match_id = ? AND player_id = ?').bind(matchId as string, String(pid)));
+        }
+
+        if (queries.length > 0) {
+            await c.env.DB.batch(queries);
+        }
+
+        await notifyLobbyUpdate(matchId, c.env);
+        return c.json({ success: true, message: 'Teams balanced successfully' });
     } catch (e: any) {
         return c.json({ success: false, error: e.message }, 500);
     }

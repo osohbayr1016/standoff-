@@ -38,7 +38,7 @@ interface Match {
     map_name?: string;
     current_players?: number;
     created_at: string;
-    match_type?: 'casual' | 'league' | 'clan_war' | 'competitive';
+    match_type?: 'casual' | 'league' | 'clan_war' | 'competitive' | 'clan_lobby';
     min_rank?: 'Bronze' | 'Silver' | 'Gold';
     host_elo?: number;
     clan_id?: string;
@@ -86,6 +86,8 @@ const MatchmakingPage: React.FC<MatchmakingPageProps> = ({ user, backendUrl, onV
     const [processingId, setProcessingId] = useState<string | null>(null);
     const [errorDialogOpen, setErrorDialogOpen] = useState(false);
     const [errorMessage, setErrorMessage] = useState("");
+    const [dailySlotsUsed, setDailySlotsUsed] = useState(0);
+    const [filterType, setFilterType] = useState<'all' | 'casual' | 'league' | 'competitive' | 'clan'>('all');
 
     // Sync targetMatchId from parent (e.g. Moderator Page deep link)
     useEffect(() => {
@@ -142,8 +144,22 @@ const MatchmakingPage: React.FC<MatchmakingPageProps> = ({ user, backendUrl, onV
     useEffect(() => {
         if (user) {
             fetchMyActiveMatch();
+            fetchDailyStats();
         }
     }, [user, backendUrl]);
+
+    const fetchDailyStats = async () => {
+        if (!user) return;
+        try {
+            const response = await fetch(`${backendUrl}/api/profile/${user.id}`);
+            const data = await response.json();
+            if (data.daily_comp_matches_used !== undefined) {
+                setDailySlotsUsed(data.daily_comp_matches_used);
+            }
+        } catch (err) {
+            console.error('Error fetching daily stats:', err);
+        }
+    };
 
     // Handle WebSocket messages for real-time updates
     useEffect(() => {
@@ -337,6 +353,11 @@ const MatchmakingPage: React.FC<MatchmakingPageProps> = ({ user, backendUrl, onV
         );
     }
 
+    const filteredMatches = matches.filter(m => {
+        if (filterType === 'all') return true;
+        if (filterType === 'clan') return m.match_type === 'clan_war' || m.match_type === 'clan_lobby';
+        return m.match_type === filterType;
+    });
 
     return (
         <div className="space-y-6 container mx-auto max-w-7xl animate-fade-in pb-12">
@@ -347,12 +368,59 @@ const MatchmakingPage: React.FC<MatchmakingPageProps> = ({ user, backendUrl, onV
                     </h1>
                     <p className="text-muted-foreground">Find a match or create your own custom lobby.</p>
                 </div>
-                <Button
-                    onClick={() => setShowCreateModal(true)}
-                    className="shadow-lg shadow-primary/20 hover:shadow-primary/40 transition-all font-bold"
-                >
-                    <Plus className="mr-2 h-4 w-4" /> Create Lobby
-                </Button>
+                <div className="flex items-center gap-3 w-full md:w-auto">
+                    {/* Daily Slots Counter */}
+                    <div className="bg-zinc-900/50 border border-white/10 rounded-lg px-4 py-2 flex items-center gap-3">
+                        <div className="flex flex-col items-end">
+                            <span className="text-[10px] uppercase text-zinc-500 font-bold tracking-widest leading-tight">Daily Slots</span>
+                            <span className={`text-sm font-mono font-bold ${dailySlotsUsed >= 3 && !user.is_vip ? 'text-red-500' : 'text-green-500'}`}>
+                                {user.is_vip ? '∞' : `${Math.max(0, 3 - dailySlotsUsed)}/3`}
+                            </span>
+                        </div>
+                        {dailySlotsUsed >= 3 && !user.is_vip && (
+                            <Button
+                                size="sm"
+                                variant="secondary"
+                                className="h-8 px-2 text-[10px] font-bold"
+                                onClick={() => window.location.href = '/rewards'}
+                            >
+                                WATCH AD +1
+                            </Button>
+                        )}
+                    </div>
+                    <Button
+                        onClick={() => setShowCreateModal(true)}
+                        className="shadow-lg shadow-primary/20 hover:shadow-primary/40 transition-all font-bold"
+                    >
+                        <Plus className="mr-2 h-4 w-4" /> Create Lobby
+                    </Button>
+                </div>
+            </div>
+
+            {/* Filtering Tabs */}
+            <div className="flex flex-wrap items-center gap-2 border-b border-white/5 pb-4">
+                {[
+                    { id: 'all', label: 'All Lobbies', icon: Users },
+                    { id: 'casual', label: 'Casual', icon: Gamepad2 },
+                    { id: 'league', label: 'League', icon: Trophy },
+                    { id: 'competitive', label: 'Competitive', icon: Swords },
+                    { id: 'clan', label: 'Clan Wars', icon: ShieldAlert },
+                ].map((tab) => {
+                    const Icon = tab.icon;
+                    return (
+                        <button
+                            key={tab.id}
+                            onClick={() => setFilterType(tab.id as any)}
+                            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all ${filterType === tab.id
+                                ? 'bg-primary text-white shadow-lg shadow-primary/20'
+                                : 'bg-zinc-900/50 text-zinc-400 hover:bg-zinc-800 hover:text-white'
+                                }`}
+                        >
+                            <Icon className="h-4 w-4" />
+                            {tab.label}
+                        </button>
+                    );
+                })}
             </div>
 
             {/* My Active Match Banner */}
@@ -395,515 +463,196 @@ const MatchmakingPage: React.FC<MatchmakingPageProps> = ({ user, backendUrl, onV
                         </Card>
                     ))}
                 </div>
-            ) : matches.length === 0 ? (
+            ) : filteredMatches.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-12 md:py-20 border-2 border-dashed border-border/50 rounded-xl bg-card/20 text-center">
                     <div className="bg-muted/30 p-6 rounded-full mb-4">
-                        <Trophy className="h-10 w-10 text-muted-foreground" />
+                        <Gamepad2 className="h-12 w-12 text-muted-foreground/50" />
                     </div>
-                    <h3 className="text-xl font-bold mb-2">No Active Lobbies</h3>
-                    <p className="text-muted-foreground max-w-md mb-6">There are currently no open lobbies. Be the first to start a match and invite others!</p>
-                    <Button onClick={() => setShowCreateModal(true)} variant="outline">
-                        Create First Lobby
+                    <h3 className="text-xl font-bold text-white uppercase tracking-tight">No Lobbies Found</h3>
+                    <p className="text-muted-foreground max-w-xs mx-auto mt-2">
+                        {filterType === 'all'
+                            ? "There are currently no active lobbies. Why not create one?"
+                            : `There are currently no active ${filterType} lobbies.`}
+                    </p>
+                    <Button onClick={() => setShowCreateModal(true)} variant="outline" className="mt-6">
+                        Host a Match
                     </Button>
                 </div>
             ) : (
-                <div className="space-y-10">
-                    {/* COMPETITIVE MATCHES SECTION */}
-                    <div className="space-y-4">
-                        <div className="flex items-center gap-2 border-b border-blue-500/20 pb-2">
-                            <Swords className="h-5 w-5 text-blue-500" />
-                            <h2 className="text-xl font-bold font-display tracking-tight text-white">Competitive Matches</h2>
-                            <Badge variant="outline" className="ml-auto border-blue-500/20 text-blue-400 text-[10px] uppercase">Ranked (Bronze/Silver)</Badge>
-                        </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {filteredMatches.map((match) => (
+                        <Card
+                            key={match.id}
+                            onClick={() => setSelectedMatchId(match.id)}
+                            className={`
+                                backdrop-blur-sm transition-all cursor-pointer group overflow-hidden relative hover:shadow-xl
+                                ${match.match_type === 'league' ? 'bg-card/50 border-yellow-500/20 hover:border-yellow-500/50 hover:shadow-yellow-500/10' :
+                                    match.match_type === 'competitive' ? 'bg-zinc-950/80 border-blue-500/20 hover:border-blue-500/50 hover:shadow-[0_0_20px_rgba(59,130,246,0.15)]' :
+                                        match.match_type === 'clan_war' ? 'bg-zinc-950/80 border-purple-500/20 hover:border-purple-500/50 hover:shadow-[0_0_20px_rgba(168,85,247,0.15)]' :
+                                            'bg-card/50 border-border/50 hover:border-primary/50 hover:shadow-primary/5'}
+                            `}
+                        >
+                            {/* Special Effects based on type */}
+                            {match.match_type === 'competitive' && (
+                                <div className="absolute top-0 right-0 w-24 h-24 bg-blue-500/10 blur-3xl rounded-full -mr-12 -mt-12 pointer-events-none" />
+                            )}
+                            {match.match_type === 'clan_war' && (
+                                <div className="absolute top-0 right-0 w-24 h-24 bg-purple-500/10 blur-3xl rounded-full -mr-12 -mt-12 pointer-events-none" />
+                            )}
 
-                        {matches.filter(m => m.match_type === 'competitive').length === 0 ? (
-                            <div className="text-center py-8 text-muted-foreground text-sm bg-blue-500/5 rounded-lg border border-dashed border-blue-500/20">
-                                No active competitive matches. Create one to climb the ranks!
-                            </div>
-                        ) : (
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                                {matches.filter(m => m.match_type === 'competitive').map((match) => (
-                                    <Card
-                                        key={match.id}
-                                        onClick={() => setSelectedMatchId(match.id)}
-                                        className="bg-zinc-950/80 backdrop-blur-sm border-blue-500/20 hover:border-blue-500/50 transition-all cursor-pointer group overflow-hidden relative hover:shadow-[0_0_20px_rgba(59,130,246,0.15)]"
-                                    >
-                                        <div className="absolute top-0 right-0 w-24 h-24 bg-blue-500/10 blur-3xl rounded-full -mr-12 -mt-12 pointer-events-none" />
+                            {/* Map Background Image Overlay */}
+                            {match.map_name && (
+                                <div className="absolute inset-0 z-0 opacity-20 group-hover:opacity-40 transition-opacity">
+                                    <img
+                                        src={MAPS.find(m => m.name === match.map_name)?.image || `/maps/${match.map_name.toLowerCase()}.jpg`}
+                                        className={`w-full h-full object-cover grayscale ${match.match_type === 'competitive' || match.match_type === 'clan_war' ? 'mix-blend-overlay' : ''}`}
+                                        onError={(e) => e.currentTarget.style.display = 'none'}
+                                    />
+                                </div>
+                            )}
 
-                                        {/* Map Background Image Overlay */}
-                                        {match.map_name && (
-                                            <div className="absolute inset-0 z-0 opacity-20 group-hover:opacity-40 transition-opacity">
-                                                <img
-                                                    src={MAPS.find(m => m.name === match.map_name)?.image || `/maps/${match.map_name.toLowerCase()}.jpg`}
-                                                    className="w-full h-full object-cover grayscale mix-blend-overlay"
-                                                    onError={(e) => e.currentTarget.style.display = 'none'}
-                                                />
-                                            </div>
-                                        )}
-
-                                        <CardHeader className="flex flex-row items-center justify-between pb-3 z-10 relative">
-                                            <div className="flex items-center gap-3">
-                                                <div className="relative">
-                                                    <Avatar className="h-10 w-10 border-2 border-blue-500/50">
-                                                        <AvatarImage src={`https://cdn.discordapp.com/avatars/${match.host_id}/${match.host_avatar}.png`} />
-                                                        <AvatarFallback className="bg-blue-950 text-blue-200 font-bold">{match.host_username?.[0]?.toUpperCase() || 'H'}</AvatarFallback>
-                                                    </Avatar>
-                                                </div>
-                                                <div className="flex flex-col">
-                                                    <div className="flex items-center gap-2">
-                                                        <span className="text-sm font-bold leading-none text-white group-hover:text-blue-400 transition-colors">
-                                                            {match.host_username || 'Unknown Host'}
-                                                        </span>
-                                                        <LevelBadge elo={match.host_elo || 1000} className="scale-75 origin-left" />
-                                                    </div>
-                                                    <span className="text-xs text-zinc-400">Host</span>
-                                                </div>
-                                            </div>
-                                            <Badge
-                                                variant={match.status === 'in_progress' ? 'secondary' : 'default'}
-                                                className={`${match.status === 'waiting' ? 'bg-green-500/10 text-green-500 hover:bg-green-500/20' : ''} uppercase text-[10px] tracking-wider font-bold`}
-                                            >
-                                                {match.status.replace('_', ' ')}
-                                            </Badge>
-                                        </CardHeader>
-
-                                        <CardContent className="space-y-4 pb-4 z-10 relative">
-                                            <div className="flex items-center justify-between text-sm border-t border-white/5 pt-4">
-                                                <div className="flex items-center gap-2 text-zinc-400">
-                                                    <Users className="h-4 w-4" />
-                                                    <span>Players</span>
-                                                </div>
-                                                <div className="font-mono font-medium text-white bg-black/20 px-2 py-0.5 rounded border border-white/5 flex items-center gap-1.5">
-                                                    <span className={match.current_players === match.max_players ? "text-blue-400" : ""}>
-                                                        {match.current_players || match.player_count}
+                            <CardHeader className="flex flex-row items-center justify-between pb-3 z-10 relative">
+                                <div className="flex items-center gap-3">
+                                    <div className="relative">
+                                        <Avatar className={`h-10 w-10 border-2 ${match.match_type === 'league' ? 'border-yellow-500/30' :
+                                            match.match_type === 'competitive' ? 'border-blue-500/50' :
+                                                match.match_type === 'clan_war' ? 'border-purple-500/50' :
+                                                    'border-border'
+                                            }`}>
+                                            <AvatarImage src={`https://cdn.discordapp.com/avatars/${match.host_id}/${match.host_avatar}.png`} />
+                                            <AvatarFallback className={
+                                                match.match_type === 'league' ? 'bg-yellow-950 text-yellow-500' :
+                                                    match.match_type === 'competitive' ? 'bg-blue-950 text-blue-200' :
+                                                        match.match_type === 'clan_war' ? 'bg-purple-950 text-purple-200' :
+                                                            ''
+                                            }>
+                                                {match.host_username?.[0]?.toUpperCase() || 'H'}
+                                            </AvatarFallback>
+                                        </Avatar>
+                                    </div>
+                                    <div className="flex flex-col">
+                                        <div className="flex items-center gap-2">
+                                            <span className={`text-sm font-bold leading-none transition-colors ${match.match_type === 'league' ? 'text-foreground group-hover:text-yellow-400' :
+                                                match.match_type === 'competitive' ? 'text-white group-hover:text-blue-400' :
+                                                    match.match_type === 'clan_war' ? 'text-white group-hover:text-purple-400' :
+                                                        'text-foreground group-hover:text-primary'
+                                                }`}>
+                                                {match.host_username || 'Unknown Host'}
+                                            </span>
+                                            {match.match_type === 'clan_war' ? (
+                                                <Badge variant="secondary" className="bg-purple-500/20 text-purple-300 hover:bg-purple-500/30 text-[10px] h-4 px-1.5 border-none">CLAN</Badge>
+                                            ) : (
+                                                <LevelBadge elo={match.host_elo || 1000} className="scale-75 origin-left" />
+                                            )}
+                                        </div>
+                                        <div className="flex items-center gap-1">
+                                            <span className="text-xs text-muted-foreground">{match.match_type === 'clan_war' ? 'Host (Captain)' : 'Host'}</span>
+                                            {match.min_rank && match.match_type === 'league' && (
+                                                <div className="flex items-center gap-1 bg-zinc-800/80 px-1.5 py-0.5 rounded-full border border-white/5">
+                                                    <img
+                                                        src={`/ranks/stats/${match.min_rank.toLowerCase()}_stat.png`}
+                                                        alt={match.min_rank}
+                                                        className="w-3 h-3 object-contain"
+                                                    />
+                                                    <span className={`text-[9px] font-bold uppercase ${match.min_rank === 'Gold' ? 'text-yellow-400' :
+                                                        match.min_rank === 'Silver' ? 'text-gray-300' :
+                                                            'text-[#cd7f32]'
+                                                        }`}>
+                                                        {match.min_rank}
                                                     </span>
-                                                    <span className="text-zinc-600">/</span>
-                                                    <span className="text-zinc-500">{match.max_players}</span>
                                                 </div>
-                                            </div>
-
-                                            <div className="flex items-center justify-between text-sm">
-                                                <div className="flex items-center gap-2 text-zinc-400">
-                                                    <MapIcon className="h-4 w-4" />
-                                                    <span>Map</span>
-                                                </div>
-                                                <span className="font-medium text-white">{match.map_name || 'Random'}</span>
-                                            </div>
-                                        </CardContent>
-
-                                        <CardFooter className="pt-2 z-10 relative">
-                                            {match.host_id === user.id ? (
-                                                <div className="w-full flex gap-2">
-                                                    <Button
-                                                        className="w-full flex-1 bg-blue-600 hover:bg-blue-700 text-white border-none font-bold"
-                                                        onClick={(e) => { e.stopPropagation(); handleStartMatch(match.id); }}
-                                                        disabled={(match.current_players || match.player_count) < 10 || processingId === match.id}
-                                                    >
-                                                        Start Match
-                                                    </Button>
-                                                    <Button
-                                                        className="w-full flex-1 transition-all active:scale-95 bg-zinc-800 hover:bg-red-900/50"
-                                                        variant="ghost"
-                                                        onClick={(e) => { e.stopPropagation(); handleLeaveLobby(match.id); }}
-                                                        disabled={processingId === match.id}
-                                                    >
-                                                        {processingId === match.id ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Cancel'}
-                                                    </Button>
-                                                </div>
-                                            ) : (
-                                                <Button
-                                                    className="w-full bg-blue-500/10 hover:bg-blue-500 hover:text-white border border-blue-500/30 transition-all font-bold active:scale-95 group"
-                                                    onClick={(e) => { e.stopPropagation(); handleJoinLobby(match.id); }}
-                                                    disabled={(match.current_players || match.player_count) >= match.max_players || processingId === match.id}
-                                                >
-                                                    {processingId === match.id ? (
-                                                        <Loader2 className="h-4 w-4 animate-spin" />
-                                                    ) : (
-                                                        (match.current_players || match.player_count) >= match.max_players ? 'Lobby Full' : (
-                                                            <span className="flex items-center gap-2">
-                                                                Join Match <Swords className="w-3 h-3 opacity-50 group-hover:opacity-100" />
-                                                            </span>
-                                                        )
-                                                    )}
-                                                </Button>
                                             )}
-                                        </CardFooter>
-                                    </Card>
-                                ))}
-                            </div>
-                        )}
-                    </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <Badge
+                                    variant={match.status === 'in_progress' ? 'secondary' : 'default'}
+                                    className={`${match.status === 'waiting' ? 'bg-green-500/10 text-green-500 hover:bg-green-500/20' : ''} uppercase text-[10px] tracking-wider font-bold`}
+                                >
+                                    {match.status.replace('_', ' ')}
+                                </Badge>
+                            </CardHeader>
 
-                    {/* LEAGUE MATCHES SECTION */}
-                    <div className="space-y-4">
-                        <div className="flex items-center gap-2 border-b border-white/10 pb-2">
-                            <Trophy className="h-5 w-5 text-yellow-500" />
-                            <h2 className="text-xl font-bold font-display tracking-tight">League Matches</h2>
-                            <Badge variant="outline" className="ml-auto border-yellow-500/50 text-yellow-500 text-[10px] uppercase">Ranked</Badge>
-                        </div>
+                            <CardContent className="space-y-4 pb-4 z-10 relative">
+                                <div className="flex items-center justify-between text-sm border-t border-white/5 pt-4">
+                                    <div className="flex items-center gap-2 text-zinc-400">
+                                        <Users className="h-4 w-4" />
+                                        <span>Players</span>
+                                    </div>
+                                    <div className="font-mono font-medium text-white bg-black/20 px-2 py-0.5 rounded border border-white/5 flex items-center gap-1.5">
+                                        <span className={match.current_players === match.max_players ? (
+                                            match.match_type === 'league' ? "" :
+                                                match.match_type === 'competitive' ? "text-blue-400" :
+                                                    match.match_type === 'clan_war' ? "text-purple-400" :
+                                                        ""
+                                        ) : ""}>
+                                            {match.current_players || match.player_count}
+                                        </span>
+                                        <span className="text-zinc-600">/</span>
+                                        <span className="text-zinc-500">{match.max_players}</span>
+                                    </div>
+                                </div>
 
-                        {matches.filter(m => m.match_type === 'league').length === 0 ? (
-                            <div className="text-center py-8 text-muted-foreground text-sm bg-white/5 rounded-lg border border-dashed border-white/10">
-                                No active league matches. Create one to climb the ranks!
-                            </div>
-                        ) : (
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                                {matches.filter(m => m.match_type === 'league').map((match) => (
-                                    <Card
-                                        key={match.id}
-                                        onClick={() => setSelectedMatchId(match.id)}
-                                        className="bg-card/50 backdrop-blur-sm border-yellow-500/20 hover:border-yellow-500/50 transition-all cursor-pointer group overflow-hidden relative hover:shadow-xl hover:shadow-yellow-500/10"
+                                <div className="flex items-center justify-between text-sm">
+                                    <div className="flex items-center gap-2 text-zinc-400">
+                                        <MapIcon className="h-4 w-4" />
+                                        <span>Map</span>
+                                    </div>
+                                    <span className="font-medium text-white">{match.map_name || 'Random'}</span>
+                                </div>
+                            </CardContent>
+
+                            <CardFooter className="pt-2 z-10 relative">
+                                {match.host_id === user.id ? (
+                                    <div className="w-full flex gap-2">
+                                        <Button
+                                            className={`w-full flex-1 text-white border-none font-bold ${match.match_type === 'league' ? 'bg-yellow-600 hover:bg-yellow-700' :
+                                                match.match_type === 'competitive' ? 'bg-blue-600 hover:bg-blue-700' :
+                                                    match.match_type === 'clan_war' ? 'bg-purple-600 hover:bg-purple-700' :
+                                                        'bg-primary hover:bg-primary/90'
+                                                }`}
+                                            onClick={(e) => { e.stopPropagation(); handleStartMatch(match.id); }}
+                                            disabled={(match.current_players || match.player_count) < 10 || processingId === match.id}
+                                        >
+                                            {match.match_type === 'clan_war' ? 'Start Clan War' : 'Start Match'}
+                                        </Button>
+                                        <Button
+                                            className="w-full flex-1 transition-all active:scale-95 bg-zinc-800 hover:bg-red-900/50"
+                                            variant="ghost"
+                                            onClick={(e) => { e.stopPropagation(); handleLeaveLobby(match.id); }}
+                                            disabled={processingId === match.id}
+                                        >
+                                            {processingId === match.id ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Cancel'}
+                                        </Button>
+                                    </div>
+                                ) : (
+                                    <Button
+                                        className={`w-full transition-all font-bold active:scale-95 group ${match.match_type === 'league' ? 'bg-white/5 hover:bg-yellow-500 hover:text-black border border-yellow-500/20' :
+                                            match.match_type === 'competitive' ? 'bg-blue-500/10 hover:bg-blue-500 hover:text-white border border-blue-500/30' :
+                                                match.match_type === 'clan_war' ? 'bg-purple-500/10 hover:bg-purple-500 hover:text-white border border-purple-500/30' :
+                                                    'bg-white/5 hover:bg-primary hover:text-white border border-border/50'
+                                            }`}
+                                        onClick={(e) => { e.stopPropagation(); handleJoinLobby(match.id); }}
+                                        disabled={(match.current_players || match.player_count) >= match.max_players || processingId === match.id}
                                     >
-                                        {/* Map Background Image Overlay */}
-                                        {match.map_name && (
-                                            <div className="absolute inset-0 z-0 opacity-20 group-hover:opacity-40 transition-opacity">
-                                                <img
-                                                    src={MAPS.find(m => m.name === match.map_name)?.image || `/maps/${match.map_name.toLowerCase()}.jpg`}
-                                                    className="w-full h-full object-cover grayscale"
-                                                    onError={(e) => e.currentTarget.style.display = 'none'}
-                                                />
-                                            </div>
-                                        )}
-
-                                        <CardHeader className="flex flex-row items-center justify-between pb-3 z-10 relative">
-                                            <div className="flex items-center gap-3">
-                                                <Avatar className="h-10 w-10 border-2 border-yellow-500/30">
-                                                    <AvatarImage src={`https://cdn.discordapp.com/avatars/${match.host_id}/${match.host_avatar}.png`} />
-                                                    <AvatarFallback className="bg-yellow-950 text-yellow-500">{match.host_username?.[0]?.toUpperCase() || 'H'}</AvatarFallback>
-                                                </Avatar>
-                                                <div className="flex flex-col">
-                                                    <div className="flex items-center gap-2">
-                                                        <span className="text-sm font-bold leading-none text-foreground group-hover:text-yellow-400 transition-colors">
-                                                            {match.host_username || 'Unknown Host'}
-                                                        </span>
-                                                        <LevelBadge elo={match.host_elo || 1000} className="scale-75 origin-left" />
-                                                    </div>
-                                                    <div className="flex items-center gap-1">
-                                                        <span className="text-xs text-muted-foreground">Host</span>
-                                                        {match.min_rank && (
-                                                            <div className="flex items-center gap-1 bg-zinc-800/80 px-1.5 py-0.5 rounded-full border border-white/5">
-                                                                <img
-                                                                    src={`/ranks/stats/${match.min_rank.toLowerCase()}_stat.png`}
-                                                                    alt={match.min_rank}
-                                                                    className="w-3 h-3 object-contain"
-                                                                />
-                                                                <span className={`text-[9px] font-bold uppercase ${match.min_rank === 'Gold' ? 'text-yellow-400' :
-                                                                    match.min_rank === 'Silver' ? 'text-gray-300' :
-                                                                        'text-[#cd7f32]'
-                                                                    }`}>
-                                                                    {match.min_rank}
-                                                                </span>
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                </div>
-                                            </div>
-                                            <Badge
-                                                variant={match.status === 'in_progress' ? 'secondary' : 'default'}
-                                                className={`${match.status === 'waiting' ? 'bg-green-500/10 text-green-500 hover:bg-green-500/20' : ''} uppercase text-[10px] tracking-wider font-bold`}
-                                            >
-                                                {match.status.replace('_', ' ')}
-                                            </Badge>
-                                        </CardHeader>
-
-                                        <CardContent className="space-y-4 pb-4 z-10 relative">
-                                            <div className="flex items-center justify-between text-sm border-t border-white/10 pt-4">
-                                                <div className="flex items-center gap-2 text-muted-foreground">
-                                                    <Users className="h-4 w-4" />
-                                                    <span>Players</span>
-                                                </div>
-                                                <div className="font-mono font-bold">
-                                                    <span className="text-foreground">{match.current_players || match.player_count}</span>
-                                                    <span className="text-muted-foreground">/</span>
-                                                    <span className="text-muted-foreground">{match.max_players}</span>
-                                                </div>
-                                            </div>
-
-                                            <div className="flex items-center justify-between text-sm">
-                                                <div className="flex items-center gap-2 text-muted-foreground">
-                                                    <MapIcon className="h-4 w-4" />
-                                                    <span>Map</span>
-                                                </div>
-                                                <span className="font-medium text-foreground">{match.map_name || 'Random'}</span>
-                                            </div>
-                                        </CardContent>
-
-                                        <CardFooter className="pt-2 z-10 relative">
-                                            {match.host_id === user.id ? (
-                                                <div className="w-full flex gap-2">
-                                                    <Button
-                                                        className="w-full flex-1 bg-yellow-600 hover:bg-yellow-700 text-white border-none"
-                                                        onClick={(e) => { e.stopPropagation(); handleStartMatch(match.id); }}
-                                                        disabled={(match.current_players || match.player_count) < 10 || processingId === match.id}
-                                                    >
-                                                        Start Match
-                                                    </Button>
-                                                    <Button
-                                                        className="w-full flex-1 transition-all active:scale-95"
-                                                        variant="destructive"
-                                                        onClick={(e) => { e.stopPropagation(); handleLeaveLobby(match.id); }}
-                                                        disabled={processingId === match.id}
-                                                    >
-                                                        {processingId === match.id ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Cancel'}
-                                                    </Button>
-                                                </div>
-                                            ) : (
-                                                <Button
-                                                    className="w-full bg-white/5 hover:bg-yellow-500 hover:text-black border border-yellow-500/20 transition-all font-bold active:scale-95"
-                                                    onClick={(e) => { e.stopPropagation(); handleJoinLobby(match.id); }}
-                                                    disabled={(match.current_players || match.player_count) >= match.max_players || processingId === match.id}
-                                                >
-                                                    {processingId === match.id ? (
-                                                        <Loader2 className="h-4 w-4 animate-spin" />
-                                                    ) : (
-                                                        (match.current_players || match.player_count) >= match.max_players ? 'Full Lobby' : 'Join League Match'
+                                        {processingId === match.id ? (
+                                            <Loader2 className="h-4 w-4 animate-spin" />
+                                        ) : (
+                                            (match.current_players || match.player_count) >= match.max_players ? 'Lobby Full' : (
+                                                <span className="flex items-center gap-2">
+                                                    {match.match_type === 'clan_war' ? 'Join Clan War' :
+                                                        match.match_type === 'league' ? 'Join League Match' : 'Join Match'}
+                                                    {(match.match_type === 'competitive' || match.match_type === 'clan_war') && (
+                                                        <Swords className="w-3 h-3 opacity-50 group-hover:opacity-100" />
                                                     )}
-                                                </Button>
-                                            )}
-                                        </CardFooter>
-                                    </Card>
-                                ))}
-                            </div>
-                        )}
-                    </div>
-
-
-                    {/* CLAN WARS SECTION */}
-                    <div className="space-y-4 mb-8">
-                        <div className="flex items-center gap-2 border-b border-purple-500/20 pb-2">
-                            <Swords className="h-5 w-5 text-purple-500" />
-                            <h2 className="text-xl font-bold font-display tracking-tight text-white">Clan Wars</h2>
-                            <Badge variant="outline" className="ml-auto border-purple-500/20 text-purple-400 text-[10px] uppercase">5v5 Tournament</Badge>
-                        </div>
-
-                        {matches.filter(m => m.match_type === 'clan_war').length === 0 ? (
-                            <div className="text-center py-8 text-muted-foreground text-sm bg-purple-500/5 rounded-lg border border-dashed border-purple-500/20">
-                                No active clan wars.
-                            </div>
-                        ) : (
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                                {matches.filter(m => m.match_type === 'clan_war').map((match) => (
-                                    <Card
-                                        key={match.id}
-                                        onClick={() => setSelectedMatchId(match.id)}
-                                        className="bg-zinc-950/80 backdrop-blur-sm border-purple-500/20 hover:border-purple-500/50 transition-all cursor-pointer group overflow-hidden relative hover:shadow-[0_0_20px_rgba(168,85,247,0.15)]"
-                                    >
-                                        <div className="absolute top-0 right-0 w-24 h-24 bg-purple-500/10 blur-3xl rounded-full -mr-12 -mt-12 pointer-events-none" />
-
-                                        {/* Map Background Image Overlay */}
-                                        {match.map_name && (
-                                            <div className="absolute inset-0 z-0 opacity-20 group-hover:opacity-40 transition-opacity">
-                                                <img
-                                                    src={MAPS.find(m => m.name === match.map_name)?.image || `/maps/${match.map_name.toLowerCase()}.jpg`}
-                                                    className="w-full h-full object-cover grayscale mix-blend-overlay"
-                                                    onError={(e) => e.currentTarget.style.display = 'none'}
-                                                />
-                                            </div>
+                                                </span>
+                                            )
                                         )}
-
-                                        <CardHeader className="flex flex-row items-center justify-between pb-3 z-10 relative">
-                                            <div className="flex items-center gap-3">
-                                                <div className="relative">
-                                                    <Avatar className="h-10 w-10 border-2 border-purple-500/50">
-                                                        <AvatarImage src={`https://cdn.discordapp.com/avatars/${match.host_id}/${match.host_avatar}.png`} />
-                                                        <AvatarFallback className="bg-purple-950 text-purple-200 font-bold">{match.host_username?.[0]?.toUpperCase() || 'H'}</AvatarFallback>
-                                                    </Avatar>
-                                                </div>
-                                                <div className="flex flex-col">
-                                                    <div className="flex items-center gap-2">
-                                                        <span className="text-sm font-bold leading-none text-white group-hover:text-purple-400 transition-colors">
-                                                            {match.host_username || 'Unknown Host'}
-                                                        </span>
-                                                        <Badge variant="secondary" className="bg-purple-500/20 text-purple-300 hover:bg-purple-500/30 text-[10px] h-4 px-1.5 border-none">CLAN</Badge>
-                                                    </div>
-                                                    <span className="text-xs text-zinc-400">Host (Captain)</span>
-                                                </div>
-                                            </div>
-                                        </CardHeader>
-
-                                        <CardContent className="space-y-4 pb-4 z-10 relative">
-                                            <div className="flex items-center justify-between text-sm border-t border-white/5 pt-4">
-                                                <div className="flex items-center gap-2 text-zinc-400">
-                                                    <Users className="h-4 w-4" />
-                                                    <span>Players</span>
-                                                </div>
-                                                <div className="font-mono font-medium text-white bg-black/20 px-2 py-0.5 rounded border border-white/5 flex items-center gap-1.5">
-                                                    <span className={match.current_players === match.max_players ? "text-purple-400" : ""}>
-                                                        {match.current_players || match.player_count}
-                                                    </span>
-                                                    <span className="text-zinc-600">/</span>
-                                                    <span className="text-zinc-500">{match.max_players}</span>
-                                                </div>
-                                            </div>
-
-                                            <div className="flex items-center justify-between text-sm">
-                                                <div className="flex items-center gap-2 text-zinc-400">
-                                                    <MapIcon className="h-4 w-4" />
-                                                    <span>Map</span>
-                                                </div>
-                                                <span className="font-medium text-white">{match.map_name || 'Random'}</span>
-                                            </div>
-                                        </CardContent>
-
-                                        <CardFooter className="pt-2 z-10 relative">
-                                            {match.host_id === user.id ? (
-                                                <div className="w-full flex gap-2">
-                                                    <Button
-                                                        className="w-full flex-1 bg-purple-600 hover:bg-purple-700 text-white border-none font-bold"
-                                                        onClick={(e) => { e.stopPropagation(); handleStartMatch(match.id); }}
-                                                        disabled={(match.current_players || match.player_count) < 10 || processingId === match.id}
-                                                    >
-                                                        Start Clan War
-                                                    </Button>
-                                                    <Button
-                                                        className="w-full flex-1 transition-all active:scale-95 bg-zinc-800 hover:bg-red-900/50"
-                                                        variant="ghost"
-                                                        onClick={(e) => { e.stopPropagation(); handleLeaveLobby(match.id); }}
-                                                        disabled={processingId === match.id}
-                                                    >
-                                                        {processingId === match.id ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Cancel'}
-                                                    </Button>
-                                                </div>
-                                            ) : (
-                                                <Button
-                                                    className="w-full bg-purple-500/10 hover:bg-purple-500 hover:text-white border border-purple-500/30 transition-all font-bold active:scale-95 group"
-                                                    onClick={(e) => { e.stopPropagation(); handleJoinLobby(match.id); }}
-                                                    disabled={(match.current_players || match.player_count) >= match.max_players || processingId === match.id}
-                                                >
-                                                    {processingId === match.id ? (
-                                                        <Loader2 className="h-4 w-4 animate-spin" />
-                                                    ) : (
-                                                        (match.current_players || match.player_count) >= match.max_players ? 'Lobby Full' : (
-                                                            <span className="flex items-center gap-2">
-                                                                Join Clan War <Swords className="w-3 h-3 opacity-50 group-hover:opacity-100" />
-                                                            </span>
-                                                        )
-                                                    )}
-                                                </Button>
-                                            )}
-                                        </CardFooter>
-                                    </Card>
-                                ))}
-                            </div>
-                        )}
-                    </div>
-
-                    {/* CASUAL MATCHES SECTION */}
-                    <div className="space-y-4">
-                        <div className="flex items-center gap-2 border-b border-white/10 pb-2">
-                            <Gamepad2 className="h-5 w-5 text-primary" />
-                            <h2 className="text-xl font-bold font-display tracking-tight">Casual Matches</h2>
-                            <Badge variant="outline" className="ml-auto border-white/20 text-muted-foreground text-[10px] uppercase">Unranked</Badge>
-                        </div>
-
-                        {matches.filter(m => m.match_type !== 'league' && m.match_type !== 'clan_war' && m.match_type !== 'competitive').length === 0 ? (
-                            <div className="text-center py-8 text-muted-foreground text-sm bg-white/5 rounded-lg border border-dashed border-white/10">
-                                No active casual matches.
-                            </div>
-                        ) : (
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                                {matches.filter(m => m.match_type !== 'league' && m.match_type !== 'clan_war' && m.match_type !== 'competitive').map((match) => (
-                                    <Card
-                                        key={match.id}
-                                        onClick={() => setSelectedMatchId(match.id)}
-                                        className="bg-card/50 backdrop-blur-sm border-border/50 hover:border-primary/50 transition-all cursor-pointer group overflow-hidden relative hover:shadow-xl hover:shadow-primary/5"
-                                    >
-                                        {/* Map Background Image Overlay */}
-                                        {match.map_name && (
-                                            <div className="absolute inset-0 z-0 opacity-20 group-hover:opacity-40 transition-opacity">
-                                                <img
-                                                    src={MAPS.find(m => m.name === match.map_name)?.image || `/maps/${match.map_name.toLowerCase()}.jpg`}
-                                                    className="w-full h-full object-cover grayscale"
-                                                    onError={(e) => e.currentTarget.style.display = 'none'}
-                                                />
-                                            </div>
-                                        )}
-
-                                        <CardHeader className="flex flex-row items-center justify-between pb-3 z-10 relative">
-                                            <div className="flex items-center gap-3">
-                                                <Avatar className="h-10 w-10 border border-border">
-                                                    <AvatarImage src={`https://cdn.discordapp.com/avatars/${match.host_id}/${match.host_avatar}.png`} />
-                                                    <AvatarFallback>{match.host_username?.[0]?.toUpperCase() || 'H'}</AvatarFallback>
-                                                </Avatar>
-                                                <div className="flex flex-col">
-                                                    <div className="flex items-center gap-2">
-                                                        <span className="text-sm font-medium leading-none text-foreground group-hover:text-primary transition-colors">
-                                                            {match.host_username || 'Unknown Host'}
-                                                        </span>
-                                                        <LevelBadge elo={match.host_elo || 1000} className="scale-75 origin-left" />
-                                                    </div>
-                                                    <span className="text-xs text-muted-foreground">Host</span>
-                                                </div>
-                                            </div>
-                                            <Badge
-                                                variant={match.status === 'in_progress' ? 'secondary' : 'default'}
-                                                className={`${match.status === 'waiting' ? 'bg-green-500/10 text-green-500 hover:bg-green-500/20' : ''} uppercase text-[10px] tracking-wider font-bold`}
-                                            >
-                                                {match.status.replace('_', ' ')}
-                                            </Badge>
-                                        </CardHeader>
-
-                                        <CardContent className="space-y-4 pb-4 z-10 relative">
-                                            <div className="flex items-center justify-between text-sm border-t border-border/50 pt-4">
-                                                <div className="flex items-center gap-2 text-muted-foreground">
-                                                    <Users className="h-4 w-4" />
-                                                    <span>Players</span>
-                                                </div>
-                                                <div className="font-mono font-bold">
-                                                    <span className="text-foreground">{match.current_players || match.player_count}</span>
-                                                    <span className="text-muted-foreground">/</span>
-                                                    <span className="text-muted-foreground">{match.max_players}</span>
-                                                </div>
-                                            </div>
-
-                                            <div className="flex items-center justify-between text-sm">
-                                                <div className="flex items-center gap-2 text-muted-foreground">
-                                                    <MapIcon className="h-4 w-4" />
-                                                    <span>Map</span>
-                                                </div>
-                                                <span className="font-medium text-foreground">{match.map_name || 'Random'}</span>
-                                            </div>
-                                        </CardContent>
-
-                                        <CardFooter className="pt-2 z-10 relative">
-                                            {match.host_id === user.id ? (
-                                                <div className="w-full flex gap-2">
-                                                    <Button
-                                                        className="w-full flex-1"
-                                                        variant="default"
-                                                        onClick={(e) => { e.stopPropagation(); handleStartMatch(match.id); }}
-                                                        disabled={(match.current_players || match.player_count) < 10 || processingId === match.id}
-                                                    >
-                                                        Start Match
-                                                    </Button>
-                                                    <Button
-                                                        className="w-full flex-1 transition-all active:scale-95"
-                                                        variant="destructive"
-                                                        onClick={(e) => { e.stopPropagation(); handleLeaveLobby(match.id); }}
-                                                        disabled={processingId === match.id}
-                                                    >
-                                                        {processingId === match.id ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Cancel'}
-                                                    </Button>
-                                                </div>
-                                            ) : (
-                                                <Button
-                                                    className="w-full bg-white/5 hover:bg-primary hover:text-white border border-border/50 transition-all font-bold active:scale-95"
-                                                    onClick={(e) => { e.stopPropagation(); handleJoinLobby(match.id); }}
-                                                    disabled={(match.current_players || match.player_count) >= match.max_players || processingId === match.id}
-                                                >
-                                                    {processingId === match.id ? (
-                                                        <Loader2 className="h-4 w-4 animate-spin" />
-                                                    ) : (
-                                                        (match.current_players || match.player_count) >= match.max_players ? 'Full Lobby' : 'Join Match'
-                                                    )}
-                                                </Button>
-                                            )}
-                                        </CardFooter>
-                                    </Card>
-                                ))}
-                            </div>
-                        )}
-                    </div>
+                                    </Button>
+                                )}
+                            </CardFooter>
+                        </Card>
+                    ))}
                 </div>
             )}
 
@@ -1191,6 +940,7 @@ const MatchmakingPage: React.FC<MatchmakingPageProps> = ({ user, backendUrl, onV
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
+
             {/* Error Alert Dialog */}
             <AlertDialog open={errorDialogOpen} onOpenChange={setErrorDialogOpen}>
                 <AlertDialogContent>
