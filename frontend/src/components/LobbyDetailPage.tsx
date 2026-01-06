@@ -306,6 +306,16 @@ const LobbyDetailPage: React.FC<LobbyDetailPageProps> = ({ matchId, user, backen
         }
     }, [backendUrl, matchId, sendMessage]); // Added sendMessage dependency
 
+    // HANDSHAKE RECOVERY: Proactively request live draft state from DO on mount
+    useEffect(() => {
+        // If we know match is drafting (from localStorage or initial API call), immediately ping DO
+        // This ensures we get the latest in-memory state even if DB is slightly stale
+        if (match?.status === 'drafting') {
+            console.log('[LobbyDetailPage] Requesting live draft state from DO on mount...');
+            sendMessage({ type: 'REQUEST_MATCH_STATE', lobbyId: matchId });
+        }
+    }, [match?.status, matchId, sendMessage]);
+
     useEffect(() => {
         fetchMatchDetails();
         // Removed 5s polling interval - now purely push-based via WebSockets

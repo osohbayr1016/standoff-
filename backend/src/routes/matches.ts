@@ -357,6 +357,7 @@ matchesRoutes.get('/user/:userId/active', async (c) => {
             JOIN match_players mp ON m.id = mp.match_id
             WHERE (mp.player_id = ? OR mp.player_id IN (SELECT discord_id FROM players WHERE id = ?))
             AND m.status IN ('waiting', 'in_progress', 'drafting')
+            AND m.updated_at > datetime('now', '-12 hours')
             ORDER BY 
                 CASE 
                     WHEN m.status IN ('drafting', 'in_progress') THEN 0 
@@ -976,8 +977,8 @@ matchesRoutes.patch('/:id/link', async (c) => {
             return c.json({ success: false, error: 'Only host or moderator can update match link' }, 403);
         }
 
-        if (match.status !== 'waiting') {
-            return c.json({ success: false, error: 'Cannot update link after match started' }, 400);
+        if (!['waiting', 'drafting', 'in_progress'].includes(match.status as string)) {
+            return c.json({ success: false, error: 'Cannot update link after match completed/cancelled' }, 400);
         }
 
         await c.env.DB.prepare(

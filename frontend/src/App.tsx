@@ -30,7 +30,7 @@ const RewardsPage = lazy(() => import("./components/RewardsPage"));
 
 // Placeholder components (to be implemented)
 const DailyRewards = () => <div className="placeholder-card border border-white/5 bg-white/5 rounded-xl p-6 flex items-center justify-center text-muted-foreground italic h-full">Daily Rewards - Coming Soon</div>;
-const MapBanPage = (_props: any) => <div className="placeholder-page">Map Ban - Coming Soon</div>;
+
 const MatchLobbyPage = lazy(() => import("./components/LobbyDetailPage"));
 
 interface User {
@@ -48,12 +48,7 @@ interface User {
   gold?: number;
 }
 
-interface PartyMember {
-  id: string;
-  username: string;
-  avatar?: string;
-  elo?: number;
-}
+
 
 // Inner App component that uses WebSocket context
 function AppContent() {
@@ -70,7 +65,7 @@ function AppContent() {
 
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [user, setUser] = useState<User | null>(null);
-  const [lobbyPartyMembers, setLobbyPartyMembers] = useState<PartyMember[]>([]);
+
   const [showNicknameModal, setShowNicknameModal] = useState(false);
   const [inviteNotification, setInviteNotification] = useState<{
     fromUser: any;
@@ -108,7 +103,7 @@ function AppContent() {
   }, []);
 
   const handleNavigate = useCallback((page: string) => {
-    const matchPages = ["mapban", "matchgame"];
+    const matchPages = ["matchgame"];
 
     setCurrentPage(prev => {
       // Logic for navigating away from matches
@@ -282,13 +277,8 @@ function AppContent() {
       if (lastMessage.lobbyId) {
         setActiveLobbyId(lastMessage.lobbyId);
         if (lastMessage.players && Array.isArray(lastMessage.players)) {
-          const players = lastMessage.players.map((p: any) => ({
-            id: p.id || p.discord_id,
-            username: p.username || p.name || "Unknown",
-            avatar: p.avatar || p.avatar_url,
-            elo: p.elo || 1000,
-          }));
-          setLobbyPartyMembers(players);
+
+
 
           if (user && user.id) {
             const isUserInMatch = lastMessage.players.some((p: any) =>
@@ -296,7 +286,7 @@ function AppContent() {
               (p.discord_id && String(p.discord_id) === String(user.id))
             );
             if (isUserInMatch && navigatedAwayLobbyId !== lastMessage.lobbyId) {
-              // Directly go to matchgame, skip mapban
+              // Directly go to matchgame
               setCurrentPage("matchgame");
               setNavigatedAwayLobbyId(null);
             }
@@ -324,20 +314,9 @@ function AppContent() {
         if (lastMessage.type === "LOBBY_UPDATE") {
           setMatchData({ type: "LOBBY_UPDATE", lobby: lobby, matchData: lobby });
         }
-        if (lobby.players && Array.isArray(lobby.players)) {
-          const players = lobby.players.map((p: any) => ({
-            id: p.id || p.discord_id,
-            username: p.username || p.name || "Unknown",
-            avatar: p.avatar || p.avatar_url,
-            elo: p.elo || 1000,
-          }));
-          setLobbyPartyMembers(players);
-        }
+
         if (navigatedAwayLobbyId !== lobby.id) {
           if (lobby.serverInfo && currentPage !== "matchgame") {
-            setCurrentPage("matchgame");
-          } else if (lobby.mapBanState?.mapBanPhase) {
-            // SKIP MAP BAN (User Request) -> Force matchgame
             setCurrentPage("matchgame");
           }
         }
@@ -348,10 +327,10 @@ function AppContent() {
       lastMessage.type === "MATCH_STATE_ERROR" ||
       lastMessage.type === "LEAVE_MATCH_SUCCESS") {
       setActiveLobbyId(undefined);
-      setLobbyPartyMembers([]);
+
       setMatchData(null);
       setNavigatedAwayLobbyId(null);
-      if (["mapban", "matchgame"].includes(currentPage)) {
+      if (["matchgame"].includes(currentPage)) {
         setCurrentPage("matchmaking");
       }
     }
@@ -445,7 +424,7 @@ function AppContent() {
 
   const validPages = [
     "home", "profile", "leaderboard", "rewards", "friends",
-    "matchmaking", "moderator", "admin", "vip", "join_gate", "mapban", "matchgame", "streamers", "streamer-dashboard", "clans", "clan-profile", "gold-dashboard"
+    "matchmaking", "moderator", "admin", "vip", "join_gate", "matchgame", "streamers", "streamer-dashboard", "clans", "clan-profile", "gold-dashboard"
   ];
 
   if (!validPages.includes(currentPage)) return <NotFoundPage onGoHome={handleGoHome} />;
@@ -522,16 +501,10 @@ function AppContent() {
               targetMatchId={targetMatchId}
             />
           )}
-          {currentPage === "mapban" && (
-            <MapBanPage
-              partyMembers={lobbyPartyMembers}
-              onCancel={() => handleNavigate("home")}
-              onReadyPhaseStart={() => setCurrentPage("matchgame")}
-            />
-          )}
+
           {currentPage === "matchgame" && (
             <MatchLobbyPage
-              matchId={matchData?.lobby?.id || matchData?.matchData?.id || matchData?.id || ""}
+              matchId={matchData?.lobby?.id || matchData?.matchData?.id || matchData?.id || activeLobbyId || ""}
               user={user}
               backendUrl={import.meta.env.VITE_BACKEND_URL || "http://localhost:8787"}
               onBack={() => handleNavigate("home")}
@@ -540,7 +513,7 @@ function AppContent() {
         </Suspense>
       </main>
 
-      {user && currentPage !== "matchgame" && currentPage !== "mapban" && (
+      {user && currentPage !== "matchgame" && (
         <Chat variant="floating" />
       )}
 

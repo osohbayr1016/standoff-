@@ -80,6 +80,7 @@ interface Lobby {
   matchType?: string;
   status?: string;
   startedAt?: number;
+  lobby_url?: string;
 }
 
 interface ChatMessage {
@@ -394,6 +395,16 @@ export class MatchQueueDO {
       // Broadcast to LOBBY clients
       if (mapBanFinished) {
         // Match Started
+        // FETCH FRESH DATA (URL might have changed)
+        try {
+          const freshData = await this.env.DB.prepare("SELECT lobby_url FROM matches WHERE id = ?").bind(lobby.id).first();
+          if (freshData && freshData.lobby_url) {
+            lobby.lobby_url = freshData.lobby_url as string;
+          }
+        } catch (e) {
+          console.error("Failed to refresh lobby url in auto-pick", e);
+        }
+
         this.broadcastToLobby(lobby.id, JSON.stringify({
           type: 'MATCH_START',
           lobbyId: lobby.id,
@@ -401,6 +412,18 @@ export class MatchQueueDO {
           matchData: lobby,
           serverInfo: lobby.serverInfo
         }));
+
+        // Broadcast LOBBY_UPDATE with new status
+        await this.env.MATCH_QUEUE.get(this.env.MATCH_QUEUE.idFromName('global-matchmaking-v2')).fetch('http://do/broadcast', {
+          method: 'POST',
+          body: JSON.stringify({
+            type: 'LOBBY_UPDATE',
+            lobbyId: lobby.id,
+            lobby: lobby
+          })
+        });
+
+        console.log(`✅ [${lobby.id}] Draft Complete (Auto/Bot). Match Started.`);
       } else {
         // Server Ready (waiting for ready phase?)
         this.broadcastToLobby(lobby.id, JSON.stringify({
@@ -1669,6 +1692,9 @@ export class MatchQueueDO {
 
               lobby.draftState.pickHistory.push({ pickerId: currentUserId!, pickedId: pickedPlayer.id });
 
+              // PERSISTENCE: Save state after every pick to prevent data loss on DO restart
+              await this.saveMatchState();
+
 
               // Update Turn
               const nextTurnIndex = lobby.draftState.pickHistory.length;
@@ -1678,8 +1704,61 @@ export class MatchQueueDO {
               } else {
                 // Draft Complete
                 lobby.draftState.isActive = false;
-                lobby.status = 'started'; // Skip Map Ban
-                lobby.startedAt = Date.now(); // RESET TIMER for match duration
+                lobby.status = 'in_progress'; // CORRECT STATUS
+                lobby.startedAt = Date.now();
+                if (!(lobby as any).selectedMap) (lobby as any).selectedMap = "Sandstone";
+
+                // FETCH FRESH DATA (URL might have changed)
+                try {
+                  const freshData = await this.env.DB.prepare("SELECT lobby_url FROM matches WHERE id = ?").bind(lobbyId).first();
+                  if (freshData && freshData.lobby_url) {
+                    lobby.lobby_url = freshData.lobby_url as string;
+                  }
+                } catch (e) {
+                  console.error("Failed to refresh lobby url", e);
+                }
+
+                // START MATCH: Migrate drafted teams to main player list
+                // 1. Tag players
+                lobby.teamA.forEach(p => p.team = 'alpha');
+                lobby.teamB.forEach(p => p.team = 'bravo');
+
+                // 2. Update lobby.players
+                lobby.players = [...lobby.teamA, ...lobby.teamB];
+
+                // 3. Update DB: Status -> in_progress
+                try {
+                  await this.env.DB.prepare("UPDATE matches SET status = 'in_progress', updated_at = datetime('now') WHERE id = ?")
+                    .bind(lobbyId).run();
+
+                  // 4. Update DB: Persist Players & Teams
+                  await this.env.DB.prepare("DELETE FROM match_players WHERE match_id = ?").bind(lobbyId).run();
+
+                  const stmt = this.env.DB.prepare(`
+                    INSERT INTO match_players (id, match_id, player_id, team, is_captain, elo, created_at, joined_at)
+                    VALUES (?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+                  `);
+
+                  const batch = lobby.players.map(p => {
+                    const isCaptain = (p.id === lobby.captainA.id || p.id === lobby.captainB.id) ? 1 : 0;
+                    const team = p.team || (lobby.teamA.find(x => x.id === p.id) ? 'alpha' : 'bravo');
+
+                    return stmt.bind(
+                      crypto.randomUUID(),
+                      lobbyId,
+                      p.id || p.player_id || p.discord_id,
+                      team,
+                      isCaptain,
+                      p.elo || 1000
+                    );
+                  });
+
+                  await this.env.DB.batch(batch);
+                  console.log(`✅ [${lobbyId}] Persisted ${lobby.players.length} drafted players to DB (Manual Pick).`);
+
+                } catch (e) {
+                  console.error(`❌ [${lobbyId}] FAILED to persist match start state (Manual):`, e);
+                }
 
                 this.broadcastToLobby(lobbyId, JSON.stringify({
                   type: 'MATCH_START',
@@ -1768,6 +1847,9 @@ export class MatchQueueDO {
     else lobby.teamB.push(pickedPlayer);
 
     lobby.draftState.pickHistory.push({ pickerId: captain.id, pickedId: pickedPlayer.id });
+
+    // PERSISTENCE: Save state after every pick to prevent data loss on DO restart
+    await this.saveMatchState();
 
     // Advance Turn
     const nextTurnIndex = lobby.draftState.pickHistory.length;

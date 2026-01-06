@@ -236,7 +236,7 @@ function Header({
           </Button>
 
           {/* Active Match Indicator */}
-          {user && activeLobbyId && (currentPage !== 'matchgame' && currentPage !== 'mapban') && (
+          {user && activeLobbyId && (currentPage !== 'matchgame') && (
             <Button
               variant="outline"
               size="sm"
