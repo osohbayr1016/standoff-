@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
+import { logToDatadog } from './utils/logger';
 import { drizzle } from 'drizzle-orm/d1';
 import { eq } from 'drizzle-orm';
 import { players } from './db/schema';
@@ -20,7 +21,8 @@ import { clanRequestsRoutes } from './routes/clan-requests';
 import goldRoutes from './routes/gold';
 import rewardsRoutes from './routes/rewards';
 import { syncDiscordMembers } from './utils/sync';
-import { TIERS, updateDiscordRole } from './utils/discord';
+import { updateDiscordRole, TIERS, sendDiscordMessage } from './utils/discord';
+import { checkStaleMatches } from './tasks/match-reminder';
 
 
 // ============= Type Definitions =============
@@ -31,18 +33,12 @@ interface QueuePlayer {
   name?: string;
   avatar?: string | null;
   elo?: number;
+  // Extended properties for match/lobby
+  team?: 'alpha' | 'bravo';
+  player_id?: string;
 }
 
-interface MapBanState {
-  bannedMaps: string[];
-  currentBanTeam: 'alpha' | 'bravo';
-  banHistory: Array<{ team: 'alpha' | 'bravo'; map: string; timestamp: number }>;
-  selectedMap?: string;
-  mapBanPhase: boolean;
-  lastBanTimestamp?: number;
-  currentTurnStartTimestamp?: number;
-  banTimeout: number;
-}
+
 
 interface ReadyPhaseState {
   phaseActive: boolean;
@@ -59,6 +55,16 @@ interface ServerInfo {
   note?: string;
 }
 
+interface DraftState {
+  isActive: boolean;
+  pool: QueuePlayer[];
+  currentTurn: 'captainA' | 'captainB';
+  pickOrder: ('captainA' | 'captainB')[]; // Snake: A, B, B, A, A, B, B, A
+  pickHistory: { pickerId: string; pickedId: string }[];
+  draftTimeout: number;
+  lastPickTimestamp: number;
+}
+
 interface Lobby {
   id: string;
   players: QueuePlayer[];
@@ -67,8 +73,9 @@ interface Lobby {
   teamA: QueuePlayer[];
   teamB: QueuePlayer[];
   readyPlayers: string[];
-  mapBanState: MapBanState;
+
   readyPhaseState: ReadyPhaseState;
+  draftState?: DraftState;
   serverInfo?: ServerInfo;
   matchType?: string;
   status?: string;
@@ -102,6 +109,7 @@ interface Env {
   NEATQUEUE_WEBHOOK_SECRET?: string;
   ADMIN_SECRET?: string;
   TURNSTILE_SECRET_KEY?: string;
+  DD_API_KEY?: string;
 }
 
 interface WebhookData {
@@ -126,7 +134,11 @@ export class MatchQueueDO {
 
 
 
-  constructor(public state: DurableObjectState, public env: Env) { }
+  constructor(public state: DurableObjectState, public env: Env) {
+    this.state.blockConcurrencyWhile(async () => {
+      await this.loadMatchState();
+    });
+  }
 
 
   async fetch(request: Request) {
@@ -155,27 +167,123 @@ export class MatchQueueDO {
       }
 
       // Handle LOBBY_ACTION relay from Hono routes
+      if (body.type === 'START_DRAFT') {
+        const { matchId, captainAlpha, captainBravo, players } = body.data;
+        console.log(`Draft Starting for ${matchId}`);
+
+        let lobby = this.activeLobbies.get(matchId);
+
+        // If lobby doesn't exist in DO (e.g. manual create), sync it
+        if (!lobby && players) {
+          lobby = {
+            id: matchId,
+            players: players,
+            captainA: captainAlpha,
+            captainB: captainBravo,
+            teamA: [captainAlpha],
+            teamB: [captainBravo],
+            readyPlayers: [],
+
+            readyPhaseState: { phaseActive: false, readyPlayers: [], readyPhaseTimeout: 30 },
+            matchType: 'competitive', // assume comp/league
+            status: 'drafting',
+            startedAt: Date.now()
+          } as any;
+          this.activeLobbies.set(matchId, lobby!);
+        }
+
+        if (lobby) {
+
+
+          const pool = players.filter((p: any) =>
+            p.id !== captainAlpha.player_id &&
+            p.discord_id !== captainAlpha.player_id &&
+            p.id !== captainBravo.player_id &&
+            p.discord_id !== captainBravo.player_id
+          ).map((p: any) => ({ ...p, id: p.player_id || p.id })); // Ensure ID normalization
+
+          lobby.status = 'drafting';
+          lobby.captainA = captainAlpha;
+          lobby.captainB = captainBravo;
+
+          // CRITICAL: Ensure other phases are disabled to prevent Alarm from cancelling
+          if (lobby.readyPhaseState) lobby.readyPhaseState.phaseActive = false;
+
+
+          lobby.captainA = captainAlpha;
+          lobby.captainB = captainBravo;
+          // Explicit IDs for frontend
+          (lobby as any).captain_alpha_id = captainAlpha.player_id || captainAlpha.id;
+          (lobby as any).captain_bravo_id = captainBravo.player_id || captainBravo.id;
+
+          lobby.teamA = [captainAlpha];
+          lobby.teamB = [captainBravo];
+
+          lobby.draftState = {
+            isActive: true,
+            pool: pool,
+            currentTurn: 'captainA',
+            pickOrder: ['captainA', 'captainB', 'captainB', 'captainA', 'captainA', 'captainB', 'captainB', 'captainA'],
+            pickHistory: [],
+            draftTimeout: 15,
+            lastPickTimestamp: Date.now()
+          };
+
+          await this.saveMatchState();
+
+          this.broadcastToLobby(matchId, JSON.stringify({
+            type: 'DRAFT_START',
+            lobbyId: matchId,
+            draftState: lobby.draftState,
+            captainA: lobby.captainA,
+            captainB: lobby.captainB,
+            captainAlphaId: (lobby as any).captain_alpha_id,
+            captainBravoId: (lobby as any).captain_bravo_id
+          }));
+
+          // Trigger Bot/Auto Pick if First Captain is Bot
+          this.executeAutoPick(matchId, true).catch(console.error);
+        }
+      }
+
       if (body.type === 'LOBBY_ACTION') {
         const { userIds, type, matchId, players, ...msgData } = body.data;
 
         // Sync manual lobby state to DO for chat/real-time support
         if (matchId && players) {
-          this.activeLobbies.set(matchId, {
-            id: matchId,
-            players: players,
-            // Minimal lobby object for manual matches
-            captainA: players[0],
-            captainB: players[1] || players[0],
-            teamA: players.filter((p: any) => p.team === 'alpha'),
-            teamB: players.filter((p: any) => p.team === 'bravo'),
-            readyPlayers: [],
-            mapBanState: { bannedMaps: [], currentBanTeam: 'alpha', banHistory: [], mapBanPhase: false, banTimeout: 15 },
-            readyPhaseState: { phaseActive: false, readyPlayers: [], readyPhaseTimeout: 30 },
-            matchType: msgData.matchType,
-            status: msgData.status,
-            startedAt: msgData.startedAt
-          } as any);
-          console.log(`📌 Synced manual lobby ${matchId} with ${players.length} players`);
+          const existingLobby = this.activeLobbies.get(matchId);
+
+          if (existingLobby) {
+            // MERGE UPDATE
+            // Update player list, status, team/captain mapping if provided
+            // Careful not to wipe draftState or mapBanState
+            existingLobby.players = players;
+            if (msgData.status) existingLobby.status = msgData.status;
+            if (msgData.teamA) existingLobby.teamA = msgData.teamA;
+            if (msgData.teamB) existingLobby.teamB = msgData.teamB;
+            // Ensure captains are updated if players changed? 
+            // Usually LOBBY_ACTION comes from join/leave which might shift captain if captain left.
+            // But for Immortal, captain is fixed.
+
+            console.log(`📌 Updated existing lobby ${matchId} (DraftState: ${!!existingLobby.draftState})`);
+          } else {
+            // CREATE NEW (Minimal)
+            this.activeLobbies.set(matchId, {
+              id: matchId,
+              players: players,
+              captainA: players[0],
+              captainB: players[1] || players[0],
+              teamA: players.filter((p: any) => p.team === 'alpha'),
+              teamB: players.filter((p: any) => p.team === 'bravo'),
+              readyPlayers: [],
+              mapBanState: { bannedMaps: [], currentBanTeam: 'alpha', banHistory: [], mapBanPhase: false, banTimeout: 15 },
+              readyPhaseState: { phaseActive: false, readyPlayers: [], readyPhaseTimeout: 30 },
+              matchType: msgData.matchType,
+              status: msgData.status,
+              startedAt: msgData.startedAt
+            } as any);
+            console.log(`📌 Synced NEW manual lobby ${matchId} with ${players.length} players`);
+          }
         }
 
         if (Array.isArray(userIds)) {
@@ -281,8 +389,7 @@ export class MatchQueueDO {
       // Save state
       await this.saveMatchState();
 
-      // Check if Map Ban is finished (Skip Ready Phase)
-      const mapBanFinished = !lobby.mapBanState?.mapBanPhase;
+      const mapBanFinished = true;
 
       // Broadcast to LOBBY clients
       if (mapBanFinished) {
@@ -290,7 +397,7 @@ export class MatchQueueDO {
         this.broadcastToLobby(lobby.id, JSON.stringify({
           type: 'MATCH_START',
           lobbyId: lobby.id,
-          selectedMap: lobby.mapBanState?.selectedMap,
+          selectedMap: "Sandstone",
           matchData: lobby,
           serverInfo: lobby.serverInfo
         }));
@@ -374,22 +481,50 @@ export class MatchQueueDO {
   initialized: boolean = false; // Track if we've loaded from storage
 
   // Load match state from storage
+  // Load match state from storage
   async loadMatchState() {
     try {
-      const savedState = await this.state.storage.get<{
-        lobbies: [string, Lobby][],
-        playerMap: [string, string][]
-      }>('matchState_v2');
-
-      if (savedState) {
-        this.activeLobbies = new Map(savedState.lobbies);
-        this.playerLobbyMap = new Map(savedState.playerMap);
-        console.log(`✅ Loaded ${this.activeLobbies.size} active lobbies from storage.`);
-      } else {
-        // Fallback: Check legacy state and migrate if possible? 
-        // For now, clean slate is better for major refactor.
-        console.log('ℹ️ No v2 match state found, starting fresh.');
+      // 1. Load Player Map
+      const playerMap = await this.state.storage.get<[string, string][]>('playerMap_v2');
+      if (playerMap) {
+        this.playerLobbyMap = new Map(playerMap);
       }
+
+      // 2. Load Lobbies Individually (Sharding)
+      const lobbyList = await this.state.storage.list<Lobby>({ prefix: 'lobby_' });
+      this.activeLobbies = new Map();
+
+      if (lobbyList.size > 0) {
+        for (const [key, lobby] of lobbyList) {
+          if (lobby && lobby.id) {
+            this.activeLobbies.set(lobby.id, lobby);
+          }
+        }
+        console.log(`✅ Loaded ${this.activeLobbies.size} active lobbies from storage (Sharded).`);
+      } else {
+        // FALLBACK / MIGRATION: Check for legacy monolithic state matching `matchState_v2`
+        // This attempts to recover matches that were hidden by the update.
+        try {
+          const legacyState = await this.state.storage.get<{ lobbies: [string, Lobby][] }>('matchState_v2');
+          if (legacyState && legacyState.lobbies && legacyState.lobbies.length > 0) {
+            console.log(`⚠️ Found legacy match state with ${legacyState.lobbies.length} lobbies. Migrating...`);
+            this.activeLobbies = new Map(legacyState.lobbies);
+
+            // Immediately save in new format
+            await this.saveMatchState();
+
+            // Optional: Delete legacy key after successful migration to freeing space
+            // await this.state.storage.delete('matchState_v2');
+            console.log(`✅ Migration complete. Recovered ${this.activeLobbies.size} lobbies.`);
+          }
+        } catch (migErr) {
+          console.error('❌ Migration failed (likely too large):', migErr);
+        }
+      }
+
+      // Legacy cleanup (optional: remove old monolithic key if exists)
+      // await this.state.storage.delete('matchState_v2'); 
+
     } catch (error) {
       console.error('❌ Error loading match state:', error);
     }
@@ -399,15 +534,51 @@ export class MatchQueueDO {
   // Save match state to storage
   async saveMatchState() {
     try {
-      // Serialize Maps to Arrays for JSON storage
-      await this.state.storage.put('matchState_v2', {
-        lobbies: Array.from(this.activeLobbies.entries()),
-        playerMap: Array.from(this.playerLobbyMap.entries())
-      });
-      console.log(`💾 Saved state: ${this.activeLobbies.size} lobbies, ${this.playerLobbyMap.size} players.`);
+      // 1. Save Player Map (This is still small-ish, map of IDs)
+      // If this gets too big, we might need to shard it too, but for 1000 users it's <100KB (1000 * 64 bytes = 64KB)
+      await this.state.storage.put('playerMap_v2', Array.from(this.playerLobbyMap.entries()));
+
+      // 2. Save Lobbies Individually
+      // We use put() for each lobby. 
+      // Optimization: Only save modified lobbies? For now, simpler to save all active ones, 
+      // but 'put' supports multiple entries. 
+      // LIMIT: 128KB per value. 'put' args: { key: value, ... }
+
+      const storageObject: Record<string, Lobby> = {};
+
+      // We need to handle excessive put size (total payload limit).
+      // Durable Object put() takes an object. 
+      // If we put 10 lobbies, and they are huge, the total transaction might trigger a limit?
+      // DO transaction limit is fairly high using `storage.put({ ... })`.
+      // But let's be safe: save critical lobbies.
+
+      for (const [id, lobby] of this.activeLobbies) {
+        storageObject[`lobby_${id}`] = lobby;
+      }
+
+      if (Object.keys(storageObject).length > 0) {
+        await this.state.storage.put(storageObject);
+      }
+
+      // 3. Handle Deletions?
+      // If a lobby is removed from this.activeLobbies, we must DELETE it from storage.
+      // We need to track what is currently in storage vs active.
+      // Simplified: We list all 'lobby_' keys, and if they are not in activeLobbies, delete them.
+
+      // This "Diff" logic is expensive. 
+      // Better approach: When we delete from activeLobbies, we delete from storage explicitly.
+      // See: deleteLobby() helper (TODO: implement and use in alarm/leave/cancel)
+
+      console.log(`💾 Saved state: ${this.activeLobbies.size} lobbies.`);
+
     } catch (error) {
       console.error('❌ Error saving match state:', error);
     }
+  }
+
+  // Helper to delete a lobby from storage
+  async deleteLobbyFromStorage(lobbyId: string) {
+    await this.state.storage.delete(`lobby_${lobbyId}`);
   }
 
   async alarm() {
@@ -428,50 +599,20 @@ export class MatchQueueDO {
       // 2. LOBBY TIMEOUT CHECKS
       for (const [lobbyId, lobby] of this.activeLobbies) {
         try {
-          const banState = lobby.mapBanState;
+
+
+          // C. DRAFT PHASE TIMEOUT
+          // C. DRAFT PHASE TIMEOUT
+          const draftState = lobby.draftState;
           const readyState = lobby.readyPhaseState;
 
-          // A. MAP BAN
-          if (banState?.mapBanPhase) {
-            const lastActivity = banState.currentTurnStartTimestamp || banState.lastBanTimestamp || Date.now();
+          if (draftState?.isActive) {
+            const lastActivity = draftState.lastPickTimestamp || Date.now();
             const elapsed = (Date.now() - lastActivity) / 1000;
-            if (elapsed > (banState.banTimeout + 5)) {
-              // Auto Ban Logic
-              console.log(`⏰ [${lobbyId}] Auto-banning map...`);
-              const ALL_MAPS = ['Hanami', 'Rust', 'Zone 7', 'Dune', 'Breeze', 'Province', 'Sandstone'];
-              const availableMaps = ALL_MAPS.filter(m => !banState.bannedMaps.includes(m));
 
-              if (availableMaps.length > 0) {
-                const randomMap = availableMaps[Math.floor(Math.random() * availableMaps.length)];
-                banState.bannedMaps.push(randomMap);
-                banState.banHistory.push({
-                  team: banState.currentBanTeam,
-                  map: randomMap,
-                  timestamp: Date.now(),
-                  // isAutoBan: true // Removed type error
-                });
-                banState.currentBanTeam = banState.currentBanTeam === 'alpha' ? 'bravo' : 'alpha';
-                banState.currentTurnStartTimestamp = Date.now();
-
-                // End condition
-                if (banState.bannedMaps.length >= 6) {
-                  const finalMap = ALL_MAPS.find(m => !banState.bannedMaps.includes(m));
-                  banState.selectedMap = finalMap;
-                  banState.mapBanPhase = false;
-
-                  // Skip Ready Phase -> Go Straight to Match Lobby (Allocating Resources if needed)
-                  if (finalMap) { // Type check (ensure string)
-                    this.broadcastToLobby(lobbyId, JSON.stringify({
-                      type: 'MATCH_START',
-                      lobbyId: lobbyId,
-                      selectedMap: finalMap,
-                      matchData: lobby,
-                      serverInfo: lobby.serverInfo // Might be null, processed by UI
-                    }));
-                  }
-                }
-                await this.broadcastLobbyUpdate(lobbyId);
-              }
+            if (elapsed > (draftState.draftTimeout + 0.5)) { // +0.5s buffer
+              console.log(`⏰ [${lobbyId}] Draft timeout. Auto-picking...`);
+              await this.executeAutoPick(lobbyId, false); // false = triggered by timeout
             }
           }
 
@@ -496,7 +637,7 @@ export class MatchQueueDO {
                 this.broadcastToLobby(lobbyId, JSON.stringify({
                   type: 'MATCH_START',
                   lobbyId: lobby.id,
-                  selectedMap: lobby.mapBanState?.selectedMap,
+                  selectedMap: "Sandstone",
                   matchData: lobby,
                   serverInfo: lobby.serverInfo
                 }));
@@ -527,6 +668,8 @@ export class MatchQueueDO {
 
 
           // C. CASUAL MATCH AUTO-DELETE (15 Minutes)
+          // C. CASUAL MATCH AUTO-DELETE (15 Minutes)
+          // STRICT CHECK: Only if matchType is explicitly casual
           if (lobby.matchType === 'casual' && lobby.status === 'in_progress' && lobby.startedAt) {
             const elapsed = (Date.now() - lobby.startedAt) / 1000;
             const timeout = 15 * 60; // 15 minutes
@@ -551,12 +694,12 @@ export class MatchQueueDO {
 
               // 3. Clean up Memory
               this.activeLobbies.delete(lobbyId);
+              await this.deleteLobbyFromStorage(lobbyId); // Clean from storage
               lobby.players.forEach(p => {
                 const pid = p.id || p.discord_id;
                 if (pid) this.playerLobbyMap.delete(pid);
               });
 
-              await this.saveMatchState();
               console.log(`🗑️ [${lobbyId}] Casual match deleted due to 10m timeout.`);
             }
           }
@@ -595,7 +738,7 @@ export class MatchQueueDO {
       // Reschedule - THROTTLED to 3 seconds for general status updates
       const shouldReschedule = this.activeLobbies.size > 0 || this.localQueue.size > 0 || this.sessions.size > 0;
       if (shouldReschedule) {
-        await this.state.storage.setAlarm(Date.now() + 3000);
+        await this.state.storage.setAlarm(Date.now() + 1000);
       }
     }
 
@@ -646,49 +789,119 @@ export class MatchQueueDO {
     const captain1 = players[0];
     const captain2 = players[1] || players[0]; // Fallback if 1 player (debug)
 
-    const teamA: QueuePlayer[] = [];
-    const teamB: QueuePlayer[] = [];
+    // 3. Draft or Default Logic
+    // Snake Draft (ABBA) Distribution if League/Comp
+    const isDraftMode = players.length === 10; // Only draft 5v5 for now? Or check matchType if passed. 
+    // Wait, startMatch doesn't receive matchType yet. Assuming all 10-player queues are competitive for now or defaulting.
+    // For now, let's enable draft for ALL 10-player matches to test feature, or based on queue logic.
+    // Given user request "league and competetive matches", let's assume we want this flow.
 
-    // 3. Snake Draft (ABBA) Distribution
-    // Indices: 0(A), 1(B), 2(B), 3(A), 4(A), 5(B)...
-    // This balances high/low skill players naturally.
-    for (let i = 0; i < players.length; i++) {
-      const patternIndex = i % 4;
-      if (patternIndex === 0 || patternIndex === 3) {
-        teamA.push(players[i]);
-      } else {
-        teamB.push(players[i]);
-      }
+    // Logic: If plain match, do random. If draft, init draft.
+    // Let's force Draft for testing as user requested "do it".
+
+    const teamA: QueuePlayer[] = [captain1];
+    const teamB: QueuePlayer[] = [captain2];
+    const pool = players.filter(p => p.id !== captain1.id && p.id !== captain2.id); // Remaining 8
+
+    let draftState: DraftState | undefined;
+    let status = 'map_ban'; // Default unless draft
+
+    if (true) { // Force Draft for now
+      status = 'drafting';
+      draftState = {
+        isActive: true,
+        pool: pool,
+        currentTurn: 'captainA', // A picks 1st
+        // Snake: A(1), B(2), B(3), A(4), A(5), B(6), B(7), A(8) -> Indices 0..7
+        pickOrder: ['captainA', 'captainB', 'captainB', 'captainA', 'captainA', 'captainB', 'captainB', 'captainA'],
+        pickHistory: [],
+        draftTimeout: 15,
+        lastPickTimestamp: Date.now()
+      };
+
+      // Kickstart Alarm
+      this.state.storage.setAlarm(Date.now() + 1000);
+      // Clear team arrays except captains (already there)
+    } else {
+      // ... Old Snake Logic ...
     }
 
-    const sortedPlayers = [...teamA, ...teamB];
     const lobbyId = crypto.randomUUID();
+    const sortedPlayers = players; // Alias for compatibility with existing code
 
     const newLobby: Lobby = {
       id: lobbyId,
-      players: sortedPlayers,
+      players: players,
       captainA: captain1,
       captainB: captain2,
       teamA: teamA,
       teamB: teamB,
       readyPlayers: [],
-      mapBanState: {
-        bannedMaps: [],
-        currentBanTeam: 'alpha',
-        banHistory: [],
-        selectedMap: undefined,
-        mapBanPhase: true,
-        lastBanTimestamp: undefined,
-        currentTurnStartTimestamp: Date.now(),
-        banTimeout: 15
-      },
+      draftState: draftState,
+      status: status,
+
       readyPhaseState: {
         phaseActive: false,
         readyPlayers: [],
         readyPhaseStartTimestamp: undefined,
+
         readyPhaseTimeout: 30
-      }
+      },
+      matchType: 'league' // Default to league for drafted matches to enable result submission
     };
+
+    // CLEANUP: Force cancel any existing active matches for this host to prevent "Zombie" matches
+    try {
+      const zombieResult = await this.env.DB.prepare(`
+        UPDATE matches 
+        SET status = 'cancelled', updated_at = datetime('now') 
+        WHERE host_id = ? AND status IN ('waiting', 'drafting', 'in_progress')
+      `).bind(captain1.id).run();
+
+      if (zombieResult.meta.changes > 0) {
+        console.warn(`⚠️ [startMatch] Force-cancelled ${zombieResult.meta.changes} zombie matches for host ${captain1.id}`);
+      }
+    } catch (e) {
+      console.error('Failed to cleanup zombie matches', e);
+    }
+
+    // Persist to D1 Database (CRITICAL: Moderator Panel queries this)
+    try {
+      await this.env.DB.prepare(`
+        INSERT INTO matches (
+          id, host_id, lobby_url, map_name, status, match_type, max_players,
+          captain_alpha_id, captain_bravo_id, alpha_avg_elo, bravo_avg_elo, created_at, updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+      `).bind(
+        lobbyId,
+        captain1.id,
+        'standoff2://lobby/drafted', // Placeholder
+        'Sandstone', // Default map
+        status, // 'drafting'
+        'league',
+        10,
+        captain1.id,
+        captain2.id,
+        Math.floor(teamA.reduce((sum, p) => sum + (p.elo || 1000), 0) / Math.max(1, teamA.length)),
+        Math.floor(teamB.reduce((sum, p) => sum + (p.elo || 1000), 0) / Math.max(1, teamB.length))
+      ).run();
+
+      // Insert initial players (captains) into match_players
+      const playerStmt = this.env.DB.prepare(`
+        INSERT INTO match_players (id, match_id, player_id, team, role, elo, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+      `);
+
+      await this.env.DB.batch([
+        playerStmt.bind(crypto.randomUUID(), lobbyId, captain1.id, 'alpha', 'captain', captain1.elo || 1000),
+        playerStmt.bind(crypto.randomUUID(), lobbyId, captain2.id, 'bravo', 'captain', captain2.elo || 1000)
+      ]);
+
+      console.log(`✅ [${lobbyId}] Persisted drafted match to D1`);
+    } catch (e) {
+      console.error('Failed to persist drafted match to D1:', e);
+    }
 
     // Store in Active Lobbies
     this.activeLobbies.set(lobbyId, newLobby);
@@ -898,61 +1111,7 @@ export class MatchQueueDO {
         }
 
         // 4. BAN_MAP
-        if (msg.type === 'BAN_MAP') {
-          const userId = currentUserId;
-          if (!userId) return;
 
-          const lobbyId = this.playerLobbyMap.get(userId);
-          const lobby = lobbyId ? this.activeLobbies.get(lobbyId) : null;
-
-          if (lobby && lobby.mapBanState?.mapBanPhase) {
-            const { map, team } = msg;
-            const banState = lobby.mapBanState;
-
-            // Security: Check Turn & Captain
-            if (banState.currentBanTeam !== team) return; // Wrong turn
-
-            const captain = banState.currentBanTeam === 'alpha' ? lobby.captainA : lobby.captainB;
-            const isCaptain = (captain.id === userId || captain.discord_id === userId) || userId === 'discord-bot';
-
-            if (!isCaptain) return; // Unauthorized
-
-            // Apply Ban
-            if (map && !banState.bannedMaps.includes(map)) {
-              banState.bannedMaps.push(map);
-              banState.banHistory.push({ team, map, timestamp: Date.now() });
-              banState.lastBanTimestamp = Date.now();
-
-              // Logic for End Phase
-              const ALL_MAPS = ['Hanami', 'Rust', 'Zone 7', 'Dune', 'Breeze', 'Province', 'Sandstone'];
-              if (banState.bannedMaps.length >= 6) {
-                const remaining = ALL_MAPS.find(m => !banState.bannedMaps.includes(m));
-                if (remaining) {
-                  banState.selectedMap = remaining;
-                  banState.mapBanPhase = false;
-
-                  // Start Ready
-                  lobby.readyPhaseState.phaseActive = true;
-                  lobby.readyPhaseState.readyPhaseStartTimestamp = Date.now();
-                  lobby.readyPhaseState.readyPhaseTimeout = 30;
-
-                  // Notify
-                  this.broadcastToLobby(lobby.id, JSON.stringify({
-                    type: 'READY_PHASE_STARTED',
-                    lobbyId: lobby.id,
-                    selectedMap: remaining,
-                    readyPhaseTimeout: 30
-                  }));
-                }
-              } else {
-                // Switch Turn
-                banState.currentBanTeam = banState.currentBanTeam === 'alpha' ? 'bravo' : 'alpha';
-                banState.currentTurnStartTimestamp = Date.now();
-              }
-              await this.broadcastLobbyUpdate(lobby.id);
-            }
-          }
-        }
 
         // 5. PLAYER_READY
         if (msg.type === 'PLAYER_READY') {
@@ -981,7 +1140,7 @@ export class MatchQueueDO {
                   botWs.send(JSON.stringify({
                     type: 'CREATE_MATCH',
                     lobbyId: lobby.id,
-                    matchData: { ...lobby, map: lobby.mapBanState?.selectedMap }
+                    matchData: { ...lobby, map: "Sandstone" }
                   }));
                 }
               }
@@ -992,20 +1151,29 @@ export class MatchQueueDO {
 
         // 6. REQUEST_MATCH_STATE
         if (msg.type === 'REQUEST_MATCH_STATE') {
-          const requestedLobbyId = msg.lobbyId;
-          const lobby = this.activeLobbies.get(requestedLobbyId);
-          if (lobby) {
-            // Return state
-            ws.send(JSON.stringify({
-              type: 'LOBBY_UPDATE',
-              lobby: lobby
-            }));
-          } else {
-            // Lobby not found (expired, cancelled, or reset)
+          try {
+            const requestedLobbyId = msg.lobbyId;
+            const lobby = this.activeLobbies.get(requestedLobbyId);
+            if (lobby) {
+              // Return state
+              ws.send(JSON.stringify({
+                type: 'LOBBY_UPDATE',
+                lobby: lobby
+              }));
+            } else {
+              // Lobby not found (expired, cancelled, or reset)
+              console.warn(`[DO] Lobby ${requestedLobbyId} not found in memory`);
+              ws.send(JSON.stringify({
+                type: 'MATCH_STATE_ERROR',
+                lobbyId: requestedLobbyId,
+                error: 'Lobby not found'
+              }));
+            }
+          } catch (err: any) {
+            console.error('[DO] Error in REQUEST_MATCH_STATE:', err);
             ws.send(JSON.stringify({
               type: 'MATCH_STATE_ERROR',
-              lobbyId: requestedLobbyId,
-              error: 'Lobby not found'
+              error: err.message
             }));
           }
         }
@@ -1069,12 +1237,12 @@ export class MatchQueueDO {
                 // If empty, delete lobby
                 if (lobby.players.length === 0) {
                   this.activeLobbies.delete(lobbyId);
+                  await this.deleteLobbyFromStorage(lobbyId);
                   console.log(`Lobby ${lobbyId} is empty and deleted.`);
                 } else {
                   await this.broadcastLobbyUpdate(lobbyId);
+                  await this.saveMatchState();
                 }
-
-                await this.saveMatchState();
 
                 ws.send(JSON.stringify({
                   type: 'LEAVE_MATCH_SUCCESS',
@@ -1265,8 +1433,8 @@ export class MatchQueueDO {
               id,
               playerCount: lobby.players.length,
               players: lobby.players.map(p => ({ id: p.id, username: p.username })),
-              status: lobby.serverInfo ? 'LIVE' : lobby.mapBanState.mapBanPhase ? 'MAP_BAN' : 'LOBBY',
-              map: lobby.mapBanState.selectedMap || 'None',
+              status: lobby.serverInfo ? 'LIVE' : 'LOBBY',
+              map: 'Sandstone',
               createdAt: Date.now() // simplified, ideally track creation time
             }));
             ws.send(JSON.stringify({ type: 'ALL_LOBBIES_DATA', lobbies: lobbiesArray }));
@@ -1314,7 +1482,7 @@ export class MatchQueueDO {
               // Remove all players from lobby map
               lobby.players.forEach(p => this.playerLobbyMap.delete(p.id));
               this.activeLobbies.delete(lobbyId);
-              await this.saveMatchState();
+              await this.deleteLobbyFromStorage(lobbyId);
 
               // Broadcast to lobby members
               this.broadcastToLobby(lobbyId, JSON.stringify({
@@ -1455,6 +1623,86 @@ export class MatchQueueDO {
 
 
 
+        // 12.5 REQUEST_MATCH_STATE (for retrieving lobby state)
+        if (msg.type === 'REQUEST_MATCH_STATE') {
+          const { lobbyId } = msg; // Renamed logic
+          const lobby = this.activeLobbies.get(lobbyId);
+          if (lobby) {
+            ws.send(JSON.stringify({
+              type: 'LOBBY_UPDATE',
+              lobby: lobby,
+              serverTime: Date.now()
+            }));
+          } else {
+            ws.send(JSON.stringify({ type: 'MATCH_STATE_ERROR', error: 'Lobby not found' }));
+          }
+        }
+
+        // 13. DRAFT_PICK
+        if (msg.type === 'DRAFT_PICK') {
+          const { lobbyId, pickedPlayerId } = msg; // Correct destructuring
+          const lobby = this.activeLobbies.get(lobbyId);
+
+          if (lobby && lobby.draftState && lobby.draftState.isActive) {
+            // Validate Turn
+            const isCaptainA = currentUserId === lobby.captainA.id || currentUserId === lobby.captainA.discord_id;
+            const isCaptainB = currentUserId === lobby.captainB.id || currentUserId === lobby.captainB.discord_id;
+
+            const expectedPicker = lobby.draftState.currentTurn === 'captainA' ? isCaptainA : isCaptainB;
+
+            if (!expectedPicker) {
+              ws.send(JSON.stringify({ type: 'ERROR', message: 'Not your turn to pick' }));
+              return;
+            }
+
+            // Move Player
+            const pickedIndex = lobby.draftState.pool.findIndex(p => p.id === pickedPlayerId || p.discord_id === pickedPlayerId);
+            if (pickedIndex !== -1) {
+              const pickedPlayer = lobby.draftState.pool[pickedIndex];
+              lobby.draftState.pool.splice(pickedIndex, 1);
+
+              if (lobby.draftState.currentTurn === 'captainA') {
+                lobby.teamA.push(pickedPlayer);
+              } else {
+                lobby.teamB.push(pickedPlayer);
+              }
+
+              lobby.draftState.pickHistory.push({ pickerId: currentUserId!, pickedId: pickedPlayer.id });
+
+
+              // Update Turn
+              const nextTurnIndex = lobby.draftState.pickHistory.length;
+              if (nextTurnIndex < lobby.draftState.pickOrder.length) {
+                lobby.draftState.currentTurn = lobby.draftState.pickOrder[nextTurnIndex];
+                lobby.draftState.lastPickTimestamp = Date.now(); // RESET TIMER
+              } else {
+                // Draft Complete
+                lobby.draftState.isActive = false;
+                lobby.status = 'started'; // Skip Map Ban
+                lobby.startedAt = Date.now(); // RESET TIMER for match duration
+
+                this.broadcastToLobby(lobbyId, JSON.stringify({
+                  type: 'MATCH_START',
+                  lobbyId: lobby.id,
+                  selectedMap: "Sandstone",
+                  matchData: lobby,
+                  serverInfo: lobby.serverInfo
+                }));
+              }
+
+              await this.saveMatchState();
+              await this.broadcastLobbyUpdate(lobbyId);
+
+              // CHECK IF NEXT TURN IS BOT
+              if (lobby.draftState.isActive) {
+                this.executeAutoPick(lobbyId, true).catch(console.error);
+              }
+
+            } else {
+              ws.send(JSON.stringify({ type: 'ERROR', message: 'Player not in pool' }));
+            }
+          }
+        }
       } catch (err) {
         console.error('WS Message Error:', err);
       }
@@ -1465,6 +1713,140 @@ export class MatchQueueDO {
       if (currentUserId) this.userSockets.delete(currentUserId);
     });
   }
+
+  // --- AUTO / BOT PICK LOGIC ---
+  async executeAutoPick(lobbyId: string, isBotLogic: boolean) {
+    const lobby = this.activeLobbies.get(lobbyId);
+    if (!lobby || !lobby.draftState || !lobby.draftState.isActive) return;
+
+    const turn = lobby.draftState.currentTurn;
+    const captain = turn === 'captainA' ? lobby.captainA : lobby.captainB;
+
+    // IF BOT LOGIC: Check if it's actually a bot turn
+    if (isBotLogic) {
+      const isBot = captain.id.startsWith('bot_') || captain.id.startsWith('auto_');
+      if (!isBot) {
+        console.log(`❌ AutoPick: Not a bot (${captain.username}), skipping bot logic.`);
+        return;
+      }
+
+      console.log(`🤖 Bot Turn (${captain.username}) in lobby ${lobbyId}. Pool Size: ${lobby.draftState.pool.length}`);
+      // REMOVED DELAY FOR DEBUGGING/SPEED
+      // await new Promise(resolve => setTimeout(resolve, 1500)); 
+    } else {
+      // TIMEOUT LOGIC: Force pick for whoever it is (Human or Bot)
+      console.log(`⏱️ Auto-picking for ${captain.username} (Timeout). Pool Size: ${lobby.draftState.pool.length}`);
+    }
+
+    // Re-fetch state
+    if (!lobby.draftState.isActive) {
+      console.log('❌ AutoPick: Draft not active.');
+      return;
+    }
+
+    // Double Check Turn (race condition)
+    if (lobby.draftState.currentTurn !== turn) {
+      console.log(`❌ AutoPick: Turn mismatch (Current: ${lobby.draftState.currentTurn} vs Expected: ${turn})`);
+      return;
+    }
+
+    // Pick Random
+    const pool = lobby.draftState.pool;
+    if (pool.length === 0) {
+      console.log('❌ AutoPick: Pool empty!');
+      return;
+    }
+
+    const randomIdx = Math.floor(Math.random() * pool.length);
+    const pickedPlayer = pool[randomIdx];
+    console.log(`✅ Picking ${pickedPlayer.username} for ${captain.username}`);
+
+    // Execute Pick
+    pool.splice(randomIdx, 1);
+
+    if (turn === 'captainA') lobby.teamA.push(pickedPlayer);
+    else lobby.teamB.push(pickedPlayer);
+
+    lobby.draftState.pickHistory.push({ pickerId: captain.id, pickedId: pickedPlayer.id });
+
+    // Advance Turn
+    const nextTurnIndex = lobby.draftState.pickHistory.length;
+    if (nextTurnIndex < lobby.draftState.pickOrder.length) {
+      lobby.draftState.currentTurn = lobby.draftState.pickOrder[nextTurnIndex];
+      lobby.draftState.lastPickTimestamp = Date.now(); // RESET TIMER
+    } else {
+      // Draft Complete
+      lobby.draftState.isActive = false;
+      lobby.status = 'in_progress';
+      lobby.startedAt = Date.now();
+      if (!(lobby as any).selectedMap) (lobby as any).selectedMap = "Sandstone";
+
+      // START MATCH: Migrate drafted teams to main player list
+      // 1. Tag players
+      lobby.teamA.forEach(p => p.team = 'alpha');
+      lobby.teamB.forEach(p => p.team = 'bravo');
+
+      // 2. Update lobby.players
+      lobby.players = [...lobby.teamA, ...lobby.teamB];
+
+      // 3. Update DB: Status -> in_progress
+      try {
+        await this.env.DB.prepare("UPDATE matches SET status = 'in_progress', updated_at = datetime('now') WHERE id = ?")
+          .bind(lobbyId).run();
+
+        // 4. Update DB: Persist Players & Teams
+        // Explicitly clear existing players to ensure a fresh, correct insert
+        await this.env.DB.prepare("DELETE FROM match_players WHERE match_id = ?").bind(lobbyId).run();
+
+        const stmt = this.env.DB.prepare(`
+          INSERT INTO match_players (id, match_id, player_id, team, is_captain, elo, created_at, joined_at)
+          VALUES (?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+        `);
+
+        // Batch Insert all 10 players
+        const batch = lobby.players.map(p => {
+          const isCaptain = (p.id === lobby.captainA.id || p.id === lobby.captainB.id) ? 1 : 0;
+          // IMPORTANT: Check team assignment, fallback if missing (should not happen with tagging above)
+          const team = p.team || (lobby.teamA.find(x => x.id === p.id) ? 'alpha' : 'bravo');
+
+          return stmt.bind(
+            crypto.randomUUID(),
+            lobbyId,
+            p.id || p.player_id || p.discord_id, // Ensure we get the ID
+            team,
+            isCaptain,
+            p.elo || 1000
+          );
+        });
+
+        const results = await this.env.DB.batch(batch);
+        console.log(`✅ [${lobbyId}] Persisted ${lobby.players.length} drafted players to DB (Clean Insert). Success: ${results.length > 0}`);
+
+      } catch (e) {
+        console.error(`❌ [${lobbyId}] FAILED to persist match start state:`, e);
+        // We do NOT re-throw here to keep the lobby running in memory, but this is critical.
+      }
+
+      this.broadcastToLobby(lobbyId, JSON.stringify({
+        type: 'MATCH_START',
+        lobbyId: lobby.id,
+        selectedMap: "Sandstone",
+        matchData: lobby,
+        serverInfo: lobby.serverInfo
+      }));
+    }
+
+    await this.saveMatchState();
+    await this.broadcastLobbyUpdate(lobbyId);
+
+    // RECURSE: Check if NEXT turn is bot (only if we just acted)
+    // If we just timeout-picked for a human, and next is bot, we should trigger bot logic
+    if (lobby.draftState.isActive) {
+      this.executeAutoPick(lobbyId, true).catch(console.error);
+    }
+  }
+
+
 
 }
 
@@ -1529,6 +1911,28 @@ app.use('/*', cors({
   credentials: true,
 }));
 
+// Global Error Handler
+app.onError((err, c) => {
+  console.error('Global App Error:', err);
+
+  // Log to Datadog
+  const apiKey = c.env.DD_API_KEY;
+  if (apiKey) {
+    c.executionCtx.waitUntil(logToDatadog(apiKey, err.message, 'error', {
+      stack: err.stack,
+      url: c.req.url,
+      method: c.req.method,
+      userAgent: c.req.header('User-Agent')
+    }));
+  }
+
+  return c.json({
+    success: false,
+    message: 'Internal Server Error',
+    error: err.message
+  }, 500);
+});
+
 // Setup routes
 setupProfileRoutes(app);
 setupLeaderboardRoutes(app);
@@ -1540,6 +1944,7 @@ app.route('/api/matches', matchesRoutes);
 app.route('/api/matches', lobbyInviteRoutes);
 app.route('/api/moderator', moderatorRoutes);
 app.route('/api/vip-requests', vipRequestsRoutes);
+app.route('/api/clans/requests', clanRequestsRoutes);
 app.route('/api', uploadRoutes);
 
 app.get('/', (c) => c.text('Standoff 2 Platform API is Online!'));
@@ -1966,6 +2371,8 @@ app.post('/api/admin/cleanup-vips', async (c) => {
   }
 });
 
+import agoraRoutes from './routes/agora';
+
 // New Manual Matchmaking Routes
 app.route('/api', uploadRoutes); // R2 permissions missing, temporarily disabled
 app.route('/api/streamers', streamerRoutes);
@@ -1973,6 +2380,16 @@ app.route('/api/clans', clanRoutes);
 app.route('/api/clan-requests', clanRequestsRoutes);
 app.route('/api/gold', goldRoutes);
 app.route('/api/rewards', rewardsRoutes);
+app.route('/api/agora', agoraRoutes);
+
+app.get('/api/test-notification', async (c) => {
+  const discordId = c.req.query('id') || '1237067681623052288';
+  const message = `Hey <@${discordId}>! Match #TEST (TEST) has been running for >20 mins.
+Сайн байна уу? Үр дүнгээ илгээнэ үү (Зураг болон Хожсон тал). Website дээрээс явуулаарай! Баярлалаа! 🙏📸✨`;
+
+  await sendDiscordMessage(c.env, '1457019547394773085', message);
+  return c.text('Notification sent to ' + discordId);
+});
 
 const handler = {
   async fetch(request: Request, env: Env, ctx: ExecutionContext) {
@@ -1981,6 +2398,7 @@ const handler = {
   async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext) {
     ctx.waitUntil(cleanupExpiredVips(env));
     ctx.waitUntil(syncDiscordMembers(env));
+    ctx.waitUntil(checkStaleMatches(env));
   }
 
 };

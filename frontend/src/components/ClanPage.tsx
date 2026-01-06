@@ -392,7 +392,7 @@ export default function ClanPage({ user, backendUrl, onViewLobby, onViewClanProf
                     </div>
 
                     <Tabs defaultValue="browse" className="w-full">
-                        <TabsList className="grid w-full grid-cols-2 bg-zinc-900 border border-white/10 mb-8">
+                        <TabsList className="grid w-full grid-cols-2 bg-zinc-900 border border-white/10 mb-6 sm:mb-8">
                             <TabsTrigger value="browse">Browse Clans</TabsTrigger>
                             <TabsTrigger value="create">Create Clan</TabsTrigger>
                         </TabsList>
@@ -471,7 +471,7 @@ export default function ClanPage({ user, backendUrl, onViewLobby, onViewClanProf
                                             <CardTitle className="text-xl text-white">Клан мэдээлэл</CardTitle>
                                         </CardHeader>
                                         <CardContent className="space-y-4">
-                                            <div className="grid grid-cols-2 gap-4">
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                                 <div className="space-y-2">
                                                     <Label className="text-white">Clan Name</Label>
                                                     <Input
@@ -587,19 +587,19 @@ export default function ClanPage({ user, backendUrl, onViewLobby, onViewClanProf
 
     // Clan Dashboard (Existing Code)
     return (
-        <div className="container mx-auto px-4 py-8 animate-fade-in space-y-8">
+        <div className="container mx-auto px-3 sm:px-4 py-4 sm:py-8 animate-fade-in space-y-4 sm:space-y-8">
             {/* Header */}
-            <div className="bg-gradient-to-r from-zinc-900 to-zinc-950 border border-white/10 rounded-2xl p-8 flex flex-col md:flex-row items-center justify-between gap-6 shadow-xl">
-                <div className="flex items-center gap-6">
-                    <div className="h-24 w-24 bg-primary/20 rounded-2xl flex items-center justify-center border border-primary/30">
-                        <Flag className="h-12 w-12 text-primary" />
+            <div className="bg-gradient-to-r from-zinc-900 to-zinc-950 border border-white/10 rounded-xl sm:rounded-2xl p-4 sm:p-8 flex flex-col items-center text-center md:flex-row md:text-left md:items-center justify-between gap-4 sm:gap-6 shadow-xl">
+                <div className="flex flex-col md:flex-row items-center gap-4 sm:gap-6">
+                    <div className="h-16 w-16 sm:h-24 sm:w-24 bg-primary/20 rounded-xl sm:rounded-2xl flex items-center justify-center border border-primary/30">
+                        <Flag className="h-8 w-8 sm:h-12 sm:w-12 text-primary" />
                     </div>
                     <div>
                         <div className="flex items-center gap-3">
                             <h1 className="text-4xl font-display font-black text-white">{clan.name}</h1>
-                            <Badge variant="outline" className="text-lg font-bold border-primary/50 text-primary px-3">[{clan.tag}]</Badge>
+                            <Badge variant="outline" className="text-sm sm:text-lg font-bold border-primary/50 text-primary px-2 sm:px-3">[{clan.tag}]</Badge>
                         </div>
-                        <p className="text-zinc-400 flex items-center gap-2 mt-2">
+                        <p className="text-zinc-400 flex flex-wrap items-center justify-center md:justify-start gap-2 mt-2 text-sm sm:text-base">
                             <Users className="h-4 w-4" /> {clan.members.length} / {clan.max_members} Members
                             <span className="mx-2">•</span>
                             <Trophy className="h-4 w-4" /> {clan.elo} ELO
@@ -611,7 +611,11 @@ export default function ClanPage({ user, backendUrl, onViewLobby, onViewClanProf
                         <Button
                             variant="secondary"
                             className="font-bold"
-                            onClick={() => onViewClanProfile(clan.id)}
+                            onClick={() => {
+                                console.log("Clicking View Profile with ID:", clan.id);
+                                if (clan.id) onViewClanProfile(clan.id);
+                                else console.error("Clan ID is missing!");
+                            }}
                         >
                             <Shield className="mr-2 h-4 w-4" />
                             View Profile
@@ -621,11 +625,11 @@ export default function ClanPage({ user, backendUrl, onViewLobby, onViewClanProf
             </div>
 
             <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-                <TabsList className="bg-zinc-900 border border-white/10">
-                    <TabsTrigger value="members">Members</TabsTrigger>
-                    <TabsTrigger value="matches">Matches</TabsTrigger>
-                    <TabsTrigger value="browse">All Clans</TabsTrigger>
-                    <TabsTrigger value="settings" disabled={clan.myRole !== 'leader'}>Settings</TabsTrigger>
+                <TabsList className="bg-zinc-900 border border-white/10 flex-wrap h-auto sm:h-10">
+                    <TabsTrigger value="members" className="text-xs sm:text-sm">Members</TabsTrigger>
+                    <TabsTrigger value="matches" className="text-xs sm:text-sm">Matches</TabsTrigger>
+                    <TabsTrigger value="browse" className="text-xs sm:text-sm">All Clans</TabsTrigger>
+                    <TabsTrigger value="settings" disabled={clan.myRole !== 'leader'} className="text-xs sm:text-sm">Settings</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="members" className="mt-6 space-y-6">
@@ -676,8 +680,8 @@ export default function ClanPage({ user, backendUrl, onViewLobby, onViewClanProf
 
                     <div className="grid gap-4">
                         {clan.members.map(member => (
-                            <div key={member.id} className="flex items-center justify-between bg-zinc-900/30 border border-white/5 p-4 rounded-xl hover:bg-zinc-900/60 transition-colors">
-                                <div className="flex items-center gap-4">
+                            <div key={member.id} className="flex flex-col sm:flex-row items-start sm:items-center justify-between bg-zinc-900/30 border border-white/5 p-3 sm:p-4 rounded-xl hover:bg-zinc-900/60 transition-colors gap-3">
+                                <div className="flex items-center gap-3 sm:gap-4 w-full sm:w-auto">
                                     <div className="h-10 w-10 bg-zinc-800 rounded-full overflow-hidden">
                                         <img src={`https://cdn.discordapp.com/avatars/${member.id}/${member.avatar}.png`} alt={member.username} className="h-full w-full object-cover" />
                                     </div>
@@ -690,8 +694,8 @@ export default function ClanPage({ user, backendUrl, onViewLobby, onViewClanProf
                                         <div className="text-xs text-zinc-500">ELO: {member.elo}</div>
                                     </div>
                                 </div>
-                                <div>
-                                    <span className="text-xs text-zinc-500 uppercase font-bold mr-4">{member.role}</span>
+                                <div className="flex items-center justify-between sm:justify-end w-full sm:w-auto gap-2 sm:gap-4 pt-2 sm:pt-0 border-t sm:border-0 border-white/5">
+                                    <span className="text-xs text-zinc-500 uppercase font-bold">{member.role}</span>
                                     {clan.myRole === 'leader' && member.id !== user.id && (
                                         <Button size="sm" variant="destructive" onClick={() => handleKick(member.id)} disabled={actionLoading}>
                                             Kick

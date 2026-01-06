@@ -71,6 +71,21 @@ app.get('/my-request', async (c) => {
     }
 });
 
+// GET /api/clans/requests/all - List all requests (Moderator/Admin)
+app.get('/all', async (c) => {
+    const db = drizzle(c.env.DB);
+    try {
+        const requests = await db.select()
+            .from(clanRequests)
+            .orderBy(desc(clanRequests.created_at))
+            .all();
+        return c.json(requests);
+    } catch (e: any) {
+        console.error('Fetch all clan requests error:', e);
+        return c.json({ error: 'Failed to fetch requests' }, 500);
+    }
+});
+
 // POST /api/clan-requests/invoice - Create QPay invoice for Clan Creation
 app.post('/invoice', async (c) => {
     const userId = c.get('userId') as string;

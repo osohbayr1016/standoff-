@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, memo } from "react";
 import { Card, CardHeader, CardContent, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -42,7 +42,7 @@ const MAP_IMAGES: Record<string, string> = {
   'Provence': '/maps/breeze.png',
 };
 
-export default function RecentMatches({ userId, backendUrl, onNavigate }: RecentMatchesProps) {
+function RecentMatches({ userId, backendUrl, onNavigate }: RecentMatchesProps) {
   const [matches, setMatches] = useState<MatchHistoryItem[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -194,3 +194,5 @@ export default function RecentMatches({ userId, backendUrl, onNavigate }: Recent
     </Card>
   );
 }
+
+export default memo(RecentMatches);

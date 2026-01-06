@@ -130,6 +130,34 @@ lobbyInviteRoutes.post('/:matchId/invite', async (c) => {
             // Don't fail the request if Discord notification fails
         }
 
+        // 7. Send Real-time WebSocket Notification via DO
+        try {
+            // @ts-ignore
+            const id = c.env.MATCH_QUEUE.idFromName('global'); // Or 'global-matchmaking-v2' if that's what we use
+            // @ts-ignore
+            const obj = c.env.MATCH_QUEUE.get(id);
+
+            await obj.fetch('http://do/broadcast', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    type: 'LOBBY_ACTION', // Reusing this generic handler or specific ONE
+                    data: {
+                        type: 'LOBBY_INVITE',
+                        lobbyId: matchId,
+                        userIds: [friend_id], // DO will send to these users
+                        senderId: sender.id,
+                        senderName: sender.discord_username,
+                        senderAvatar: sender.discord_avatar,
+                        mapName: match.map_name || 'Random'
+                    }
+                })
+            });
+            console.log('Invite forwarded to DO for WebSocket delivery');
+        } catch (wsErr) {
+            console.error('Failed to forward invite to DO:', wsErr);
+        }
+
         return c.json({
             success: true,
             message: 'Invitation sent successfully'

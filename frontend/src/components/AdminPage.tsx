@@ -21,6 +21,7 @@ import {
     RefreshCw
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { toast } from 'sonner';
 
 interface AdminStats {
     totalUsers: number;
@@ -113,11 +114,18 @@ const AdminPage = ({ user, backendUrl }: AdminPageProps) => {
             const data = await response.json();
             if (data.success) {
                 fetchPlayers(currentPage, searchQuery);
+                toast.success(`VIP ${grant ? 'granted' : 'revoked'}`, {
+                    description: `Successfully updated VIP status`
+                });
             } else {
-                alert(data.error || `Failed to ${grant ? 'grant' : 'revoke'} VIP`);
+                toast.error(`Failed to ${grant ? 'grant' : 'revoke'} VIP`, {
+                    description: data.error || 'Please try again'
+                });
             }
         } catch (err) {
-            alert('Network error');
+            toast.error('Connection failed', {
+                description: 'Please check your internet connection and try again'
+            });
         } finally {
             setProcessing(false);
         }
@@ -156,13 +164,19 @@ const AdminPage = ({ user, backendUrl }: AdminPageProps) => {
             });
             const data = await response.json();
             if (data.success) {
-                alert(data.message);
+                toast.success('Cleanup complete', {
+                    description: data.message
+                });
                 if (activeTab === 'users') fetchPlayers(1, searchQuery);
             } else {
-                alert(data.error || 'Cleanup failed');
+                toast.error('Cleanup failed', {
+                    description: data.error || 'Unable to complete VIP cleanup'
+                });
             }
         } catch (err) {
-            alert('Network error');
+            toast.error('Connection failed', {
+                description: 'Please check your internet connection and try again'
+            });
         } finally {
             setProcessing(false);
         }

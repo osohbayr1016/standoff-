@@ -112,4 +112,28 @@ export function setupStatsRoutes(app: Hono<any>) {
             }, 500);
         }
     });
+
+    app.get('/api/stats/live', async (c) => {
+        try {
+            const id = c.env.MATCH_QUEUE.idFromName('global');
+            const stub = c.env.MATCH_QUEUE.get(id);
+            const res = await stub.fetch('http://do/debug');
+            const data: any = await res.json();
+
+            // Also get DB count for total registered
+            const totalUsersResult = await c.env.DB.prepare('SELECT COUNT(*) as count FROM players').first();
+
+            return c.json({
+                success: true,
+                online_users: data.sessionsCount || 0,
+                active_matches: data.activeLobbies ? data.activeLobbies.length : 0,
+                active_lobbies: data.activeLobbies ? data.activeLobbies.length : 0, // Alias for clarity
+                total_users: totalUsersResult?.count || 0
+            });
+        } catch (error) {
+            console.error('Live stats error:', error);
+            // Fallback to 0 if DO is unreachable
+            return c.json({ success: true, online_users: 0, active_matches: 0, total_users: 0 });
+        }
+    });
 }

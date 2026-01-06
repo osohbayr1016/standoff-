@@ -79,3 +79,40 @@ export async function updateDiscordNickname(
     }
 }
 
+
+export async function sendDiscordMessage(
+    env: any,
+    channelId: string,
+    content: string
+): Promise<boolean> {
+    const botToken = env.DISCORD_BOT_TOKEN;
+    if (!botToken) {
+        console.error('Discord bot token missing');
+        return false;
+    }
+
+    try {
+        const response = await fetch(
+            `https://discord.com/api/v10/channels/${channelId}/messages`,
+            {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bot ${botToken}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ content })
+            }
+        );
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error('Failed to send Discord message:', response.status, errorText);
+            return false;
+        }
+
+        return true;
+    } catch (error) {
+        console.error('Discord API error:', error);
+        return false;
+    }
+}

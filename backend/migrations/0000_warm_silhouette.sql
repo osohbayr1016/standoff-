@@ -1,4 +1,3 @@
-/*
 CREATE TABLE `clan_members` (
 	`id` text PRIMARY KEY NOT NULL,
 	`clan_id` text NOT NULL,
@@ -9,7 +8,6 @@ CREATE TABLE `clan_members` (
 	FOREIGN KEY (`user_id`) REFERENCES `players`(`id`) ON UPDATE no action ON DELETE no action
 );
 --> statement-breakpoint
-*/
 CREATE TABLE `clan_requests` (
 	`id` text PRIMARY KEY NOT NULL,
 	`user_id` text NOT NULL,
@@ -26,7 +24,6 @@ CREATE TABLE `clan_requests` (
 	FOREIGN KEY (`reviewed_by`) REFERENCES `players`(`id`) ON UPDATE no action ON DELETE no action
 );
 --> statement-breakpoint
-/*
 CREATE TABLE `clans` (
 	`id` text PRIMARY KEY NOT NULL,
 	`name` text NOT NULL,
@@ -55,8 +52,7 @@ CREATE TABLE `elo_history` (
 	`notes` text,
 	`created_at` text DEFAULT 'CURRENT_TIMESTAMP',
 	FOREIGN KEY (`user_id`) REFERENCES `players`(`id`) ON UPDATE no action ON DELETE no action,
-	FOREIGN KEY (`match_id`) REFERENCES `matches`(`id`) ON UPDATE no action ON DELETE no action,
-	FOREIGN KEY (`created_by`) REFERENCES `players`(`id`) ON UPDATE no action ON DELETE no action
+	FOREIGN KEY (`match_id`) REFERENCES `matches`(`id`) ON UPDATE no action ON DELETE no action
 );
 --> statement-breakpoint
 CREATE INDEX `idx_elo_user_id` ON `elo_history` (`user_id`);--> statement-breakpoint
@@ -70,6 +66,33 @@ CREATE TABLE `friendships` (
 	FOREIGN KEY (`user_id2`) REFERENCES `players`(`id`) ON UPDATE no action ON DELETE no action
 );
 --> statement-breakpoint
+CREATE TABLE `gold_orders` (
+	`id` text PRIMARY KEY NOT NULL,
+	`user_id` text NOT NULL,
+	`gold_amount` integer NOT NULL,
+	`price_mnt` integer NOT NULL,
+	`status` text DEFAULT 'pending' NOT NULL,
+	`proof_url` text,
+	`graffiti_url` text,
+	`created_at` text DEFAULT CURRENT_TIMESTAMP,
+	`updated_at` text DEFAULT CURRENT_TIMESTAMP,
+	`processed_by` text,
+	FOREIGN KEY (`user_id`) REFERENCES `players`(`id`) ON UPDATE no action ON DELETE no action,
+	FOREIGN KEY (`processed_by`) REFERENCES `players`(`id`) ON UPDATE no action ON DELETE no action
+);
+--> statement-breakpoint
+CREATE TABLE `gold_transactions` (
+	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
+	`user_id` text NOT NULL,
+	`amount` integer NOT NULL,
+	`reason` text NOT NULL,
+	`created_by` text,
+	`created_at` text DEFAULT CURRENT_TIMESTAMP,
+	FOREIGN KEY (`user_id`) REFERENCES `players`(`id`) ON UPDATE no action ON DELETE no action,
+	FOREIGN KEY (`created_by`) REFERENCES `players`(`id`) ON UPDATE no action ON DELETE no action
+);
+--> statement-breakpoint
+CREATE INDEX `idx_gold_trans_seller` ON `gold_transactions` (`created_by`);--> statement-breakpoint
 CREATE TABLE `match_players` (
 	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
 	`match_id` text NOT NULL,
@@ -102,14 +125,47 @@ CREATE TABLE `matches` (
 	`review_notes` text,
 	`created_at` text DEFAULT 'CURRENT_TIMESTAMP',
 	`updated_at` text DEFAULT 'CURRENT_TIMESTAMP',
-	FOREIGN KEY (`host_id`) REFERENCES `players`(`id`) ON UPDATE no action ON DELETE no action,
-	FOREIGN KEY (`reviewed_by`) REFERENCES `players`(`id`) ON UPDATE no action ON DELETE no action
+	FOREIGN KEY (`host_id`) REFERENCES `players`(`id`) ON UPDATE no action ON DELETE no action
 );
 --> statement-breakpoint
 CREATE INDEX `idx_matches_status` ON `matches` (`status`);--> statement-breakpoint
 CREATE INDEX `idx_matches_host_id` ON `matches` (`host_id`);--> statement-breakpoint
 CREATE INDEX `idx_matches_created_at` ON `matches` (`created_at`);--> statement-breakpoint
 CREATE INDEX `idx_matches_match_type` ON `matches` (`match_type`);--> statement-breakpoint
+CREATE TABLE `players` (
+	`id` text PRIMARY KEY NOT NULL,
+	`discord_id` text NOT NULL,
+	`discord_username` text,
+	`discord_avatar` text,
+	`standoff_nickname` text,
+	`elo` integer DEFAULT 1000 NOT NULL,
+	`wins` integer DEFAULT 0 NOT NULL,
+	`losses` integer DEFAULT 0 NOT NULL,
+	`created_at` text DEFAULT 'CURRENT_TIMESTAMP',
+	`nickname_updated_at` text,
+	`avatar_url` text,
+	`balance` integer DEFAULT 0 NOT NULL,
+	`role` text DEFAULT 'user' NOT NULL,
+	`banned` integer DEFAULT 0,
+	`is_discord_member` integer DEFAULT 0,
+	`is_vip` integer DEFAULT 0,
+	`vip_until` text,
+	`discord_roles` text,
+	`gold` integer DEFAULT 0 NOT NULL
+);
+--> statement-breakpoint
+CREATE UNIQUE INDEX `players_discord_id_unique` ON `players` (`discord_id`);--> statement-breakpoint
+CREATE UNIQUE INDEX `players_standoff_nickname_unique` ON `players` (`standoff_nickname`);--> statement-breakpoint
+CREATE INDEX `idx_players_vip_elo` ON `players` (`is_vip`,`elo`);--> statement-breakpoint
+CREATE TABLE `reward_claims` (
+	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
+	`user_id` text NOT NULL,
+	`reward_type` text NOT NULL,
+	`claimed_at` text DEFAULT CURRENT_TIMESTAMP,
+	FOREIGN KEY (`user_id`) REFERENCES `players`(`id`) ON UPDATE no action ON DELETE no action
+);
+--> statement-breakpoint
+CREATE INDEX `idx_reward_user_id` ON `reward_claims` (`user_id`);--> statement-breakpoint
 CREATE TABLE `streamers` (
 	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
 	`user_id` text NOT NULL,
@@ -124,17 +180,4 @@ CREATE TABLE `streamers` (
 );
 --> statement-breakpoint
 CREATE UNIQUE INDEX `streamers_user_id_unique` ON `streamers` (`user_id`);--> statement-breakpoint
-CREATE INDEX `idx_streamers_is_live` ON `streamers` (`is_live`);--> statement-breakpoint
-*/
-/*
-ALTER TABLE `players` ADD `elo` integer DEFAULT 1000 NOT NULL;--> statement-breakpoint
-ALTER TABLE `players` ADD `avatar_url` text;--> statement-breakpoint
-ALTER TABLE `players` ADD `balance` integer DEFAULT 0 NOT NULL;--> statement-breakpoint
-ALTER TABLE `players` ADD `role` text DEFAULT 'user' NOT NULL;--> statement-breakpoint
-ALTER TABLE `players` ADD `banned` integer DEFAULT 0;--> statement-breakpoint
-ALTER TABLE `players` ADD `is_discord_member` integer DEFAULT 0;--> statement-breakpoint
-ALTER TABLE `players` ADD `is_vip` integer DEFAULT 0;--> statement-breakpoint
-ALTER TABLE `players` ADD `vip_until` text;--> statement-breakpoint
-CREATE INDEX `idx_players_vip_elo` ON `players` (`is_vip`,`elo`);--> statement-breakpoint
-ALTER TABLE `players` DROP COLUMN `mmr`;
-*/
+CREATE INDEX `idx_streamers_is_live` ON `streamers` (`is_live`);

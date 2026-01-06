@@ -1,1 +1,0 @@
-ALTER TABLE players ADD COLUMN role TEXT DEFAULT 'user' NOT NULL;

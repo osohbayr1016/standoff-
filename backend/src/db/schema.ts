@@ -48,7 +48,8 @@ export const matches = sqliteTable('matches', {
     winner_team: text('winner_team'), // alpha, bravo
     alpha_score: integer('alpha_score'),
     bravo_score: integer('bravo_score'),
-    reviewed_by: text('reviewed_by').references(() => players.id),
+    reminder_sent: integer('reminder_sent').default(0),
+    reviewed_by: text('reviewed_by'), // .references(() => players.id) removed to prevent FK errors
     reviewed_at: text('reviewed_at'),
     review_notes: text('review_notes'),
     created_at: text('created_at').default('CURRENT_TIMESTAMP'),
@@ -81,7 +82,7 @@ export const eloHistory = sqliteTable('elo_history', {
     elo_after: integer('elo_after').notNull(),
     elo_change: integer('elo_change').notNull(),
     reason: text('reason').notNull(), // match_win, match_loss, manual_adjustment, initial
-    created_by: text('created_by').references(() => players.id),
+    created_by: text('created_by'), // .references(() => players.id) removed to prevent FK errors
     notes: text('notes'),
     created_at: text('created_at').default('CURRENT_TIMESTAMP')
 }, (table) => ({
@@ -182,4 +183,17 @@ export const rewardClaims = sqliteTable('reward_claims', {
     claimed_at: text('claimed_at').default(sql`CURRENT_TIMESTAMP`),
 }, (table) => ({
     idxRewardUserId: index('idx_reward_user_id').on(table.user_id),
+}));
+
+// Moderator Audit Logs
+export const moderatorLogs = sqliteTable('moderator_logs', {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    moderator_id: text('moderator_id').notNull(), // User who performed the action
+    action_type: text('action_type').notNull(), // BAN, UNBAN, KICK, MATCH_CANCEL, MATCH_REVIEW, ELO_ADJUST, ROLE_CHANGE
+    target_id: text('target_id'), // ID of the user or match affected
+    details: text('details'), // JSON string or text description
+    created_at: text('created_at').default(sql`CURRENT_TIMESTAMP`),
+}, (table) => ({
+    idxModLogsModerator: index('idx_mod_logs_moderator').on(table.moderator_id),
+    idxModLogsAction: index('idx_mod_logs_action').on(table.action_type),
 }));

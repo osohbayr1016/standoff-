@@ -20,12 +20,26 @@ const Chat: React.FC<ChatProps> = ({
     placeholder = "Мессеж бичих...",
     variant = 'floating'
 }) => {
-    const { sendChat, chatMessages, lobbyChatMessages, isConnected } = useWebSocket();
+    const sendChat = useWebSocket(state => state.sendChat);
+    const chatMessages = useWebSocket(state => state.chatMessages);
+    const lobbyChatMessages = useWebSocket(state => state.lobbyChatMessages);
+    const isConnected = useWebSocket(state => state.isConnected);
     const [inputValue, setInputValue] = useState('');
     const [isMinimized, setIsMinimized] = useState(variant === 'floating');
+
+    // Store the count of messages when the chat was last interpreted as "read"
+    const [readCount, setReadCount] = useState(0);
+
     const scrollRef = useRef<HTMLDivElement>(null);
 
-    const messages = lobbyId ? lobbyChatMessages : chatMessages;
+    const messages = (lobbyId ? lobbyChatMessages : chatMessages) || [];
+
+    // Reset unread count when opening the chat
+    useEffect(() => {
+        if (!isMinimized) {
+            setReadCount(messages.length);
+        }
+    }, [isMinimized, messages.length]);
 
     // Auto-scroll to bottom on new messages
     useEffect(() => {
@@ -43,15 +57,17 @@ const Chat: React.FC<ChatProps> = ({
     };
 
     if (variant === 'floating' && isMinimized) {
+        const unreadCount = Math.max(0, messages.length - readCount);
+
         return (
             <button
                 onClick={() => setIsMinimized(false)}
                 className="fixed bottom-6 right-6 w-14 h-14 bg-primary text-primary-foreground rounded-full shadow-2xl flex items-center justify-center hover:scale-110 active:scale-95 transition-all z-50 border-4 border-background"
             >
                 <MessageCircle className="w-6 h-6" />
-                {messages.length > 0 && (
+                {unreadCount > 0 && (
                     <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center border-2 border-background">
-                        {messages.length > 9 ? '9+' : messages.length}
+                        {unreadCount > 9 ? '9+' : unreadCount}
                     </span>
                 )}
             </button>

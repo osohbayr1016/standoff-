@@ -5,22 +5,15 @@
     {
       "idx": 0,
       "version": "6",
-      "when": 1766610014334,
-      "tag": "0000_shocking_crystal",
+      "when": 1767431903286,
+      "tag": "0000_warm_silhouette",
       "breakpoints": true
     },
     {
       "idx": 1,
       "version": "6",
-      "when": 1766618982572,
-      "tag": "0001_romantic_juggernaut",
-      "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "6",
-      "when": 1766921712924,
-      "tag": "0002_deep_skreet",
+      "when": 1767433868488,
+      "tag": "0001_ambitious_shinko_yamashiro",
       "breakpoints": true
     }
   ]

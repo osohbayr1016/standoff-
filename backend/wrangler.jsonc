@@ -3,6 +3,9 @@
   "name": "backend",
   "main": "src/index.ts",
   "compatibility_date": "2025-12-24",
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
   "d1_databases": [
     {
       "binding": "DB",
@@ -39,7 +42,9 @@
     "DISCORD_CHANNEL_ID": "1453526990798983394",
     "FRONTEND_URL": "https://standoff2.mn",
     "MODERATOR_ROLE_ID": "1454067327074177167",
-    "TURNSTILE_SECRET_KEY": "1x0000000000000000000000000000000aa"
+    "TURNSTILE_SECRET_KEY": "1x0000000000000000000000000000000aa",
+    "DD_API_KEY": "928bdd53125840a03e6b1f6436d27e16",
+    "AGORA_APP_CERTIFICATE": "ae5148f192004b6aa48d9cf1afea0d13"
   },
   "triggers": {
     "crons": [

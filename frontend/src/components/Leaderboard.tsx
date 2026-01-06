@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, memo } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -17,7 +17,7 @@ interface LeaderboardPlayer {
   is_vip?: boolean;
 }
 
-export default function Leaderboard() {
+function Leaderboard() {
   const [leaderboardData, setLeaderboardData] = useState<LeaderboardPlayer[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -150,3 +150,4 @@ export default function Leaderboard() {
   );
 }
 
+export default memo(Leaderboard);

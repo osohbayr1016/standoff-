@@ -1,4 +1,4 @@
-import { useState, useEffect, Suspense, lazy } from "react";
+import { useState, useEffect, Suspense, lazy, useCallback } from "react";
 import Chat from './components/Chat';
 import Header from "./components/Header";
 import Hero from "./components/Hero";
@@ -29,9 +29,9 @@ const GoldPage = lazy(() => import("./components/GoldPage"));
 const RewardsPage = lazy(() => import("./components/RewardsPage"));
 
 // Placeholder components (to be implemented)
-const DailyRewards = () => <div className="placeholder-card">Daily Rewards - Coming Soon</div>;
+const DailyRewards = () => <div className="placeholder-card border border-white/5 bg-white/5 rounded-xl p-6 flex items-center justify-center text-muted-foreground italic h-full">Daily Rewards - Coming Soon</div>;
 const MapBanPage = (_props: any) => <div className="placeholder-page">Map Ban - Coming Soon</div>;
-const MatchLobbyPage = (_props: any) => <div className="placeholder-page">Match Lobby - Coming Soon</div>;
+const MatchLobbyPage = lazy(() => import("./components/LobbyDetailPage"));
 
 interface User {
   id: string;
@@ -99,23 +99,55 @@ function AppContent() {
   const [targetMatchId, setTargetMatchId] = useState<string | null>(null);
   const [previousPage, setPreviousPage] = useState<string | null>(null);
 
-  const handleViewProfile = (userId: string) => {
+  const handleLogout = useCallback(() => {
+    setUser(null);
+    setIsAuthenticated(false);
+    localStorage.removeItem("user");
+    localStorage.removeItem("currentPage");
+    setCurrentPage("home");
+  }, []);
+
+  const handleNavigate = useCallback((page: string) => {
+    const matchPages = ["mapban", "matchgame"];
+
+    setCurrentPage(prev => {
+      // Logic for navigating away from matches
+      if (matchPages.includes(prev) && !matchPages.includes(page)) {
+        if (activeLobbyId) setNavigatedAwayLobbyId(activeLobbyId);
+      }
+
+      // Handle previous page logic for profile
+      if (page === "profile") {
+        if (prev !== "profile") setPreviousPage(prev);
+        setViewUserId(null); // Default to own profile if not set via onViewProfile
+      } else {
+        if (prev === "profile") setPreviousPage(null);
+      }
+
+      return page;
+    });
+
+    if (matchPages.includes(page)) setNavigatedAwayLobbyId(null);
+    if (page !== "matchmaking") setTargetMatchId(null);
+  }, [activeLobbyId]);
+
+  const handleViewProfile = useCallback((userId: string) => {
     setPreviousPage(currentPage);
     setViewUserId(userId);
     setCurrentPage("profile");
     localStorage.setItem("previousProfileUserId", userId);
-  };
+  }, [currentPage]);
 
-  const handleViewClanProfile = (clanId: string) => {
+  const handleViewClanProfile = useCallback((clanId: string) => {
+    console.log("Navigating to clan profile:", clanId);
     setPreviousPage(currentPage);
     setViewClanId(clanId);
     setCurrentPage("clan-profile");
-  };
+  }, [currentPage]);
 
-  const handleProfileBack = () => {
+  const handleProfileBack = useCallback(() => {
     if (previousPage && previousPage !== "profile") {
       setCurrentPage(previousPage);
-      setPreviousPage(null);
     } else {
       const savedPage = localStorage.getItem("currentPage");
       if (savedPage && savedPage !== "profile") {
@@ -124,8 +156,25 @@ function AppContent() {
         setCurrentPage("home");
       }
     }
+    setPreviousPage(null);
     setViewUserId(null);
-  };
+  }, [previousPage]);
+
+  const handleNicknameSaved = useCallback((nickname: string) => {
+    setUser(prev => {
+      if (!prev) return null;
+      const updatedUser = { ...prev, standoff_nickname: nickname };
+      localStorage.setItem("user", JSON.stringify(updatedUser));
+      return updatedUser;
+    });
+    setShowNicknameModal(false);
+  }, []);
+
+  const handleFindMatch = useCallback(() => setCurrentPage("matchmaking"), []);
+  const handleGoHome = useCallback(() => { setViewUserId(null); setCurrentPage("home"); }, []);
+  const handleViewLobby = useCallback((lobbyId: string) => { setTargetMatchId(lobbyId); setCurrentPage("matchmaking"); }, []);
+  const handleAcceptInvite = useCallback(() => { setInviteNotification(null); setCurrentPage("matchmaking"); }, []);
+  const handleDeclineInvite = useCallback(() => setInviteNotification(null), []);
 
   useEffect(() => {
     localStorage.setItem("currentPage", currentPage);
@@ -159,7 +208,43 @@ function AppContent() {
     if (user && user.id) {
       registerUser(user.id);
     }
-  }, [user, registerUser]);
+  }, [user?.id, registerUser]); // Only depend on id to avoid user-object re-renders
+
+  useEffect(() => {
+    // 1. Validate Active Match on Load / Auth
+    if (user && user.id) {
+      const checkActiveMatch = async () => {
+        try {
+          const response = await fetch(`${import.meta.env.VITE_BACKEND_URL || "http://localhost:8787"}/api/matches/user/${user.id}/active`);
+          const data = await response.json();
+
+          if (data.success && data.match) {
+            console.log('[App] Syncing active match:', data.match.id);
+            if (activeLobbyId !== data.match.id) {
+              setActiveLobbyId(data.match.id);
+            }
+            // Also update matchData context if missing
+            if (!matchData || matchData.lobby?.id !== data.match.id) {
+              // Optional: Fetch full detail or just wait for WS
+              // setMatchData({ type: 'LOBBY_UPDATE', lobby: data.match });
+            }
+          } else {
+            // No active match found -> Clear local state if it exists
+            if (activeLobbyId) {
+              console.log('[App] Clearing stale active match:', activeLobbyId);
+              setActiveLobbyId(undefined);
+              localStorage.removeItem("activeLobbyId");
+              localStorage.removeItem("matchData");
+            }
+          }
+        } catch (err) {
+          console.error('[App] Failed to check active match:', err);
+        }
+      };
+
+      checkActiveMatch();
+    }
+  }, [user?.id]); // Run once when user logs in
 
   useEffect(() => {
     if (user && user.id && activeLobbyId) {
@@ -170,7 +255,7 @@ function AppContent() {
       }, 500);
       return () => clearTimeout(timeout);
     }
-  }, [activeLobbyId, requestMatchState, currentPage, matchData, user]);
+  }, [activeLobbyId, requestMatchState, currentPage, matchData, user?.id]);
 
   useEffect(() => {
     if (!lastMessage) return;
@@ -180,9 +265,16 @@ function AppContent() {
       return;
     }
 
-    if (lastMessage.type === "INVITE_RECEIVED") {
-      const { fromUser, lobbyId } = lastMessage;
-      setInviteNotification({ fromUser, lobbyId });
+    if (lastMessage.type === "INVITE_RECEIVED" || lastMessage.type === "LOBBY_INVITE") {
+      const { fromUser, lobbyId, senderId, senderName, senderAvatar } = lastMessage;
+
+      const inviter = fromUser || {
+        id: senderId,
+        username: senderName,
+        avatar: senderAvatar
+      };
+
+      setInviteNotification({ fromUser: inviter, lobbyId });
       setTimeout(() => setInviteNotification(null), 10000);
     }
 
@@ -204,7 +296,8 @@ function AppContent() {
               (p.discord_id && String(p.discord_id) === String(user.id))
             );
             if (isUserInMatch && navigatedAwayLobbyId !== lastMessage.lobbyId) {
-              setCurrentPage("mapban");
+              // Directly go to matchgame, skip mapban
+              setCurrentPage("matchgame");
               setNavigatedAwayLobbyId(null);
             }
           }
@@ -243,8 +336,9 @@ function AppContent() {
         if (navigatedAwayLobbyId !== lobby.id) {
           if (lobby.serverInfo && currentPage !== "matchgame") {
             setCurrentPage("matchgame");
-          } else if (lobby.mapBanState?.mapBanPhase && currentPage !== "mapban") {
-            setCurrentPage("mapban");
+          } else if (lobby.mapBanState?.mapBanPhase) {
+            // SKIP MAP BAN (User Request) -> Force matchgame
+            setCurrentPage("matchgame");
           }
         }
       }
@@ -271,7 +365,7 @@ function AppContent() {
         }));
       }
     }
-  }, [lastMessage, currentPage, navigatedAwayLobbyId, matchData, activeLobbyId, user]);
+  }, [lastMessage, currentPage, navigatedAwayLobbyId, matchData, activeLobbyId, user?.id, handleLogout]);
 
   useEffect(() => {
     const initUser = async () => {
@@ -330,50 +424,6 @@ function AppContent() {
     initUser();
   }, []);
 
-  const handleNicknameSaved = (nickname: string) => {
-    if (user) {
-      const updatedUser = { ...user, standoff_nickname: nickname };
-      setUser(updatedUser);
-      localStorage.setItem("user", JSON.stringify(updatedUser));
-    }
-    setShowNicknameModal(false);
-  };
-
-  const handleFindMatch = () => setCurrentPage("matchmaking");
-  const handleGoHome = () => { setViewUserId(null); setCurrentPage("home"); };
-
-  const handleNavigate = (page: string) => {
-    const matchPages = ["mapban", "matchgame"];
-    if (matchPages.includes(currentPage) && !matchPages.includes(page)) {
-      if (activeLobbyId) setNavigatedAwayLobbyId(activeLobbyId);
-    }
-    if (matchPages.includes(page)) setNavigatedAwayLobbyId(null);
-    if (page === "profile") {
-      if (currentPage !== "profile") setPreviousPage(currentPage);
-      setViewUserId(null);
-    } else {
-      if (currentPage === "profile") setPreviousPage(null);
-    }
-    if (page !== "matchmaking") setTargetMatchId(null);
-    setCurrentPage(page);
-  };
-
-  const handleViewLobby = (lobbyId: string) => { setTargetMatchId(lobbyId); setCurrentPage("matchmaking"); };
-
-  const handleLogout = () => {
-    setUser(null); setIsAuthenticated(false);
-    localStorage.removeItem("user"); localStorage.removeItem("currentPage");
-    setCurrentPage("home");
-  };
-
-  const handleAcceptInvite = () => { setInviteNotification(null); setCurrentPage("matchmaking"); };
-  const handleDeclineInvite = () => setInviteNotification(null);
-
-  const validPages = [
-    "home", "profile", "leaderboard", "rewards", "friends",
-    "matchmaking", "moderator", "admin", "vip", "join_gate", "mapban", "matchgame", "streamers", "streamer-dashboard", "clans", "clan-profile", "gold-dashboard"
-  ];
-
   if (!isAuthenticated) return <AuthPage />;
 
   const isStaff = user?.role === 'admin' || user?.role === 'moderator';
@@ -383,8 +433,8 @@ function AppContent() {
 
   if (hasExpiredGracePeriod && !isStaff) {
     return (
-      <div className="flex flex-col min-h-screen bg-background relative">
-        <Header currentPage="join_gate" user={user} onNavigate={handleNavigate} onLogout={handleLogout} backendUrl={import.meta.env.VITE_BACKEND_URL || "http://localhost:8787"} />
+      <div className="flex flex-col min-h-screen bg-background relative font-sans">
+        <Header currentPage="join_gate" user={user} onNavigate={handleNavigate} onLogout={handleLogout} backendUrl={import.meta.env.VITE_BACKEND_URL || "http://localhost:8787"} activeLobbyId={activeLobbyId} />
         <main className="container mx-auto px-4 md:px-8 py-8 flex-1 flex items-center justify-center">
           <JoinGatePage />
         </main>
@@ -393,10 +443,15 @@ function AppContent() {
     );
   }
 
+  const validPages = [
+    "home", "profile", "leaderboard", "rewards", "friends",
+    "matchmaking", "moderator", "admin", "vip", "join_gate", "mapban", "matchgame", "streamers", "streamer-dashboard", "clans", "clan-profile", "gold-dashboard"
+  ];
+
   if (!validPages.includes(currentPage)) return <NotFoundPage onGoHome={handleGoHome} />;
 
   return (
-    <div className="flex flex-col min-h-screen bg-background relative">
+    <div className="flex flex-col min-h-screen bg-background relative font-sans">
       {inviteNotification && (
         <div className="invite-notification-toast">
           <div className="invite-content">
@@ -431,6 +486,7 @@ function AppContent() {
         onNavigate={handleNavigate}
         onLogout={handleLogout}
         backendUrl={import.meta.env.VITE_BACKEND_URL || "http://localhost:8787"}
+        activeLobbyId={activeLobbyId}
       />
 
       <main className="container mx-auto px-4 md:px-8 py-8 flex-1">
@@ -475,8 +531,10 @@ function AppContent() {
           )}
           {currentPage === "matchgame" && (
             <MatchLobbyPage
-              lobby={matchData?.lobby || matchData?.matchData || matchData}
-              serverInfo={matchData?.matchData?.serverInfo || matchData?.serverInfo}
+              matchId={matchData?.lobby?.id || matchData?.matchData?.id || matchData?.id || ""}
+              user={user}
+              backendUrl={import.meta.env.VITE_BACKEND_URL || "http://localhost:8787"}
+              onBack={() => handleNavigate("home")}
             />
           )}
         </Suspense>
@@ -492,7 +550,7 @@ function AppContent() {
 }
 
 function App() {
-  const backendUrl = import.meta.env.VITE_BACKEND_URL || "http://localhost:8787";
+  const backendUrl = import.meta.env.VITE_BACKEND_URL || "https://backend.anandoctane4.workers.dev";
   return (
     <WebSocketProvider url={backendUrl}>
       <AppContent />

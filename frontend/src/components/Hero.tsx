@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, memo } from 'react';
 import { Card, CardHeader, CardContent, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -37,7 +37,7 @@ interface HeroProps {
   onViewProfile: (userId: string) => void;
 }
 
-export default function Hero({ backendUrl, onNavigate, onViewProfile }: HeroProps) {
+function Hero({ backendUrl, onNavigate, onViewProfile }: HeroProps) {
   const [leaderboard, setLeaderboard] = useState<LeaderboardPlayer[]>([]);
   const [stats, setStats] = useState<PlatformStats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -58,10 +58,20 @@ export default function Hero({ backendUrl, onNavigate, onViewProfile }: HeroProp
       }
 
       // Fetch stats
-      const statsRes = await fetch(`${backendUrl}/api/stats`);
+      const [statsRes, liveStatsRes] = await Promise.all([
+        fetch(`${backendUrl}/api/stats`),
+        fetch(`${backendUrl}/api/stats/live`)
+      ]);
+
       const statsData = await statsRes.json();
+      const liveStatsData = await liveStatsRes.json();
+
       if (statsData.success) {
-        setStats(statsData.stats);
+        setStats({
+          ...statsData.stats,
+          active_players: liveStatsData.online_users || statsData.stats.active_players, // Prefer live count
+          matches_today: liveStatsData.active_matches || statsData.stats.matches_today // Show active matches if preferred, or stick to today count
+        });
       }
     } catch (err) {
       console.error('Error fetching data:', err);
@@ -239,8 +249,8 @@ export default function Hero({ backendUrl, onNavigate, onViewProfile }: HeroProp
                         <Users className="h-5 w-5 text-green-500" />
                       </div>
                       <div>
-                        <div className="text-xs text-muted-foreground">24h Active</div>
-                        <div className="font-semibold">Players</div>
+                        <div className="text-xs text-muted-foreground">Currently</div>
+                        <div className="font-semibold">Online</div>
                       </div>
                     </div>
                     <div className="text-2xl font-bold text-green-500">{stats.active_players}</div>
@@ -403,3 +413,5 @@ export default function Hero({ backendUrl, onNavigate, onViewProfile }: HeroProp
     </section>
   );
 }
+
+export default memo(Hero);

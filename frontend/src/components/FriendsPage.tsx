@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Search, UserPlus, Check, X, MessageSquare, Users, Trophy } from "lucide-react";
+import { toast } from 'sonner';
 
 interface User {
   id: string;
@@ -161,12 +162,13 @@ export default function FriendsPage({ onViewProfile }: FriendsPageProps) {
       if (res.ok) {
         setSearchResults((prev) => prev.filter((r) => r.id !== targetId));
         fetchFriends(currentUser.id);
+        toast.success('Friend request sent!', { description: 'Waiting for them to accept' });
       } else {
         const data = await res.json();
-        alert(data.error || "Failed to send request");
+        toast.error('Friend request failed', { description: data.error || 'Please try again' });
       }
     } catch (err) {
-      alert("Network error");
+      toast.error('Connection failed', { description: 'Please check your internet connection and try again' });
     }
   };
 

@@ -25,6 +25,7 @@ import {
     CarouselPrevious,
 } from "@/components/ui/carousel";
 import LevelBadge from './LevelBadge';
+import { toast } from 'sonner';
 
 interface Match {
     id: string;
@@ -61,7 +62,9 @@ interface MatchmakingPageProps {
 }
 
 const MatchmakingPage: React.FC<MatchmakingPageProps> = ({ user, backendUrl, onViewProfile, onNavigateToVip, targetMatchId }) => {
-    const { sendMessage: _sendMessage, lastMessage } = useWebSocket();
+    // Optimization: Use transient subscription to avoid re-renders
+    // const lastMessage = useWebSocket(state => state.lastMessage); <--- REMOVED
+
     const [matches, setMatches] = useState<Match[]>([]);
     const [loading, setLoading] = useState(true);
     const [showCreateModal, setShowCreateModal] = useState(false);
@@ -88,6 +91,7 @@ const MatchmakingPage: React.FC<MatchmakingPageProps> = ({ user, backendUrl, onV
     const [errorMessage, setErrorMessage] = useState("");
     const [dailySlotsUsed, setDailySlotsUsed] = useState(0);
     const [filterType, setFilterType] = useState<'all' | 'casual' | 'league' | 'competitive' | 'clan'>('all');
+    const [myActiveMatch, setMyActiveMatch] = useState<Match | null>(null);
 
     // Sync targetMatchId from parent (e.g. Moderator Page deep link)
     useEffect(() => {
@@ -102,10 +106,9 @@ const MatchmakingPage: React.FC<MatchmakingPageProps> = ({ user, backendUrl, onV
             setError(null);
         }
     }, [showCreateModal]);
-    const [myActiveMatch, setMyActiveMatch] = useState<Match | null>(null);
 
-    // Fetch matches
-    const fetchMatches = async () => {
+    // Fetch matches - Memoized
+    const fetchMatches = React.useCallback(async () => {
         try {
             const response = await fetch(`${backendUrl}/api/matches?status=waiting`);
             const data = await response.json();
@@ -117,12 +120,18 @@ const MatchmakingPage: React.FC<MatchmakingPageProps> = ({ user, backendUrl, onV
         } finally {
             setLoading(false);
         }
-    };
+    }, [backendUrl]);
 
     useEffect(() => {
         fetchMatches();
         // Removed 5s polling interval - now purely push-based via WebSockets
-    }, [backendUrl]);
+    }, [fetchMatches]);
+
+    // Memoized Back Handler to prevent LobbyDetailPage re-renders (Moved to top)
+    const handleBackToLobby = React.useCallback(() => {
+        setSelectedMatchId(null);
+        fetchMatches();
+    }, [fetchMatches]);
 
 
     // Fetch user's active match
@@ -161,19 +170,32 @@ const MatchmakingPage: React.FC<MatchmakingPageProps> = ({ user, backendUrl, onV
         }
     };
 
-    // Handle WebSocket messages for real-time updates
+    // Handle WebSocket messages using transient subscription (No re-renders!)
     useEffect(() => {
-        if (lastMessage) {
-            try {
-                const msg = lastMessage; // Already parsed
-                if (msg.type === 'LOBBY_UPDATED' || msg.type === 'QUEUE_UPDATE' || msg.type === 'NEATQUEUE_LOBBY_CREATED' || msg.type === 'NEATQUEUE_LOBBY_DELETED') {
-                    fetchMatches();
+        // Track previous message to detect changes
+        let prevLastMessage = useWebSocket.getState().lastMessage;
+
+        const unsub = useWebSocket.subscribe((state) => {
+            const currentLastMessage = state.lastMessage;
+
+            // Only act if lastMessage reference changed
+            if (currentLastMessage !== prevLastMessage) {
+                prevLastMessage = currentLastMessage;
+
+                if (currentLastMessage) {
+                    try {
+                        const msg = currentLastMessage;
+                        if (msg.type === 'LOBBY_UPDATED' || msg.type === 'QUEUE_UPDATE' || msg.type === 'NEATQUEUE_LOBBY_CREATED' || msg.type === 'NEATQUEUE_LOBBY_DELETED') {
+                            fetchMatches();
+                        }
+                    } catch (err) {
+                        console.error("Error processing websocket message:", err);
+                    }
                 }
-            } catch (err) {
-                console.error("Error processing websocket message:", err);
             }
-        }
-    }, [lastMessage]);
+        });
+        return unsub;
+    }, [fetchMatches]);
 
 
     // Create lobby
@@ -284,10 +306,10 @@ const MatchmakingPage: React.FC<MatchmakingPageProps> = ({ user, backendUrl, onV
                 setMyActiveMatch(null);
                 console.log("Left lobby");
             } else {
-                alert(data.error || 'Failed to leave lobby');
+                toast.error('Unable to leave lobby', { description: data.error || 'Please try again' });
             }
         } catch (err) {
-            alert('Network error');
+            toast.error('Connection failed', { description: 'Please check your internet connection and try again' });
         } finally {
             setProcessingId(null);
         }
@@ -313,10 +335,10 @@ const MatchmakingPage: React.FC<MatchmakingPageProps> = ({ user, backendUrl, onV
                 fetchMatches();
                 console.log("Match started!");
             } else {
-                alert(data.error || 'Failed to start match');
+                toast.error('Cannot start match', { description: data.error || 'Please ensure all requirements are met' });
             }
         } catch (err) {
-            alert('Network error');
+            toast.error('Connection failed', { description: 'Please check your internet connection and try again' });
         }
     };
 
@@ -343,10 +365,7 @@ const MatchmakingPage: React.FC<MatchmakingPageProps> = ({ user, backendUrl, onV
                 matchId={selectedMatchId}
                 user={user}
                 backendUrl={backendUrl}
-                onBack={() => {
-                    setSelectedMatchId(null);
-                    fetchMatches();
-                }}
+                onBack={handleBackToLobby}
                 previousProfileUserId={previousProfileUserId}
                 onNavigateToProfile={onViewProfile}
             />
@@ -744,10 +763,10 @@ const MatchmakingPage: React.FC<MatchmakingPageProps> = ({ user, backendUrl, onV
                                                             setMatchType('casual');
                                                         } else if (type.id === 'competitive') {
                                                             const elo = user?.elo || 1000;
-                                                            if (elo < 1600) {
+                                                            if (elo < 2001) {
                                                                 setMatchType('competitive');
                                                             } else {
-                                                                setError('Competitive matches are for Bronze/Silver players only (Elo < 1600). Gold players cannot participate.');
+                                                                setError('Competitive matches are for Bronze/Silver players only (Elo < 2001). Gold players cannot participate.');
                                                             }
                                                         } else if (type.id === 'league') {
                                                             const isVip = !!user?.is_vip;
@@ -796,7 +815,7 @@ const MatchmakingPage: React.FC<MatchmakingPageProps> = ({ user, backendUrl, onV
                                                         )}
 
                                                         {/* Locked/Restricted Overlays */}
-                                                        {type.id === 'competitive' && ((user?.elo || 1000) >= 1600) && (
+                                                        {type.id === 'competitive' && ((user?.elo || 1000) >= 2001) && (
                                                             <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-zinc-950/90 backdrop-blur-[1px]">
                                                                 <ShieldAlert className="w-5 h-5 sm:w-6 sm:h-6 text-blue-500 mb-1" />
                                                                 <span className="text-[9px] sm:text-[10px] font-bold text-blue-500 uppercase tracking-wider text-center px-1">

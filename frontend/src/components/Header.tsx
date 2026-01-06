@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, memo } from "react";
 import { loginWithDiscord } from "../utils/auth";
 import { Sheet, SheetContent, SheetTrigger, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
@@ -49,13 +49,15 @@ interface HeaderProps {
   onNavigate: (page: string) => void;
   onLogout: () => void;
   backendUrl: string;
+  activeLobbyId?: string; // Added prop
 }
 
-export default function Header({
+function Header({
   currentPage,
   user,
   onNavigate,
   onLogout,
+  activeLobbyId, // Destructure
 }: HeaderProps) {
   const [isOpen, setIsOpen] = useState(false);
 
@@ -233,6 +235,19 @@ export default function Header({
             <span className="sr-only">Join Discord Server</span>
           </Button>
 
+          {/* Active Match Indicator */}
+          {user && activeLobbyId && (currentPage !== 'matchgame' && currentPage !== 'mapban') && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="hidden md:flex items-center gap-2 border-green-500/50 text-green-500 hover:bg-green-500/10 animate-pulse font-bold"
+              onClick={() => onNavigate('matchgame')} // Or 'matchmaking' if that handles redirection better
+            >
+              <Swords className="h-4 w-4" />
+              MATCH IN PROGRESS
+            </Button>
+          )}
+
           {user ? (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -252,7 +267,7 @@ export default function Header({
                         <Badge className="bg-gradient-to-r from-yellow-400 to-yellow-600 text-[10px] h-4 px-1 border-none text-black font-bold">VIP</Badge>
                       )}
                     </div>
-                    <p className="text-xs leading-none text-muted-foreground">ELO: {user.elo || 1000}</p>
+                    <p className="text-sm leading-none text-muted-foreground">ELO: {user.elo || 1000}</p>
                     {user.is_vip === 1 && user.vip_until && (
                       <p className="text-[10px] leading-none text-yellow-500/70">
                         Expires: {new Date(user.vip_until).toLocaleDateString()}
@@ -309,3 +324,5 @@ export default function Header({
     </header>
   );
 }
+
+export default memo(Header);

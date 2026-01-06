@@ -16,6 +16,7 @@ import {
     TableHeader,
     TableRow,
 } from "@/components/ui/table";
+import { toast } from 'sonner';
 
 
 
@@ -94,7 +95,9 @@ export default function GoldPage() {
 
     const handleBuySubmit = async () => {
         if (!selectedPackage || !proofFile || !graffitiFile) {
-            alert('Please select a package and upload BOTH images (Graffiti & Payment).');
+            toast.warning('Missing information', {
+                description: 'Please select a package and upload both images (Graffiti & Payment)'
+            });
             return;
         }
         setIsSubmitting(true);
@@ -122,17 +125,17 @@ export default function GoldPage() {
             });
             const data = await res.json();
             if (data.success) {
-                alert('Request submitted! Check My Orders.');
+                toast.success('Order submitted!', { description: 'Check My Orders tab for status updates' });
                 setSelectedPackage(null);
                 setProofFile(null);
                 setGraffitiFile(null);
                 fetchOrders();
                 setActiveTab('history');
             } else {
-                alert(`Error: ${data.error}`);
+                toast.error('Order failed', { description: data.error || 'Please try again' });
             }
         } catch (e: any) {
-            alert(`Failed: ${e.message}`);
+            toast.error('Submission failed', { description: e.message || 'Unable to submit your order' });
         } finally {
             setIsSubmitting(false);
         }
@@ -151,7 +154,9 @@ export default function GoldPage() {
                 body: JSON.stringify({ status })
             });
             if (res.ok) fetchOrders();
-        } catch (e) { alert('Failed to process order'); }
+        } catch (e) {
+            toast.error('Processing failed', { description: 'Unable to process your order' });
+        }
     };
 
     if (!user) return <div className="text-white text-center pt-20">Please log in.</div>;

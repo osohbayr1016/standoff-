@@ -13,23 +13,44 @@ const matchesRoutes = new Hono<{ Bindings: Env }>();
 
 // ============= HELPERS =============
 
+// Helper to retry D1 queries on network failure
+async function queryWithRetry<T>(operation: () => Promise<T>, retries = 3, delay = 100): Promise<T> {
+    for (let i = 0; i < retries; i++) {
+        try {
+            return await operation();
+        } catch (err: any) {
+            const isNetworkError = err.message && (
+                err.message.includes('Network connection lost') ||
+                err.message.includes('D1_ERROR') ||
+                err.message.includes('internal error')
+            );
+
+            if (i === retries - 1 || !isNetworkError) throw err;
+            await new Promise(resolve => setTimeout(resolve, delay * Math.pow(2, i))); // Exponential backoff
+        }
+    }
+    throw new Error('Retries failed');
+}
+
 async function getMatchPlayers(matchId: string, env: Env) {
-    const playersResult = await env.DB.prepare(`
-        SELECT 
-            mp.*,
-            p.discord_username,
-            p.discord_avatar,
-            p.standoff_nickname,
-            p.elo,
-            p.role,
-            p.is_discord_member,
-            p.discord_id
-        FROM match_players mp
-        LEFT JOIN players p ON mp.player_id = p.id
-        WHERE mp.match_id = ?
-        ORDER BY mp.team, mp.joined_at
-    `).bind(matchId).all();
-    return playersResult.results || [];
+    return queryWithRetry(async () => {
+        const playersResult = await env.DB.prepare(`
+            SELECT 
+                mp.*,
+                p.discord_username,
+                p.discord_avatar,
+                p.standoff_nickname,
+                p.elo,
+                p.role,
+                p.is_discord_member,
+                p.discord_id
+            FROM match_players mp
+            LEFT JOIN players p ON mp.player_id = p.id
+            WHERE mp.match_id = ?
+            ORDER BY mp.team, mp.joined_at
+        `).bind(matchId).all();
+        return playersResult.results || [];
+    });
 }
 
 async function validateMatchAction(
@@ -74,10 +95,10 @@ async function validateMatchAction(
             return { allowed: false, error: 'League matches require an active VIP membership. Contact an administrator to upgrade.', status: 403 };
         }
 
-        const elo = (player.elo as number) || 1000;
+        const elo = (player.elo as number) || 1000; // Default to Level 3 (1000)
         let playerRank = 'Bronze';
-        if (elo >= 1600) playerRank = 'Gold';
-        else if (elo >= 1201) playerRank = 'Silver';
+        if (elo >= 2001) playerRank = 'Gold'; // Level 10
+        else if (elo >= 1401) playerRank = 'Silver'; // Levels 6-9
 
         if (action === 'join' && matchData?.min_rank && playerRank !== matchData.min_rank) {
             return { allowed: false, error: `Rank mismatch. This lobby is for ${matchData.min_rank} players (You are ${playerRank}).`, status: 403 };
@@ -87,8 +108,8 @@ async function validateMatchAction(
     // 3. Competitive Restrictions
     if (matchType === 'competitive') {
         const elo = (player.elo as number) || 1000;
-        if (elo >= 1600) {
-            return { allowed: false, error: 'Competitive matches are for Bronze/Silver players only (Elo < 1600). Gold players cannot participate.', status: 403 };
+        if (elo >= 2001) {
+            return { allowed: false, error: 'Competitive matches are for Bronze/Silver players only (Elo < 2001). Gold players cannot participate.', status: 403 };
         }
 
         if (!isAdmin && !hasActiveVip) {
@@ -174,9 +195,20 @@ async function notifyGlobalUpdate(env: Env, type: string = 'NEATQUEUE_LOBBY_CREA
 
 // ============= MATCH CRUD =============
 
+// Status-based cache for matches list
+const matchesListCache = new Map<string, { data: any, timestamp: number }>();
+const CACHE_TTL = 3000; // 3 seconds
+
 // GET /api/matches - List all active matches
 matchesRoutes.get('/', async (c) => {
     const status = c.req.query('status') || 'waiting';
+
+    // Check Cache
+    const cached = matchesListCache.get(status);
+    const now = Date.now();
+    if (cached && (now - cached.timestamp < CACHE_TTL)) {
+        return c.json(cached.data);
+    }
 
     try {
         const result = await c.env.DB.prepare(`
@@ -225,10 +257,18 @@ matchesRoutes.get('/', async (c) => {
             };
         });
 
-        return c.json({
+        const responseData = {
             success: true,
             matches: matchesWithPlayers
+        };
+
+        // Update Cache
+        matchesListCache.set(status, {
+            data: responseData,
+            timestamp: Date.now()
         });
+
+        return c.json(responseData);
     } catch (error: any) {
         console.error('Error fetching matches:', error);
         return c.json({ success: false, error: error.message }, 500);
@@ -240,20 +280,39 @@ matchesRoutes.get('/:id', async (c) => {
     const matchId = c.req.param('id');
 
     try {
-        // Get match details
-        const matchResult = await c.env.DB.prepare(`
-            SELECT 
-                m.*,
-                p.discord_username as host_username,
-                p.discord_avatar as host_avatar
-            FROM matches m
-            LEFT JOIN players p ON m.host_id = p.id
-            WHERE m.id = ?
-        `).bind(matchId).first();
+        // Get match details with retry
+        const matchResult = await queryWithRetry(async () => {
+            return await c.env.DB.prepare(`
+                SELECT 
+                    m.*,
+                    p.discord_username as host_username,
+                    p.discord_avatar as host_avatar
+                FROM matches m
+                LEFT JOIN players p ON m.host_id = p.id
+                WHERE m.id = ?
+            `).bind(matchId).first();
+        });
 
         if (!matchResult) {
             return c.json({ success: false, error: 'Match not found' }, 404);
         }
+
+        // Check for Live State (Draft/MapBan) from Durable Object
+        let liveState = null;
+        if (matchResult.status === 'drafting' || matchResult.status === 'map_ban' || matchResult.status === 'waiting' || matchResult.status === 'in_progress') {
+            try {
+                const doId = c.env.MATCH_QUEUE.idFromName('global-matchmaking-v2');
+                const doStub = c.env.MATCH_QUEUE.get(doId);
+                const doRes = await doStub.fetch(`http://do/lobby/${matchId}`);
+
+                if (doRes.ok) {
+                    liveState = await doRes.json() as any;
+                }
+            } catch (e) {
+                console.warn(`Failed to fetch live state for ${matchId}`, e);
+            }
+        }
+
 
         const players = await getMatchPlayers(matchId, c.env);
 
@@ -275,6 +334,7 @@ matchesRoutes.get('/:id', async (c) => {
             success: true,
             match: {
                 ...matchResult,
+                ...liveState, // Merge live state (draftState, mapBanState) over DB result
                 alpha_avg_elo: alphaCount > 0 ? Math.round(alphaElo / alphaCount) : 1000,
                 bravo_avg_elo: bravoCount > 0 ? Math.round(bravoElo / bravoCount) : 1000
             },
@@ -296,8 +356,13 @@ matchesRoutes.get('/user/:userId/active', async (c) => {
             FROM matches m
             JOIN match_players mp ON m.id = mp.match_id
             WHERE (mp.player_id = ? OR mp.player_id IN (SELECT discord_id FROM players WHERE id = ?))
-            AND m.status IN ('waiting', 'in_progress')
-            ORDER BY m.created_at DESC
+            AND m.status IN ('waiting', 'in_progress', 'drafting')
+            ORDER BY 
+                CASE 
+                    WHEN m.status IN ('drafting', 'in_progress') THEN 0 
+                    ELSE 1 
+                END ASC,
+                m.created_at DESC
             LIMIT 1
         `).bind(userId, userId).first();
 
@@ -342,8 +407,8 @@ matchesRoutes.post('/', async (c) => {
         if (matchType === 'league') {
             // Calculate Rank
             const elo = (host.elo as number) || 1000;
-            if (elo >= 1600) minRank = 'Gold';
-            else if (elo >= 1201) minRank = 'Silver';
+            if (elo >= 2001) minRank = 'Gold';
+            else if (elo >= 1401) minRank = 'Silver';
             else minRank = 'Bronze';
         }
 
@@ -557,8 +622,19 @@ matchesRoutes.post('/:id/join', async (c) => {
             WHERE id = ?
         `).bind(matchId).run();
 
-        // Notify real-time
-        await notifyLobbyUpdate(matchId, c.env, 'PLAYER_JOINED');
+        // Check if lobby is full to AUTO-START
+        const newTotal = counts.alpha + counts.bravo + 1; // current in DB before this + 1
+        // Actually, we just updated the DB, so let's re-verify or use the logic. 
+        // We know we added one.
+        const maxPlayers = (match.max_players as number) || 10;
+
+        if (newTotal >= maxPlayers && match.status === 'waiting' && (match.match_type === 'competitive' || match.match_type === 'league')) {
+            // AUTO-START MATCH
+            await startMatchInternal(matchId, match.match_type as string, c.env);
+        } else {
+            // Just notify update
+            await notifyLobbyUpdate(matchId, c.env, 'PLAYER_JOINED');
+        }
 
         return c.json({
             success: true,
@@ -662,7 +738,13 @@ matchesRoutes.post('/:id/kick', async (c) => {
         }
 
         if (match.host_id !== body.host_id) {
-            return c.json({ success: false, error: 'Only the host can kick players' }, 403);
+            // Check if requester is admin/mod
+            const requester = await c.env.DB.prepare('SELECT role FROM players WHERE id = ?').bind(body.host_id).first();
+            const isStaff = requester?.role === 'admin' || requester?.role === 'moderator';
+
+            if (!isStaff) {
+                return c.json({ success: false, error: 'Only the host or staff can kick players' }, 403);
+            }
         }
 
         if (match.status !== 'waiting') {
@@ -804,6 +886,7 @@ matchesRoutes.patch('/:id/status', async (c) => {
         // Validate status transition
         const validTransitions: Record<string, string[]> = {
             'waiting': ['in_progress', 'cancelled'],
+            'drafting': ['cancelled'],
             'in_progress': match.match_type === 'casual' ? ['completed', 'cancelled'] : ['pending_review', 'cancelled']
         };
 
@@ -831,19 +914,23 @@ matchesRoutes.patch('/:id/status', async (c) => {
                     error: `Cannot start match with ${count} players. Need exactly ${maxPlayers} players.`
                 }, 400);
             }
+
+            // Start Match Logic (Draft or Normal)
+            await startMatchInternal(matchId, match.match_type as string, c.env);
+
+            return c.json({
+                success: true,
+                message: 'Match started successfully'
+            });
         }
 
+        // Handle other statuses (cancelled, completed)
         await c.env.DB.prepare(
             'UPDATE matches SET status = ?, updated_at = datetime(\'now\') WHERE id = ?'
         ).bind(body.status, matchId).run();
 
         // Notify real-time
-        const extraData: any = { status: body.status };
-        if (body.status === 'in_progress') {
-            extraData.startedAt = Date.now();
-            extraData.matchType = match.match_type;
-        }
-        await notifyLobbyUpdate(matchId, c.env, 'LOBBY_UPDATED', extraData);
+        await notifyLobbyUpdate(matchId, c.env, 'LOBBY_UPDATED', { status: body.status });
 
         return c.json({
             success: true,
@@ -1092,5 +1179,163 @@ matchesRoutes.post('/:id/balance', async (c) => {
         return c.json({ success: false, error: e.message }, 500);
     }
 });
+
+
+
+// POST /api/matches/:id/fill-bots - Fill match with bot players for testing (admin/host only)
+matchesRoutes.post('/:id/fill-bots', async (c) => {
+    const matchId = c.req.param('id');
+    try {
+        const body = await c.req.json<{ host_id: string }>();
+
+        const match = await c.env.DB.prepare('SELECT host_id, max_players, status, match_type FROM matches WHERE id = ?').bind(matchId).first();
+        if (!match) return c.json({ success: false, error: 'Match not found' }, 404);
+        if (match.status !== 'waiting') return c.json({ success: false, error: 'Match already started' }, 400);
+
+        const requester = await c.env.DB.prepare('SELECT role FROM players WHERE id = ?').bind(body.host_id).first();
+        const isHost = match.host_id === body.host_id;
+        const isAdmin = requester?.role === 'admin';
+
+        if (!isHost && !isAdmin) {
+            return c.json({ success: false, error: 'Only host or admin can fill with bots' }, 403);
+        }
+
+        const currentPlayers = await c.env.DB.prepare('SELECT COUNT(*) as count FROM match_players WHERE match_id = ?').bind(matchId).first();
+        const currentCount = (currentPlayers?.count as number) || 0;
+        const maxPlayers = (match.max_players as number) || 10;
+        const botsNeeded = maxPlayers - currentCount;
+
+        if (botsNeeded <= 0) {
+            return c.json({ success: false, error: 'Match is already full' }, 400);
+        }
+
+        const botNames = ['AlphaBot', 'BravoBot', 'CharlieBot', 'DeltaBot', 'EchoBot', 'FoxtrotBot', 'GolfBot', 'HotelBot', 'IndiaBot', 'JulietBot'];
+        const botPlayerQueries = [];
+        const matchPlayerQueries = [];
+
+        for (let i = 0; i < botsNeeded; i++) {
+            const botId = `bot_${matchId}_${i}_${Date.now()}`;
+            const randomSuffix = Math.floor(1000 + Math.random() * 9000);
+            const botName = `${botNames[i % botNames.length]} ${randomSuffix}`;
+            const botElo = 800 + Math.floor(Math.random() * 600);
+            const matchType = match.match_type as string;
+            const team = (matchType === 'competitive' || matchType === 'league') ? null : (i % 2 === 0 ? 'alpha' : 'bravo');
+
+            // Step 1: Create bot in players table
+            botPlayerQueries.push(
+                c.env.DB.prepare(`
+                    INSERT OR REPLACE INTO players (id, discord_id, discord_username, standoff_nickname, elo, created_at, is_discord_member) 
+                    VALUES (?, ?, ?, ?, ?, datetime('now'), 0)
+                `).bind(botId, botId, botName, botName, botElo)
+            );
+
+            // Step 2: Add bot to match (will execute after players are created)
+            matchPlayerQueries.push(
+                c.env.DB.prepare(`
+                    INSERT INTO match_players (match_id, player_id, team, is_captain, joined_at) 
+                    VALUES (?, ?, ?, 0, datetime('now'))
+                `).bind(matchId, botId, team)
+            );
+        }
+
+        // Execute in TWO stages to ensure foreign key constraints are satisfied
+        // Stage 1: Create all bot players
+        await c.env.DB.batch(botPlayerQueries);
+
+        // Stage 2: Add bots to match and update player count
+        matchPlayerQueries.push(
+            c.env.DB.prepare('UPDATE matches SET player_count = ?, updated_at = datetime(\'now\') WHERE id = ?').bind(maxPlayers, matchId)
+        );
+        await c.env.DB.batch(matchPlayerQueries);
+
+        const matchType = match.match_type as string;
+        if (matchType === 'competitive' || matchType === 'league') {
+            await startMatchInternal(matchId, matchType, c.env);
+        } else {
+            await notifyLobbyUpdate(matchId, c.env, 'LOBBY_UPDATED');
+        }
+
+        return c.json({ success: true, botsAdded: botsNeeded });
+    } catch (e: any) {
+        return c.json({ success: false, error: e.message }, 500);
+    }
+});
+
+// Helper to start match (Draft or Normal)
+async function startMatchInternal(matchId: string, matchType: string, env: any) {
+    try {
+        console.log(`[startMatchInternal] Starting match ${matchId} (${matchType})`);
+
+        // If ALREADY in progress or drafting, ignore (concurrency safety)
+        const current = await env.DB.prepare('SELECT status, map_name FROM matches WHERE id = ?').bind(matchId).first();
+        console.log(`[startMatchInternal] Current status: ${current?.status}, Map: ${current?.map_name}`);
+
+        if (current?.status !== 'waiting') {
+            console.log(`[startMatchInternal] Skipping - status is ${current?.status}`);
+            return;
+        }
+
+        if (matchType === 'league' || matchType === 'competitive') {
+            const players = await getMatchPlayers(matchId, env);
+            console.log(`[startMatchInternal] Found ${players.length} players`);
+
+            // Sort by Elo (Descending)
+            const sortedPlayers = [...players].sort((a: any, b: any) => (b.elo || 1000) - (a.elo || 1000));
+
+            if (sortedPlayers.length >= 2) {
+                const captainA = sortedPlayers[0];
+                const captainB = sortedPlayers[1];
+
+                // Update DB captains
+                await env.DB.batch([
+                    env.DB.prepare('UPDATE match_players SET is_captain = 1, team = "alpha" WHERE match_id = ? AND player_id = ?').bind(matchId, captainA.player_id),
+                    env.DB.prepare('UPDATE match_players SET is_captain = 1, team = "bravo" WHERE match_id = ? AND player_id = ?').bind(matchId, captainB.player_id),
+                ]);
+
+                // Trigger Draft in DO
+                const doId = env.MATCH_QUEUE.idFromName('global-matchmaking-v2');
+                const doStub = env.MATCH_QUEUE.get(doId);
+
+                const mapName = current?.map_name || "Sandstone"; // Fallback to avoid null errors
+
+                console.log(`[startMatchInternal] Triggering draft on DO with map ${mapName}`);
+                await doStub.fetch('http://do/broadcast', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        type: 'START_DRAFT',
+                        data: {
+                            matchId,
+                            captainAlpha: captainA,
+                            captainBravo: captainB,
+                            players: sortedPlayers,
+                            mapName: mapName
+                        }
+                    })
+                });
+            }
+        }
+
+        let newStatus = 'in_progress';
+        if (matchType === 'league' || matchType === 'competitive') {
+            newStatus = 'drafting';
+        }
+
+        // Update Status to In Progress or Drafting
+        await env.DB.prepare(
+            'UPDATE matches SET status = ?, updated_at = datetime(\'now\') WHERE id = ?'
+        ).bind(newStatus, matchId).run();
+
+        const extraData: any = {
+            status: newStatus, // DO will broadcast drafting if draft started
+            startedAt: Date.now(),
+            matchType: matchType
+        };
+
+        await notifyLobbyUpdate(matchId, env, 'LOBBY_UPDATED', extraData);
+    } catch (e) {
+        console.error(`[startMatchInternal] Failed:`, e);
+        throw e;
+    }
+}
 
 export { matchesRoutes };

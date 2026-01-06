@@ -1,6 +1,7 @@
+import { memo } from "react";
 import { Instagram, MessageCircle } from "lucide-react";
 
-export default function Footer() {
+function Footer() {
   return (
     <footer className="w-full bg-zinc-950 border-t border-white/10 pt-16 pb-8 mt-auto">
       <div className="container mx-auto max-w-7xl px-4">
@@ -79,3 +80,5 @@ export default function Footer() {
     </footer>
   );
 }
+
+export default memo(Footer);
