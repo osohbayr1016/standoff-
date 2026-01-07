@@ -1923,6 +1923,30 @@ export class MatchQueueDO {
         lobby.teamB.unshift(lobby.captainB); // Add captain at start
       }
 
+      // FIX 6v4: Deduplicate Teams
+      const uniqueA = new Map();
+      lobby.teamA.forEach(p => uniqueA.set(p.id, p));
+      lobby.teamA = Array.from(uniqueA.values());
+
+      const uniqueB = new Map();
+      lobby.teamB.forEach(p => uniqueB.set(p.id, p));
+      lobby.teamB = Array.from(uniqueB.values());
+
+      // VALIDATION: FINAL SAFETY NET
+      if (lobby.teamA.length !== 5 || lobby.teamB.length !== 5) {
+        console.error(`🚨 Draft Imbalance detected! A:${lobby.teamA.length} vs B:${lobby.teamB.length}. Cancelling.`);
+
+        // Notify Clients
+        this.broadcastToLobby(lobbyId, JSON.stringify({
+          type: 'MATCH_CANCELLED',
+          reason: 'Critical Error: Draft resulted in unbalanced teams.'
+        }));
+
+        this.activeLobbies.delete(lobbyId);
+        await this.deleteLobbyFromStorage(lobbyId);
+        return; // STOP EXECUTION
+      }
+
       // 1. Tag players
       lobby.teamA.forEach(p => p.team = 'alpha');
       lobby.teamB.forEach(p => p.team = 'bravo');

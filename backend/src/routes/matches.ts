@@ -345,13 +345,36 @@ matchesRoutes.get('/:id', async (c) => {
             }
         });
 
+        // Clan War: Fetch Clan Names
+        let alphaClan: any = null;
+        let bravoClan: any = null;
+
+        if (matchResult.match_type === 'clan_war') {
+            // Alpha Clan = Host Clan (stored in match.clan_id)
+            if (matchResult.clan_id) {
+                alphaClan = await c.env.DB.prepare('SELECT id, name, tag, avatar FROM clans WHERE id = ?').bind(matchResult.clan_id).first();
+            }
+
+            // Bravo Clan = Determine from Bravo players
+            const bravoPlayer = players.find((p: any) => p.team === 'bravo');
+            if (bravoPlayer) {
+                // Find clan of a Bravo player. Ideally, all Bravo players are in the same clan.
+                const bMember = await c.env.DB.prepare('SELECT clan_id FROM clan_members WHERE user_id = ?').bind(bravoPlayer.player_id).first<{ clan_id: string }>();
+                if (bMember) {
+                    bravoClan = await c.env.DB.prepare('SELECT id, name, tag, avatar FROM clans WHERE id = ?').bind(bMember.clan_id).first();
+                }
+            }
+        }
+
         return c.json({
             success: true,
             match: {
                 ...matchResult,
                 ...liveState, // Merge live state (draftState, mapBanState) over DB result
                 alpha_avg_elo: alphaCount > 0 ? Math.round(alphaElo / alphaCount) : 1000,
-                bravo_avg_elo: bravoCount > 0 ? Math.round(bravoElo / bravoCount) : 1000
+                bravo_avg_elo: bravoCount > 0 ? Math.round(bravoElo / bravoCount) : 1000,
+                alpha_clan: alphaClan,
+                bravo_clan: bravoClan
             },
             players
         });
@@ -444,7 +467,13 @@ matchesRoutes.post('/', async (c) => {
                     hasRequiredRole = Array.isArray(roles) && roles.includes(CLAN_WAR_ROLE_ID);
                 } catch (e) { }
 
-                if (!hasRequiredRole) return c.json({ success: false, error: 'You do not have permission to create Clan War lobbies.' }, 403);
+                const isAdmin = host.role === 'admin';
+                const isVip = host.is_vip === 1 || host.is_vip === true || String(host.is_vip) === '1' || String(host.is_vip) === 'true';
+                const vipUntil = host.vip_until ? new Date(host.vip_until as string) : null;
+                const now = new Date();
+                const hasActiveVip = isVip && (!vipUntil || vipUntil > now);
+
+                if (!hasRequiredRole && !hasActiveVip && !isAdmin) return c.json({ success: false, error: 'You do not have permission to create Clan War lobbies.' }, 403);
                 maxPlayers = 10;
             }
             clanId = member.clan_id;
@@ -536,6 +565,24 @@ matchesRoutes.post('/:id/join', async (c) => {
 
         // Clan War Restriction: Enforce 5v5 clan-based teams
         if (match.match_type === 'clan_war') {
+            // PASS 1: Permission Check (Must be VIP, Admin, or have Role)
+            const CLAN_WAR_ROLE_ID = '1454773734073438362';
+            let hasRequiredRole = false;
+            try {
+                const roles = JSON.parse(player.discord_roles as string || '[]');
+                hasRequiredRole = Array.isArray(roles) && roles.includes(CLAN_WAR_ROLE_ID);
+            } catch (e) { }
+
+            const isAdmin = player.role === 'admin';
+            const isVip = player.is_vip === 1 || player.is_vip === true || String(player.is_vip) === '1' || String(player.is_vip) === 'true';
+            const vipUntil = player.vip_until ? new Date(player.vip_until as string) : null;
+            const now = new Date();
+            const hasActiveVip = isVip && (!vipUntil || vipUntil > now);
+
+            if (!hasRequiredRole && !hasActiveVip && !isAdmin) {
+                return c.json({ success: false, error: 'Clan Wars are reserved for VIP members or Clan War role holders.' }, 403);
+            }
+
             // Player must be in a clan
             const playerClan = await c.env.DB.prepare('SELECT clan_id FROM clan_members WHERE user_id = ?').bind(player.id).first<{ clan_id: string }>();
             if (!playerClan) {

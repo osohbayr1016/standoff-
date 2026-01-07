@@ -74,6 +74,8 @@ interface Match {
     draftState?: any;
     captain_alpha_id?: string;
     captain_bravo_id?: string;
+    alpha_clan?: { name: string; tag: string; avatar: string };
+    bravo_clan?: { name: string; tag: string; avatar: string };
 }
 
 interface LobbyDetailPageProps {
@@ -1266,16 +1268,34 @@ const LobbyDetailPage: React.FC<LobbyDetailPageProps> = ({ matchId, user, backen
                                                         variant={winnerTeam === 'alpha' ? 'default' : 'outline'}
                                                         className={`h-24 flex flex-col items-center justify-center gap-2 border-2 ${winnerTeam === 'alpha' ? 'border-orange-500 bg-orange-500/10 text-orange-500 hover:bg-orange-500/20' : 'hover:bg-muted'}`}
                                                     >
-                                                        <span className="text-2xl">🦁</span>
-                                                        <span className="font-bold">{alphaTeamName}</span>
+                                                        {(match.match_type as string) === 'clan_war' && match.alpha_clan ? (
+                                                            <>
+                                                                <span className="text-xl font-black uppercase">[{match.alpha_clan.tag}]</span>
+                                                                <span className="font-bold text-sm truncate max-w-[120px]">{match.alpha_clan.name}</span>
+                                                            </>
+                                                        ) : (
+                                                            <>
+                                                                <span className="text-2xl">🦁</span>
+                                                                <span className="font-bold">{alphaTeamName}</span>
+                                                            </>
+                                                        )}
                                                     </Button>
                                                     <Button
                                                         onClick={() => setWinnerTeam('bravo')}
                                                         variant={winnerTeam === 'bravo' ? 'default' : 'outline'}
                                                         className={`h-24 flex flex-col items-center justify-center gap-2 border-2 ${winnerTeam === 'bravo' ? 'border-blue-500 bg-blue-500/10 text-blue-500 hover:bg-blue-500/20' : 'hover:bg-muted'}`}
                                                     >
-                                                        <span className="text-2xl">🦈</span>
-                                                        <span className="font-bold">{bravoTeamName}</span>
+                                                        {(match.match_type as string) === 'clan_war' && match.bravo_clan ? (
+                                                            <>
+                                                                <span className="text-xl font-black uppercase">[{match.bravo_clan.tag}]</span>
+                                                                <span className="font-bold text-sm truncate max-w-[120px]">{match.bravo_clan.name}</span>
+                                                            </>
+                                                        ) : (
+                                                            <>
+                                                                <span className="text-2xl">🦈</span>
+                                                                <span className="font-bold">{bravoTeamName}</span>
+                                                            </>
+                                                        )}
                                                     </Button>
                                                 </div>
 
