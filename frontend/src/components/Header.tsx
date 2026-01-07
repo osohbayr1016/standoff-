@@ -57,7 +57,6 @@ function Header({
   user,
   onNavigate,
   onLogout,
-  activeLobbyId, // Destructure
 }: HeaderProps) {
   const [isOpen, setIsOpen] = useState(false);
 
@@ -236,17 +235,7 @@ function Header({
           </Button>
 
           {/* Active Match Indicator */}
-          {user && activeLobbyId && (currentPage !== 'matchgame') && (
-            <Button
-              variant="outline"
-              size="sm"
-              className="hidden md:flex items-center gap-2 border-green-500/50 text-green-500 hover:bg-green-500/10 animate-pulse font-bold"
-              onClick={() => onNavigate('matchgame')} // Or 'matchmaking' if that handles redirection better
-            >
-              <Swords className="h-4 w-4" />
-              MATCH IN PROGRESS
-            </Button>
-          )}
+
 
           {user ? (
             <DropdownMenu>

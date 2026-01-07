@@ -9,6 +9,8 @@ interface Env {
     DB: D1Database;
     DISCORD_BOT_TOKEN: string;
     DISCORD_SERVER_ID: string;
+    MATCH_QUEUE: DurableObjectNamespace;
+    DD_API_KEY: string;
 }
 
 const moderatorRoutes = new Hono<{ Bindings: Env }>();
@@ -26,6 +28,21 @@ const syncDiscordTiers = async (env: Env, userId: string, newElo: number) => {
     }
     await updateDiscordRole(env, userId, targetRole, true);
 };
+
+// Helper to purge lobby from MatchQueueDO memory
+async function purgeLobby(matchId: string, env: Env) {
+    try {
+        const doId = env.MATCH_QUEUE.idFromName('global-matchmaking-v2');
+        const doStub = env.MATCH_QUEUE.get(doId);
+        await doStub.fetch('http://do/purge-lobby', {
+            method: 'POST',
+            body: JSON.stringify({ matchId })
+        });
+        console.log(`🧹 Purge request sent for lobby ${matchId}`);
+    } catch (err) {
+        console.error('Error purging lobby:', err);
+    }
+}
 
 // Log Moderator Action Helper
 const logModeratorAction = async (c: any, moderatorId: string, actionType: string, targetId: string | null, details: any) => {
@@ -1216,6 +1233,9 @@ moderatorRoutes.post('/matches/:id/cancel', async (c) => {
         // Log Action
         await logModeratorAction(c, moderatorId || 'system', 'MATCH_CANCEL', matchId, {});
 
+        // Explicitly purge from Durable Object memory
+        c.executionCtx.waitUntil(purgeLobby(matchId, c.env));
+
         return c.json({ success: true });
     } catch (error: any) {
         console.error('Error cancelling match:', error);
@@ -1366,6 +1386,9 @@ moderatorRoutes.post('/matches/:id/force-result', async (c) => {
             moderatorId,
             matchId
         ).run();
+
+        // Explicitly purge from Durable Object memory
+        c.executionCtx.waitUntil(purgeLobby(matchId, c.env));
 
         return c.json({ success: true, message: 'Match force ended and results applied' });
 

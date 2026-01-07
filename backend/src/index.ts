@@ -81,6 +81,7 @@ interface Lobby {
   status?: string;
   startedAt?: number;
   lobby_url?: string;
+  max_players?: number;
 }
 
 interface ChatMessage {
@@ -132,6 +133,7 @@ export class MatchQueueDO {
   // High-performance update tracking
   lastBroadcastData: string = '';
   lastQueueBroadcast: string = '';
+  lastQueueBroadcastTime: number = 0;
 
 
 
@@ -152,6 +154,14 @@ export class MatchQueueDO {
 
     if (url.pathname.endsWith('/check-online') && request.method === 'POST') {
       return this.handleCheckOnline(request);
+    }
+
+    if (url.pathname.endsWith('/join-lobby') && request.method === 'POST') {
+      return this.handleJoinLobby(request);
+    }
+
+    if (url.pathname.endsWith('/purge-lobby') && request.method === 'POST') {
+      return this.handlePurgeLobby(request);
     }
 
     if (url.pathname.endsWith('/broadcast') && request.method === 'POST') {
@@ -738,8 +748,13 @@ export class MatchQueueDO {
       });
 
       if (currentQueueData !== this.lastQueueBroadcast) {
-        this.broadcastMergedQueue();
-        this.lastQueueBroadcast = currentQueueData;
+        const now = Date.now();
+        // Throttle queue updates to once every 3 seconds unless forced
+        if (now - this.lastQueueBroadcastTime > 3000) {
+          this.broadcastMergedQueue();
+          this.lastQueueBroadcast = currentQueueData;
+          this.lastQueueBroadcastTime = now;
+        }
       }
 
       const currentDebugData = JSON.stringify({
@@ -758,10 +773,21 @@ export class MatchQueueDO {
     } catch (error) {
       console.error('❌ Alarm error:', error);
     } finally {
-      // Reschedule - THROTTLED to 3 seconds for general status updates
+      // Reschedule - DYNAMIC THROTTLE
+      // If we have active drafting/ready phase, check every 1s.
+      // Otherwise, check every 3s to save CPU.
+      let hasActivePhase = false;
+      for (const lobby of this.activeLobbies.values()) {
+        if (lobby.draftState?.isActive || lobby.readyPhaseState?.phaseActive) {
+          hasActivePhase = true;
+          break;
+        }
+      }
+
       const shouldReschedule = this.activeLobbies.size > 0 || this.localQueue.size > 0 || this.sessions.size > 0;
       if (shouldReschedule) {
-        await this.state.storage.setAlarm(Date.now() + 1000);
+        const nextAlarm = hasActivePhase ? 1000 : 3000;
+        await this.state.storage.setAlarm(Date.now() + nextAlarm);
       }
     }
 
@@ -1692,8 +1718,8 @@ export class MatchQueueDO {
 
               lobby.draftState.pickHistory.push({ pickerId: currentUserId!, pickedId: pickedPlayer.id });
 
-              // PERSISTENCE: Save state after every pick to prevent data loss on DO restart
-              await this.saveMatchState();
+              // BROADCAST: Notify all clients in lobby of the updated teams (FIXES 6v4 DISPLAY BUG)
+              await this.broadcastLobbyUpdate(lobbyId);
 
 
               // Update Turn
@@ -1719,6 +1745,14 @@ export class MatchQueueDO {
                 }
 
                 // START MATCH: Migrate drafted teams to main player list
+                // 0. Ensure Captains are in their team arrays (CRITICAL FIX)
+                if (!lobby.teamA.find(p => p.id === lobby.captainA.id)) {
+                  lobby.teamA.unshift(lobby.captainA); // Add captain at start
+                }
+                if (!lobby.teamB.find(p => p.id === lobby.captainB.id)) {
+                  lobby.teamB.unshift(lobby.captainB); // Add captain at start
+                }
+
                 // 1. Tag players
                 lobby.teamA.forEach(p => p.team = 'alpha');
                 lobby.teamB.forEach(p => p.team = 'bravo');
@@ -1726,8 +1760,28 @@ export class MatchQueueDO {
                 // 2. Update lobby.players
                 lobby.players = [...lobby.teamA, ...lobby.teamB];
 
+                await this.broadcastLobbyUpdate(lobbyId);
+
                 // 3. Update DB: Status -> in_progress
                 try {
+                  // SAFETY: Ensure all BOT players exist in the 'players' table to prevent FK errors
+                  // This fixes the "Missing Players" bug if a bot was deleted or transient
+                  const botPlayers = lobby.players.filter(p => (p.id || '').startsWith('bot_') || (p.id || '').startsWith('auto_'));
+                  if (botPlayers.length > 0) {
+                    const botStmt = this.env.DB.prepare(`
+                      INSERT OR IGNORE INTO players (id, discord_id, username, discord_username, discord_avatar, elo, role, is_vip, created_at, last_login_at)
+                      VALUES (?, ?, ?, ?, ?, ?, 'user', 0, datetime('now'), datetime('now'))
+                    `);
+                    await this.env.DB.batch(botPlayers.map(b => botStmt.bind(
+                      b.id,
+                      b.id, // discord_id fallback
+                      b.username || 'Bot',
+                      b.username || 'Bot',
+                      'default_avatar',
+                      b.elo || 1000
+                    )));
+                  }
+
                   await this.env.DB.prepare("UPDATE matches SET status = 'in_progress', updated_at = datetime('now') WHERE id = ?")
                     .bind(lobbyId).run();
 
@@ -1768,9 +1822,6 @@ export class MatchQueueDO {
                   serverInfo: lobby.serverInfo
                 }));
               }
-
-              await this.saveMatchState();
-              await this.broadcastLobbyUpdate(lobbyId);
 
               // CHECK IF NEXT TURN IS BOT
               if (lobby.draftState.isActive) {
@@ -1848,8 +1899,8 @@ export class MatchQueueDO {
 
     lobby.draftState.pickHistory.push({ pickerId: captain.id, pickedId: pickedPlayer.id });
 
-    // PERSISTENCE: Save state after every pick to prevent data loss on DO restart
-    await this.saveMatchState();
+    // BROADCAST: Notify all clients in lobby of the updated teams (FIXES 6v4 DISPLAY BUG)
+    await this.broadcastLobbyUpdate(lobbyId);
 
     // Advance Turn
     const nextTurnIndex = lobby.draftState.pickHistory.length;
@@ -1864,6 +1915,14 @@ export class MatchQueueDO {
       if (!(lobby as any).selectedMap) (lobby as any).selectedMap = "Sandstone";
 
       // START MATCH: Migrate drafted teams to main player list
+      // 0. Ensure Captains are in their team arrays (CRITICAL FIX)
+      if (!lobby.teamA.find(p => p.id === lobby.captainA.id)) {
+        lobby.teamA.unshift(lobby.captainA); // Add captain at start
+      }
+      if (!lobby.teamB.find(p => p.id === lobby.captainB.id)) {
+        lobby.teamB.unshift(lobby.captainB); // Add captain at start
+      }
+
       // 1. Tag players
       lobby.teamA.forEach(p => p.team = 'alpha');
       lobby.teamB.forEach(p => p.team = 'bravo');
@@ -1871,8 +1930,27 @@ export class MatchQueueDO {
       // 2. Update lobby.players
       lobby.players = [...lobby.teamA, ...lobby.teamB];
 
+      await this.broadcastLobbyUpdate(lobbyId);
+
       // 3. Update DB: Status -> in_progress
       try {
+        // SAFETY: Ensure all BOT players exist in the 'players' table to prevent FK errors
+        const botPlayers = lobby.players.filter(p => (p.id || '').startsWith('bot_') || (p.id || '').startsWith('auto_'));
+        if (botPlayers.length > 0) {
+          const botStmt = this.env.DB.prepare(`
+             INSERT OR IGNORE INTO players (id, discord_id, username, discord_username, discord_avatar, elo, role, is_vip, created_at, last_login_at)
+             VALUES (?, ?, ?, ?, ?, ?, 'user', 0, datetime('now'), datetime('now'))
+           `);
+          await this.env.DB.batch(botPlayers.map(b => botStmt.bind(
+            b.id,
+            b.id,
+            b.username || 'Bot',
+            b.username || 'Bot',
+            'default_avatar',
+            b.elo || 1000
+          )));
+        }
+
         await this.env.DB.prepare("UPDATE matches SET status = 'in_progress', updated_at = datetime('now') WHERE id = ?")
           .bind(lobbyId).run();
 
@@ -1918,9 +1996,6 @@ export class MatchQueueDO {
       }));
     }
 
-    await this.saveMatchState();
-    await this.broadcastLobbyUpdate(lobbyId);
-
     // RECURSE: Check if NEXT turn is bot (only if we just acted)
     // If we just timeout-picked for a human, and next is bot, we should trigger bot logic
     if (lobby.draftState.isActive) {
@@ -1929,6 +2004,162 @@ export class MatchQueueDO {
   }
 
 
+
+  async handlePurgeLobby(request: Request) {
+    try {
+      const { matchId } = await request.json() as { matchId: string };
+      if (!matchId) return new Response(JSON.stringify({ success: false, error: 'Match ID required' }), { status: 400 });
+
+      const lobby = this.activeLobbies.get(matchId);
+      if (lobby) {
+        console.log(`🧹 [${matchId}] Explicitly purging lobby from memory.`);
+
+        // 1. Remove from maps
+        this.activeLobbies.delete(matchId);
+        lobby.players.forEach(p => {
+          const pid = p.id || p.discord_id || (p as any).player_id;
+          if (pid) this.playerLobbyMap.delete(pid);
+        });
+
+        // 2. Clean from persistent storage
+        await this.deleteLobbyFromStorage(matchId);
+
+        // 3. Save master state (playerMap_v2 update)
+        await this.saveMatchState();
+
+        console.log(`✅ [${matchId}] Purge complete.`);
+      }
+
+      return new Response(JSON.stringify({ success: true }));
+    } catch (e: any) {
+      console.error("Purge Error:", e);
+      return new Response(JSON.stringify({ success: false, error: e.message }), { status: 500 });
+    }
+  }
+
+  async handleJoinLobby(request: Request) {
+    try {
+      const body = await request.json() as any;
+      const { matchId, player } = body;
+
+      if (!matchId) return new Response(JSON.stringify({ success: false, error: 'Match ID required' }), { status: 400 });
+      if (!player || !player.id) return new Response(JSON.stringify({ success: false, error: 'Player data required' }), { status: 400 });
+
+      let lobby = this.activeLobbies.get(matchId);
+
+      // Hydrate from DB if not in memory (Fixes race condition for 'Waiting' matches)
+      if (!lobby) {
+        const match = await this.env.DB.prepare("SELECT * FROM matches WHERE id = ?").bind(matchId).first();
+        if (!match) return new Response(JSON.stringify({ success: false, error: 'Match not found' }), { status: 404 });
+
+        // Load existing players from DB
+        const playersResult = await this.env.DB.prepare(`
+             SELECT mp.*, p.discord_username, p.discord_avatar, p.standoff_nickname, p.elo, p.role
+             FROM match_players mp
+             LEFT JOIN players p ON mp.player_id = p.id
+             WHERE mp.match_id = ?
+             ORDER BY mp.joined_at
+         `).bind(matchId).all();
+
+        const players = (playersResult.results || []).map((p: any) => ({
+          id: p.player_id,
+          username: p.discord_username || p.username,
+          avatar: p.discord_avatar,
+          elo: p.elo || 1000,
+          joinedAt: new Date(p.joined_at as string).getTime(), // Ensure Date parsing
+          role: p.role,
+          team: p.team,
+          is_captain: p.is_captain
+        }));
+
+        // Reconstruct basic lobby state
+        lobby = {
+          id: matchId,
+          players: players,
+          captainA: players.find((p: any) => p.is_captain && p.team === 'alpha') || players[0],
+          captainB: players.find((p: any) => p.is_captain && p.team === 'bravo'),
+          teamA: players.filter((p: any) => p.team === 'alpha'),
+          teamB: players.filter((p: any) => p.team === 'bravo'),
+          matchType: match.match_type,
+          status: match.status,
+          max_players: match.max_players || 10,
+          readyPlayers: [],
+          readyPhaseState: { phaseActive: false, readyPlayers: [], readyPhaseTimeout: 30 }
+        } as any;
+
+        this.activeLobbies.set(matchId, lobby!);
+        console.log(`✅ [${matchId}] Hydrated match into DO memory.`);
+      }
+
+      // 2. CHECK CAPACITY (Synchronous Check - The Race Condition Fix)
+      if (lobby!.players.length >= (lobby!.max_players || 10)) {
+        return new Response(JSON.stringify({ success: false, error: 'Lobby is full' }), { status: 400 });
+      }
+
+      const joinTeam = body.team;
+
+      // 2.1 CHECK TEAM CAPACITY (Prevents 6v4)
+      if (joinTeam && lobby!.matchType !== 'clan_lobby' && lobby!.matchType !== 'dm' && lobby!.matchType !== 'gun_game') {
+        const teamLimit = (lobby!.max_players || 10) / 2;
+        const currentTeamCount = lobby!.players.filter((p: any) => p.team === joinTeam).length;
+        if (currentTeamCount >= teamLimit) {
+          return new Response(JSON.stringify({ success: false, error: `Team ${joinTeam} is full` }), { status: 400 });
+        }
+      }
+
+      // Check Duplicates
+      if (lobby!.players.find((p: any) => p.id === player.id)) {
+        return new Response(JSON.stringify({ success: false, error: 'Already in this match' }), { status: 400 });
+      }
+
+      // 3. Add Player (Sync)
+      const newPlayer = {
+        id: player.id,
+        username: player.username,
+        avatar: player.avatar,
+        elo: player.elo || 1000,
+        joinedAt: Date.now(),
+        team: joinTeam // CRITICAL: Store team in memory
+      };
+      lobby!.players.push(newPlayer as any);
+
+      // 4. Persist (Async with Rollback)
+      try {
+        await this.env.DB.prepare(`
+             INSERT INTO match_players (match_id, player_id, team, is_captain, joined_at)
+             VALUES (?, ?, ?, 0, datetime('now'))
+           `).bind(matchId, player.id, body.team || null).run();
+
+        // Update player_count (Crucial for List View & DB Integrity)
+        await this.env.DB.prepare(`
+             UPDATE matches SET player_count = player_count + 1, updated_at = datetime('now')
+             WHERE id = ?
+          `).bind(matchId).run();
+      } catch (dbErr) {
+        console.error(`❌ [${matchId}] Join persistence failed. Rolling back memory.`, dbErr);
+        // ROLLBACK MEMORY (Remove the player we just added)
+        lobby!.players = lobby!.players.filter(p => p.id !== player.id);
+        throw dbErr; // Re-throw to inform client
+      }
+
+      // Notify players in lobby
+      this.broadcastLobbyUpdate(matchId);
+
+      // Notify Global List (MatchmakingPage)
+      this.broadcastToAll(JSON.stringify({
+        type: 'LOBBY_UPDATED',
+        matchId,
+        count: lobby!.players.length,
+        status: lobby!.status
+      }));
+
+      return new Response(JSON.stringify({ success: true, count: lobby!.players.length }));
+
+    } catch (e: any) {
+      console.error("Join Error:", e);
+      return new Response(JSON.stringify({ success: false, error: e.message }), { status: 500 });
+    }
+  }
 
 }
 

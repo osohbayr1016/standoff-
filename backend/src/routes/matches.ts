@@ -98,7 +98,7 @@ async function validateMatchAction(
         const elo = (player.elo as number) || 1000; // Default to Level 3 (1000)
         let playerRank = 'Bronze';
         if (elo >= 2001) playerRank = 'Gold'; // Level 10
-        else if (elo >= 1401) playerRank = 'Silver'; // Levels 6-9
+        else if (elo >= 1201) playerRank = 'Silver'; // Levels 6-9
 
         if (action === 'join' && matchData?.min_rank && playerRank !== matchData.min_rank) {
             return { allowed: false, error: `Rank mismatch. This lobby is for ${matchData.min_rank} players (You are ${playerRank}).`, status: 403 };
@@ -190,6 +190,21 @@ async function notifyGlobalUpdate(env: Env, type: string = 'NEATQUEUE_LOBBY_CREA
         });
     } catch (err) {
         console.error('Error notifying global update:', err);
+    }
+}
+
+// Helper to purge lobby from MatchQueueDO memory
+async function purgeLobby(matchId: string, env: Env) {
+    try {
+        const doId = env.MATCH_QUEUE.idFromName('global-matchmaking-v2');
+        const doStub = env.MATCH_QUEUE.get(doId);
+        await doStub.fetch('http://do/purge-lobby', {
+            method: 'POST',
+            body: JSON.stringify({ matchId })
+        });
+        console.log(`🧹 Purge request sent for lobby ${matchId}`);
+    } catch (err) {
+        console.error('Error purging lobby:', err);
     }
 }
 
@@ -409,7 +424,7 @@ matchesRoutes.post('/', async (c) => {
             // Calculate Rank
             const elo = (host.elo as number) || 1000;
             if (elo >= 2001) minRank = 'Gold';
-            else if (elo >= 1401) minRank = 'Silver';
+            else if (elo >= 1201) minRank = 'Silver';
             else minRank = 'Bronze';
         }
 
@@ -591,7 +606,7 @@ matchesRoutes.post('/:id/join', async (c) => {
             return c.json({ success: false, error: 'Already in another active match' }, 400);
         }
 
-        // Count current players per team
+        // Count current players per team (for balancing)
         const teamCounts = await c.env.DB.prepare(`
             SELECT team, COUNT(*) as count FROM match_players 
             WHERE match_id = ? GROUP BY team
@@ -606,35 +621,37 @@ matchesRoutes.post('/:id/join', async (c) => {
         // Auto-assign team if not specified
         const assignedTeam = body.team || (counts.alpha <= counts.bravo ? 'alpha' : 'bravo');
 
-        // Check max players
-        if (counts.alpha + counts.bravo >= (match.max_players as number)) {
-            return c.json({ success: false, error: 'Match is full' }, 400);
+        // DELEGATE JOIN TO DURABLE OBJECT (Race Condition Fix)
+        const doId = c.env.MATCH_QUEUE.idFromName('global-matchmaking-v2');
+        const stub = c.env.MATCH_QUEUE.get(doId);
+
+        const joinRes = await stub.fetch('http://do/join-lobby', {
+            method: 'POST',
+            body: JSON.stringify({
+                matchId,
+                player: {
+                    id: player.id,
+                    username: player.discord_username || player.username || 'Unknown',
+                    avatar: player.discord_avatar || player.avatar,
+                    elo: player.elo
+                },
+                team: assignedTeam
+            })
+        });
+
+        const joinData = await joinRes.json() as any;
+        if (!joinData.success) {
+            return c.json({ success: false, error: joinData.error }, 400);
         }
 
-        // Add player (Store the actual primary key/discord_id consistently)
-        await c.env.DB.prepare(`
-            INSERT INTO match_players (match_id, player_id, team, is_captain, joined_at)
-            VALUES (?, ?, ?, 0, datetime('now'))
-        `).bind(matchId, player.id, assignedTeam).run();
-
-        // Update player count
-        await c.env.DB.prepare(`
-            UPDATE matches SET player_count = player_count + 1, updated_at = datetime('now')
-            WHERE id = ?
-        `).bind(matchId).run();
-
         // Check if lobby is full to AUTO-START
-        const newTotal = counts.alpha + counts.bravo + 1; // current in DB before this + 1
-        // Actually, we just updated the DB, so let's re-verify or use the logic. 
-        // We know we added one.
         const maxPlayers = (match.max_players as number) || 10;
 
-        if (newTotal >= maxPlayers && match.status === 'waiting' && (match.match_type === 'competitive' || match.match_type === 'league')) {
+        // Use DO's accurate count
+        if (joinData.count >= maxPlayers && match.status === 'waiting' &&
+            (match.match_type === 'competitive' || match.match_type === 'league' || match.max_players === 2)) {
             // AUTO-START MATCH
             await startMatchInternal(matchId, match.match_type as string, c.env);
-        } else {
-            // Just notify update
-            await notifyLobbyUpdate(matchId, c.env, 'PLAYER_JOINED');
         }
 
         return c.json({
@@ -933,6 +950,11 @@ matchesRoutes.patch('/:id/status', async (c) => {
         // Notify real-time
         await notifyLobbyUpdate(matchId, c.env, 'LOBBY_UPDATED', { status: body.status });
 
+        // If match reached a final state, purge from memory
+        if (body.status === 'cancelled' || body.status === 'completed') {
+            c.executionCtx.waitUntil(purgeLobby(matchId, c.env));
+        }
+
         return c.json({
             success: true,
             message: 'Match status updated'
@@ -1012,6 +1034,7 @@ matchesRoutes.post('/:id/result', async (c) => {
         }>();
 
         // Screenshot is optional for casual matches, required for league
+        // Screenshot is optional for casual matches, required for league
         const match = await c.env.DB.prepare(
             'SELECT host_id, status, match_type FROM matches WHERE id = ?'
         ).bind(matchId).first();
@@ -1029,11 +1052,22 @@ matchesRoutes.post('/:id/result', async (c) => {
             return c.json({ success: false, error: 'winner_team is required' }, 400);
         }
 
-        if (match.host_id !== body.host_id) {
-            return c.json({ success: false, error: 'Only host can submit result' }, 403);
+        // Check if submitter is Captain
+        const committerRole = await c.env.DB.prepare(
+            'SELECT is_captain FROM match_players WHERE match_id = ? AND player_id = ?'
+        ).bind(matchId, body.host_id).first();
+
+        // Allow Host OR Captains to submit
+        const isAuthorized =
+            match.host_id === body.host_id ||
+            (committerRole && committerRole.is_captain === 1);
+
+        if (!isAuthorized) {
+            return c.json({ success: false, error: 'Only host or captains can submit result' }, 403);
         }
 
-        if (match.status !== 'in_progress') {
+        // Allow 'in_progress' OR 'drafting' (if status update lagged)
+        if (match.status !== 'in_progress' && match.status !== 'drafting') {
             return c.json({ success: false, error: 'Match must be in progress to submit result' }, 400);
         }
 
@@ -1057,6 +1091,9 @@ matchesRoutes.post('/:id/result', async (c) => {
 
         // Notify real-time
         await notifyLobbyUpdate(matchId, c.env, 'MATCH_COMPLETED');
+
+        // Explicitly purge from Durable Object memory
+        c.executionCtx.waitUntil(purgeLobby(matchId, c.env));
 
         return c.json({
             success: true,
