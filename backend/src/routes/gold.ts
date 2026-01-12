@@ -1,7 +1,7 @@
 
 import { Hono } from 'hono';
-import { players, goldTransactions, goldOrders } from '../db/schema';
-import { eq, desc, and } from 'drizzle-orm';
+import { players, goldTransactions, goldOrders, goldPrices } from '../db/schema';
+import { eq, desc, and, asc } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/d1';
 
 interface Env {
@@ -11,6 +11,18 @@ interface Env {
 
 const goldRoutes = new Hono<{ Bindings: Env }>();
 const GOLD_SELLER_ROLE_ID = '1455115991049703579';
+const DEFAULT_PRICES = [
+    { gold: 100, price: 5000 }, { gold: 200, price: 9000 }, { gold: 300, price: 12000 },
+    { gold: 400, price: 15000 }, { gold: 500, price: 17000 }, { gold: 600, price: 20000 },
+    { gold: 700, price: 24000 }, { gold: 800, price: 27000 }, { gold: 900, price: 29000 },
+    { gold: 1000, price: 31000 }, { gold: 1100, price: 35000 }, { gold: 1200, price: 39000 },
+    { gold: 1300, price: 41000 }, { gold: 1400, price: 45000 }, { gold: 1500, price: 48000 },
+    { gold: 1600, price: 53000 }, { gold: 1700, price: 56000 }, { gold: 2000, price: 58000 },
+    { gold: 2100, price: 63000 }, { gold: 2200, price: 67000 }, { gold: 2300, price: 72000 },
+    { gold: 2500, price: 75000 }, { gold: 3000, price: 88000 }, { gold: 3500, price: 108000 },
+    { gold: 4000, price: 116000 }, { gold: 4500, price: 135000 }, { gold: 5000, price: 148000 },
+    { gold: 6000, price: 178000 }
+];
 
 // Middleware to check Gold Seller Role
 async function requireGoldSeller(c: any, next: any) {
@@ -31,7 +43,50 @@ async function requireGoldSeller(c: any, next: any) {
 
     c.set('user', user);
     await next();
+    await next();
 }
+
+// GET /api/gold/prices - Get current price list
+goldRoutes.get('/prices', async (c) => {
+    const db = drizzle(c.env.DB);
+    let prices = await db.select().from(goldPrices).orderBy(asc(goldPrices.gold)).all();
+
+    // If empty, return default (and optionally auto-init)
+    if (prices.length === 0) {
+        return c.json({ success: true, prices: DEFAULT_PRICES });
+    }
+
+    return c.json({ success: true, prices });
+});
+
+// POST /api/gold/prices/init - Initialize defaults (Admin/Seller only)
+goldRoutes.post('/prices/init', requireGoldSeller, async (c) => {
+    const db = drizzle(c.env.DB);
+    const existing = await db.select().from(goldPrices).limit(1).get();
+    if (existing) return c.json({ message: 'Prices already initialized' });
+
+    // Bulk insert not always supported in D1 via drizzle concisely depending on version, loop is safe
+    const stmt = c.env.DB.prepare('INSERT INTO gold_prices (gold, price) VALUES (?, ?)');
+    const batch = DEFAULT_PRICES.map(p => stmt.bind(p.gold, p.price));
+    await c.env.DB.batch(batch);
+
+    return c.json({ success: true, message: 'Prices initialized' });
+});
+
+// POST /api/gold/prices - Update a single price (Seller Only)
+goldRoutes.post('/prices', requireGoldSeller, async (c) => {
+    const { gold, price } = await c.req.json();
+    if (!gold || !price) return c.json({ error: 'Missing fields' }, 400);
+
+    const db = drizzle(c.env.DB);
+
+    // Upsert
+    await db.insert(goldPrices).values({ gold, price })
+        .onConflictDoUpdate({ target: goldPrices.gold, set: { price } })
+        .run();
+
+    return c.json({ success: true, message: 'Price updated' });
+});
 
 // GET /api/gold/balance - Get current user's gold balance
 goldRoutes.get('/balance', async (c) => {

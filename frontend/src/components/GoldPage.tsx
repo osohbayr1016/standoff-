@@ -20,7 +20,9 @@ import { toast } from 'sonner';
 
 
 
-const PRICE_LIST = [
+
+// Default for fallback only
+const DEFAULT_PRICE_LIST = [
     { gold: 100, price: 5000 }, { gold: 200, price: 9000 }, { gold: 300, price: 12000 },
     { gold: 400, price: 15000 }, { gold: 500, price: 17000 }, { gold: 600, price: 20000 },
     { gold: 700, price: 24000 }, { gold: 800, price: 27000 }, { gold: 900, price: 29000 },
@@ -50,8 +52,13 @@ export default function GoldPage() {
     const { user, token } = useAuth();
     const [activeTab, setActiveTab] = useState('buy');
 
+    // Shared State
+    const [priceList, setPriceList] = useState(DEFAULT_PRICE_LIST);
+
     // Seller State
     const [orders, setOrders] = useState<Order[]>([]);
+    const [isEditingPrice, setIsEditingPrice] = useState<number | null>(null);
+    const [editPriceValue, setEditPriceValue] = useState('');
 
     // Buyer State
     const [selectedPackage, setSelectedPackage] = useState<{ gold: number, price: number } | null>(null);
@@ -64,8 +71,21 @@ export default function GoldPage() {
     const isGoldSeller = user && ALLOWED_SELLERS.includes(user.id);
 
     useEffect(() => {
+        fetchPrices();
         if (token) fetchOrders();
     }, [token, isGoldSeller]);
+
+    const fetchPrices = async () => {
+        try {
+            const res = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'http://localhost:8787'}/api/gold/prices`);
+            const data = await res.json();
+            if (data.success && data.prices.length > 0) {
+                setPriceList(data.prices);
+            }
+        } catch (e) {
+            console.error(e);
+        }
+    };
 
     const fetchOrders = async () => {
         try {
@@ -159,6 +179,27 @@ export default function GoldPage() {
         }
     };
 
+    const handleUpdatePrice = async (gold: number, newPrice: number) => {
+        try {
+            const res = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'http://localhost:8787'}/api/gold/prices`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`,
+                    'X-User-Id': user?.id || ''
+                },
+                body: JSON.stringify({ gold, price: newPrice })
+            });
+            if (res.ok) {
+                toast.success('Price updated');
+                fetchPrices(); // Refresh
+                setIsEditingPrice(null);
+            }
+        } catch (e) {
+            toast.error('Failed to update price');
+        }
+    };
+
     if (!user) return <div className="text-white text-center pt-20">Please log in.</div>;
 
     return (
@@ -210,7 +251,7 @@ export default function GoldPage() {
                                     Select Package
                                 </h3>
                                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-                                    {PRICE_LIST.map((pkg) => (
+                                    {priceList.map((pkg) => (
                                         <button
                                             key={pkg.gold}
                                             onClick={() => setSelectedPackage(pkg)}
@@ -393,8 +434,48 @@ export default function GoldPage() {
                             <Card className="bg-zinc-900/50 border-white/10 overflow-hidden">
                                 <CardHeader className="flex flex-row justify-between items-center bg-red-900/10">
                                     <CardTitle className="text-white text-lg">Seller Dashboard</CardTitle>
-                                    <Button variant="outline" size="sm" onClick={fetchOrders}><History className="w-3 h-3 mr-2" /> Refresh</Button>
+                                    <div className="flex gap-2">
+                                        <Button variant="outline" size="sm" onClick={fetchPrices}><Coins className="w-3 h-3 mr-2" /> Syn Prices</Button>
+                                        <Button variant="outline" size="sm" onClick={fetchOrders}><History className="w-3 h-3 mr-2" /> Refresh Orders</Button>
+                                    </div>
                                 </CardHeader>
+                                <div className="p-4 border-b border-white/10">
+                                    <h4 className="text-white font-bold mb-4">Price Editor</h4>
+                                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                                        {priceList.map(pkg => (
+                                            <div key={pkg.gold} className="bg-zinc-950/50 p-2 rounded border border-white/10 flex flex-col gap-1">
+                                                <div className="text-xs text-yellow-500 font-bold">{pkg.gold} G</div>
+                                                {isEditingPrice === pkg.gold ? (
+                                                    <div className="flex gap-1">
+                                                        <input
+                                                            className="w-full bg-zinc-900 text-white text-xs p-1 rounded border border-white/20"
+                                                            autoFocus
+                                                            defaultValue={pkg.price}
+                                                            onChange={(e) => setEditPriceValue(e.target.value)}
+                                                            onKeyDown={(e) => {
+                                                                if (e.key === 'Enter') handleUpdatePrice(pkg.gold, Number((e.target as any).value));
+                                                                if (e.key === 'Escape') setIsEditingPrice(null);
+                                                            }}
+                                                        />
+                                                        <Button size="icon" className="h-6 w-6 shrink-0 bg-green-600" onClick={() => handleUpdatePrice(pkg.gold, Number(editPriceValue || pkg.price))}>
+                                                            <CheckCircle className="w-3 h-3" />
+                                                        </Button>
+                                                    </div>
+                                                ) : (
+                                                    <div
+                                                        className="text-white text-sm font-mono cursor-pointer hover:text-yellow-400 flex items-center gap-1"
+                                                        onClick={() => {
+                                                            setIsEditingPrice(pkg.gold);
+                                                            setEditPriceValue(pkg.price.toString());
+                                                        }}
+                                                    >
+                                                        {pkg.price.toLocaleString()}₮
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
                                 <div className="overflow-x-auto">
                                     <Table>
                                         <TableHeader>
