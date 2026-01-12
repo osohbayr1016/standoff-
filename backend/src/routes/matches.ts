@@ -1239,11 +1239,10 @@ matchesRoutes.post('/:id/fill-bots', async (c) => {
         if (match.status !== 'waiting') return c.json({ success: false, error: 'Match already started' }, 400);
 
         const requester = await c.env.DB.prepare('SELECT role FROM players WHERE id = ?').bind(body.host_id).first();
-        const isHost = match.host_id === body.host_id;
-        const isAdmin = requester?.role === 'admin';
+        const isStaff = requester?.role === 'admin' || requester?.role === 'moderator';
 
-        if (!isHost && !isAdmin) {
-            return c.json({ success: false, error: 'Only host or admin can fill with bots' }, 403);
+        if (!isStaff) {
+            return c.json({ success: false, error: 'Only admins and moderators can fill bots' }, 403);
         }
 
         const currentPlayers = await c.env.DB.prepare('SELECT COUNT(*) as count FROM match_players WHERE match_id = ?').bind(matchId).first();
