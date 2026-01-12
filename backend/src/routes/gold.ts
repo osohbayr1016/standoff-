@@ -99,10 +99,6 @@ goldRoutes.post('/manual', requireGoldSeller, async (c) => {
     const user = await db.select().from(players).where(eq(players.id, userId)).get();
     if (!user) return c.json({ error: 'User not found' }, 404);
 
-    // Check user exists
-    const user = await db.select().from(players).where(eq(players.id, userId)).get();
-    if (!user) return c.json({ error: 'User not found' }, 404);
-
     // Create Completed Order for Visibility (History)
     await db.insert(goldOrders).values({
         user_id: userId,
@@ -111,7 +107,7 @@ goldRoutes.post('/manual', requireGoldSeller, async (c) => {
         proof_url: 'manual_transfer',
         graffiti_url: 'manual_transfer',
         status: 'completed',
-        processed_by: c.get('user').id
+        processed_by: (c.get('user') as any).id
     }).run();
 
     // Log Transaction (Audit)
@@ -119,7 +115,7 @@ goldRoutes.post('/manual', requireGoldSeller, async (c) => {
         user_id: userId,
         amount: amount,
         reason: reason,
-        created_by: c.get('user').id
+        created_by: (c.get('user') as any).id
     }).run();
 
     return c.json({ success: true, message: 'Transaction logged successfully' });
