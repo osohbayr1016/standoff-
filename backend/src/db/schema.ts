@@ -197,3 +197,8 @@ export const moderatorLogs = sqliteTable('moderator_logs', {
     idxModLogsModerator: index('idx_mod_logs_moderator').on(table.moderator_id),
     idxModLogsAction: index('idx_mod_logs_action').on(table.action_type),
 }));
+
+export const goldPrices = sqliteTable('gold_prices', {
+    gold: integer('gold').primaryKey(),
+    price: integer('price').notNull(),
+});
