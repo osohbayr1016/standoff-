@@ -5,7 +5,7 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Coins, History, CheckCircle, FileText, Upload, PlayCircle, Loader2, Image as ImageIcon } from "lucide-react";
+import { Coins, History, CheckCircle, FileText, Upload, PlayCircle, Loader2, Image as ImageIcon, Trash2 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -59,6 +59,10 @@ export default function GoldPage() {
     const [orders, setOrders] = useState<Order[]>([]);
     const [isEditingPrice, setIsEditingPrice] = useState<number | null>(null);
     const [editPriceValue, setEditPriceValue] = useState('');
+    const [isRefreshing, setIsRefreshing] = useState(false);
+    const [newGold, setNewGold] = useState('');
+    const [newPrice, setNewPrice] = useState('');
+    const [isAddingPrice, setIsAddingPrice] = useState(false);
 
     // Buyer State
     const [selectedPackage, setSelectedPackage] = useState<{ gold: number, price: number } | null>(null);
@@ -88,6 +92,7 @@ export default function GoldPage() {
     };
 
     const fetchOrders = async () => {
+        setIsRefreshing(true);
         try {
             const res = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'http://localhost:8787'}/api/gold/orders`, {
                 headers: { 'Authorization': `Bearer ${token}`, 'X-User-Id': user?.id || '' }
@@ -98,6 +103,7 @@ export default function GoldPage() {
                 else setUserOrders(data.orders);
             }
         } catch (e) { console.error(e); }
+        finally { setIsRefreshing(false); }
     };
 
     const uploadFile = async (file: File) => {
@@ -179,7 +185,17 @@ export default function GoldPage() {
         }
     };
 
-    const handleUpdatePrice = async (gold: number, newPrice: number) => {
+    const handleUpdatePrice = async (gold: number, newPrice: number, successText: string = 'Price updated') => {
+        // Optimistic update - add/update in UI immediately
+        setPriceList(prev => {
+            const exists = prev.find(p => p.gold === gold);
+            if (exists) {
+                return prev.map(p => p.gold === gold ? { gold, price: newPrice } : p);
+            } else {
+                return [...prev, { gold, price: newPrice }].sort((a, b) => a.gold - b.gold);
+            }
+        });
+
         try {
             const res = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'http://localhost:8787'}/api/gold/prices`, {
                 method: 'POST',
@@ -191,50 +207,80 @@ export default function GoldPage() {
                 body: JSON.stringify({ gold, price: newPrice })
             });
             if (res.ok) {
-                toast.success('Price updated');
-                fetchPrices(); // Refresh
+                toast.success(successText);
                 setIsEditingPrice(null);
+                setNewGold('');
+                setNewPrice('');
+            } else {
+                // Revert on error
+                fetchPrices();
+                toast.error('Failed to update price');
             }
         } catch (e) {
+            // Revert on error
+            fetchPrices();
             toast.error('Failed to update price');
         }
     };
 
-    const [transferUserId, setTransferUserId] = useState('');
-    const [transferAmount, setTransferAmount] = useState('');
-    const [transferReason, setTransferReason] = useState('');
+    const handleDeletePrice = async (gold: number) => {
+        if (!confirm(`Delete ${gold} G package?`)) return;
 
-    const handleManualTransfer = async () => {
-        if (!transferUserId || !transferAmount || !transferReason) return toast.warning('Fill all fields');
-        if (!confirm(`Are you sure you want to transfer ${transferAmount} G to ${transferUserId}?`)) return;
+        // Optimistic update - remove from UI immediately
+        setPriceList(prev => prev.filter(p => p.gold !== gold));
 
         try {
-            const res = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'http://localhost:8787'}/api/gold/manual`, {
-                method: 'POST',
+            const res = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'http://localhost:8787'}/api/gold/prices`, {
+                method: 'DELETE',
                 headers: {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${token}`,
                     'X-User-Id': user?.id || ''
                 },
-                body: JSON.stringify({
-                    userId: transferUserId,
-                    amount: Number(transferAmount),
-                    reason: transferReason
-                })
+                body: JSON.stringify({ gold })
             });
-            const data = await res.json();
-            if (data.success) {
-                toast.success('Transfer successful');
-                setTransferUserId('');
-                setTransferAmount('');
-                setTransferReason('');
+            if (res.ok) {
+                toast.success('Package deleted');
             } else {
-                toast.error(data.error || 'Transfer failed');
+                // Revert on error
+                fetchPrices();
+                toast.error('Failed to delete');
             }
         } catch (e) {
-            toast.error('Failed to execute transfer');
+            // Revert on error
+            fetchPrices();
+            toast.error('Failed to delete');
         }
     };
+
+    const handleClearAllPrices = async () => {
+        if (!confirm('Delete ALL gold packages? This cannot be undone!')) return;
+
+        // Optimistic update - clear all from UI immediately
+        setPriceList([]);
+
+        try {
+            const res = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'http://localhost:8787'}/api/gold/prices/all`, {
+                method: 'DELETE',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'X-User-Id': user?.id || ''
+                }
+            });
+            if (res.ok) {
+                toast.success('All packages cleared');
+            } else {
+                // Revert on error
+                fetchPrices();
+                toast.error('Failed to clear all');
+            }
+        } catch (e) {
+            // Revert on error
+            fetchPrices();
+            toast.error('Failed to clear all');
+        }
+    };
+
 
     if (!user) return <div className="text-white text-center pt-20">Please log in.</div>;
 
@@ -472,34 +518,57 @@ export default function GoldPage() {
                                     <CardTitle className="text-white text-lg">Seller Dashboard</CardTitle>
                                     <div className="flex gap-2">
                                         <Button variant="outline" size="sm" onClick={fetchPrices}><Coins className="w-3 h-3 mr-2" /> Syn Prices</Button>
-                                        <Button variant="outline" size="sm" onClick={fetchOrders}><History className="w-3 h-3 mr-2" /> Refresh Orders</Button>
+                                        <Button variant="outline" size="sm" onClick={fetchOrders} disabled={isRefreshing}>
+                                            {isRefreshing ? <Loader2 className="w-3 h-3 mr-2 animate-spin" /> : <History className="w-3 h-3 mr-2" />}
+                                            Refresh Orders
+                                        </Button>
                                     </div>
                                 </CardHeader>
                                 <div className="p-4 border-b border-white/10">
-                                    <h4 className="text-white font-bold mb-4">Price Editor</h4>
+                                    <div className="flex justify-between items-center mb-4">
+                                        <h4 className="text-white font-bold">Price Editor</h4>
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            className="text-red-500 border-red-500/30 hover:bg-red-500/10"
+                                            onClick={handleClearAllPrices}
+                                        >
+                                            <Trash2 className="w-3 h-3 mr-2" /> Clear All
+                                        </Button>
+                                    </div>
                                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
                                         {priceList.map(pkg => (
-                                            <div key={pkg.gold} className="bg-zinc-950/50 p-2 rounded border border-white/10 flex flex-col gap-1">
-                                                <div className="text-xs text-yellow-500 font-bold">{pkg.gold} G</div>
+                                            <div key={pkg.gold} className="bg-zinc-950/50 p-2 rounded border border-white/10 flex flex-col gap-1 relative group">
+                                                <div className="flex justify-between items-start">
+                                                    <div className="text-xs text-yellow-500 font-bold">{pkg.gold} G</div>
+                                                    <Button
+                                                        size="icon"
+                                                        variant="ghost"
+                                                        className="h-4 w-4 opacity-0 group-hover:opacity-100 text-red-500 hover:text-red-400 hover:bg-red-500/10"
+                                                        onClick={() => handleDeletePrice(pkg.gold)}
+                                                    >
+                                                        <Trash2 className="w-3 h-3" />
+                                                    </Button>
+                                                </div>
                                                 {isEditingPrice === pkg.gold ? (
                                                     <div className="flex gap-1">
                                                         <input
                                                             className="w-full bg-zinc-900 text-white text-xs p-1 rounded border border-white/20"
                                                             autoFocus
-                                                            defaultValue={pkg.price}
+                                                            value={editPriceValue}
                                                             onChange={(e) => setEditPriceValue(e.target.value)}
                                                             onKeyDown={(e) => {
-                                                                if (e.key === 'Enter') handleUpdatePrice(pkg.gold, Number((e.target as any).value));
+                                                                if (e.key === 'Enter') handleUpdatePrice(pkg.gold, Number(editPriceValue));
                                                                 if (e.key === 'Escape') setIsEditingPrice(null);
                                                             }}
                                                         />
-                                                        <Button size="icon" className="h-6 w-6 shrink-0 bg-green-600" onClick={() => handleUpdatePrice(pkg.gold, Number(editPriceValue || pkg.price))}>
+                                                        <Button size="icon" className="h-6 w-6 shrink-0 bg-green-600" onClick={() => handleUpdatePrice(pkg.gold, Number(editPriceValue))}>
                                                             <CheckCircle className="w-3 h-3" />
                                                         </Button>
                                                     </div>
                                                 ) : (
                                                     <div
-                                                        className="text-white text-sm font-mono cursor-pointer hover:text-yellow-400 flex items-center gap-1"
+                                                        className="text-white text-sm font-mono cursor-pointer hover:bg-white/5 rounded px-1 -mx-1 flex justify-between items-center"
                                                         onClick={() => {
                                                             setIsEditingPrice(pkg.gold);
                                                             setEditPriceValue(pkg.price.toString());
@@ -510,45 +579,39 @@ export default function GoldPage() {
                                                 )}
                                             </div>
                                         ))}
+
+                                        {/* Add New Package Card */}
+                                        <div className="bg-zinc-900/80 p-2 rounded border border-yellow-500/30 flex flex-col gap-2">
+                                            <div className="text-[10px] text-yellow-500 font-bold uppercase">Add New</div>
+                                            <input
+                                                className="w-full bg-black/50 text-white text-xs p-1 rounded border border-white/10"
+                                                placeholder="Gold"
+                                                type="number"
+                                                value={newGold}
+                                                onChange={e => setNewGold(e.target.value)}
+                                            />
+                                            <input
+                                                className="w-full bg-black/50 text-white text-xs p-1 rounded border border-white/10"
+                                                placeholder="Price"
+                                                type="number"
+                                                value={newPrice}
+                                                onChange={e => setNewPrice(e.target.value)}
+                                            />
+                                            <Button size="sm" className="h-6 text-[10px] bg-yellow-600 hover:bg-yellow-700 w-full"
+                                                disabled={isAddingPrice}
+                                                onClick={async () => {
+                                                    if (!newGold || !newPrice) return toast.warning('Enter both gold and price');
+                                                    setIsAddingPrice(true);
+                                                    await handleUpdatePrice(Number(newGold), Number(newPrice), 'Package added successfully');
+                                                    setIsAddingPrice(false);
+                                                }}
+                                            >
+                                                {isAddingPrice ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Add'}
+                                            </Button>
+                                        </div>
                                     </div>
                                 </div>
 
-                                <div className="p-4 border-b border-white/10 bg-zinc-900/30">
-                                    <h4 className="text-white font-bold mb-4">Manual Tool</h4>
-                                    <div className="flex flex-col sm:flex-row gap-3 items-end">
-                                        <div className="space-y-1 w-full sm:w-auto">
-                                            <Label className="text-xs text-gray-400">User ID</Label>
-                                            <input
-                                                className="w-full sm:w-48 bg-zinc-950 text-white text-sm p-2 rounded border border-white/10"
-                                                placeholder="Discord User ID"
-                                                value={transferUserId}
-                                                onChange={e => setTransferUserId(e.target.value)}
-                                            />
-                                        </div>
-                                        <div className="space-y-1 w-full sm:w-auto">
-                                            <Label className="text-xs text-gray-400">Amount (+/-)</Label>
-                                            <input
-                                                className="w-full sm:w-32 bg-zinc-950 text-white text-sm p-2 rounded border border-white/10"
-                                                type="number"
-                                                placeholder="e.g. 100 or -100"
-                                                value={transferAmount}
-                                                onChange={e => setTransferAmount(e.target.value)}
-                                            />
-                                        </div>
-                                        <div className="space-y-1 w-full">
-                                            <Label className="text-xs text-gray-400">Reason</Label>
-                                            <input
-                                                className="w-full bg-zinc-950 text-white text-sm p-2 rounded border border-white/10"
-                                                placeholder="e.g. Refund, Bonus, Correction"
-                                                value={transferReason}
-                                                onChange={e => setTransferReason(e.target.value)}
-                                            />
-                                        </div>
-                                        <Button className="w-full sm:w-auto bg-yellow-600 hover:bg-yellow-700" onClick={handleManualTransfer}>
-                                            Execute
-                                        </Button>
-                                    </div>
-                                </div>
 
                                 <div className="overflow-x-auto">
                                     <Table>

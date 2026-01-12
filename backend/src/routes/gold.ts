@@ -9,7 +9,7 @@ interface Env {
     GOLD_SELLER_ROLE_ID?: string;
 }
 
-const goldRoutes = new Hono<{ Bindings: Env }>();
+const goldRoutes = new Hono<{ Bindings: Env; Variables: { user: any } }>();
 const GOLD_SELLER_ROLE_ID = '1455115991049703579';
 const DEFAULT_PRICES = [
     { gold: 100, price: 5000 }, { gold: 200, price: 9000 }, { gold: 300, price: 12000 },
@@ -42,7 +42,6 @@ async function requireGoldSeller(c: any, next: any) {
     }
 
     c.set('user', user);
-    await next();
     await next();
 }
 
@@ -86,6 +85,24 @@ goldRoutes.post('/prices', requireGoldSeller, async (c) => {
         .run();
 
     return c.json({ success: true, message: 'Price updated' });
+});
+
+// DELETE /api/gold/prices - Delete a package (Seller Only)
+goldRoutes.delete('/prices', requireGoldSeller, async (c) => {
+    const { gold } = await c.req.json();
+    if (!gold) return c.json({ error: 'Missing field: gold' }, 400);
+
+    const db = drizzle(c.env.DB);
+    await db.delete(goldPrices).where(eq(goldPrices.gold, gold)).run();
+
+    return c.json({ success: true, message: 'Price deleted' });
+});
+
+// DELETE /api/gold/prices/all - Delete all packages (Seller Only)
+goldRoutes.delete('/prices/all', requireGoldSeller, async (c) => {
+    const db = drizzle(c.env.DB);
+    await db.delete(goldPrices).run();
+    return c.json({ success: true, message: 'All prices deleted' });
 });
 
 // POST /api/gold/manual - Manual Gold Transfer (Seller Only)
