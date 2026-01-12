@@ -49,6 +49,7 @@ async function getMatchPlayers(matchId: string, env: Env) {
             WHERE mp.match_id = ?
             ORDER BY mp.team, mp.joined_at
         `).bind(matchId).all();
+        console.log(`[getMatchPlayers] Match ${matchId}: Found ${playersResult.results?.length || 0} players`);
         return playersResult.results || [];
     });
 }
@@ -352,7 +353,7 @@ matchesRoutes.get('/:id', async (c) => {
         if (matchResult.match_type === 'clan_war') {
             // Alpha Clan = Host Clan (stored in match.clan_id)
             if (matchResult.clan_id) {
-                alphaClan = await c.env.DB.prepare('SELECT id, name, tag, avatar FROM clans WHERE id = ?').bind(matchResult.clan_id).first();
+                alphaClan = await c.env.DB.prepare('SELECT id, name, tag FROM clans WHERE id = ?').bind(matchResult.clan_id).first();
             }
 
             // Bravo Clan = Determine from Bravo players
@@ -361,7 +362,7 @@ matchesRoutes.get('/:id', async (c) => {
                 // Find clan of a Bravo player. Ideally, all Bravo players are in the same clan.
                 const bMember = await c.env.DB.prepare('SELECT clan_id FROM clan_members WHERE user_id = ?').bind(bravoPlayer.player_id).first<{ clan_id: string }>();
                 if (bMember) {
-                    bravoClan = await c.env.DB.prepare('SELECT id, name, tag, avatar FROM clans WHERE id = ?').bind(bMember.clan_id).first();
+                    bravoClan = await c.env.DB.prepare('SELECT id, name, tag FROM clans WHERE id = ?').bind(bMember.clan_id).first();
                 }
             }
         }
@@ -1188,7 +1189,7 @@ matchesRoutes.post('/:id/queue', async (c) => {
             // Create Game Match (10 Players)
             await c.env.DB.prepare(`
                 INSERT INTO matches (id, lobby_url, host_id, map_name, match_type, status, player_count, max_players, clan_id, created_at, updated_at)
-                VALUES (?, ?, ?, ?, 'clan_match', 'waiting', 10, 10, ?, datetime('now'), datetime('now'))
+                VALUES (?, ?, ?, ?, 'clan_war', 'waiting', 10, 10, ?, datetime('now'), datetime('now'))
             `).bind(gameId, 'pending', match.host_id, match.map_name, match.clan_id).run();
 
             // Move Team A (Alpha)
@@ -1223,47 +1224,7 @@ matchesRoutes.post('/:id/queue', async (c) => {
     }
 });
 
-// POST /api/matches/:id/balance - Balance teams by Elo (host only)
-matchesRoutes.post('/:id/balance', async (c) => {
-    const matchId = c.req.param('id');
-    try {
-        const body = await c.req.json<{ host_id: string }>();
-        const match = await c.env.DB.prepare('SELECT host_id, status FROM matches WHERE id = ?').bind(matchId).first();
-        if (!match || match.host_id !== body.host_id) return c.json({ success: false, error: 'Unauthorized' }, 403);
-        if (match.status !== 'waiting') return c.json({ success: false, error: 'Cannot balance after match started' }, 400);
 
-        const players = await getMatchPlayers(matchId, c.env);
-        // Sort by Elo descending
-        const sorted = [...players].sort((a: any, b: any) => (b.elo || 1000) - (a.elo || 1000));
-
-        // Snake draft distribution
-        const alpha: string[] = [];
-        const bravo: string[] = [];
-
-        sorted.forEach((p, i) => {
-            if (i % 2 === 0) alpha.push(String(p.player_id));
-            else bravo.push(String(p.player_id));
-        });
-
-        // Update DB
-        const queries = [];
-        for (const pid of alpha) {
-            queries.push(c.env.DB.prepare('UPDATE match_players SET team = "alpha" WHERE match_id = ? AND player_id = ?').bind(matchId as string, String(pid)));
-        }
-        for (const pid of bravo) {
-            queries.push(c.env.DB.prepare('UPDATE match_players SET team = "bravo" WHERE match_id = ? AND player_id = ?').bind(matchId as string, String(pid)));
-        }
-
-        if (queries.length > 0) {
-            await c.env.DB.batch(queries);
-        }
-
-        await notifyLobbyUpdate(matchId, c.env);
-        return c.json({ success: true, message: 'Teams balanced successfully' });
-    } catch (e: any) {
-        return c.json({ success: false, error: e.message }, 500);
-    }
-});
 
 
 
@@ -1390,8 +1351,8 @@ async function startMatchInternal(matchId: string, matchType: string, env: any) 
                         type: 'START_DRAFT',
                         data: {
                             matchId,
-                            captainAlpha: captainA,
-                            captainBravo: captainB,
+                            captainAlpha: { ...captainA, id: captainA.player_id },
+                            captainBravo: { ...captainB, id: captainB.player_id },
                             players: sortedPlayers,
                             mapName: mapName
                         }

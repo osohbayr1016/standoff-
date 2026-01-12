@@ -172,7 +172,7 @@ export function setupFriendsRoutes(app: Hono<any>) {
                     if (friendIds.length > 0) {
                         const id = c.env.MATCH_QUEUE.idFromName('global-matchmaking-v2');
                         const obj = c.env.MATCH_QUEUE.get(id);
-                        
+
                         const doUrl = new URL(c.req.raw.url);
                         doUrl.pathname = '/check-online';
                         const doRequest = new Request(doUrl.toString(), {
@@ -180,7 +180,7 @@ export function setupFriendsRoutes(app: Hono<any>) {
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ userIds: friendIds })
                         });
-                        
+
                         const onlineRes = await obj.fetch(doRequest);
                         if (onlineRes.ok) {
                             const onlineData = await onlineRes.json();
@@ -195,13 +195,13 @@ export function setupFriendsRoutes(app: Hono<any>) {
             // Add online status to friends
             const friendsWithStatus = friends.map(f => ({
                 ...f,
-                is_online: onlineStatus[f.id] || false
+                is_online: (f.id && onlineStatus[f.id]) || false
             }));
 
-            return c.json({ 
-                friends: friendsWithStatus, 
-                pendingIncoming, 
-                pendingOutgoing 
+            return c.json({
+                friends: friendsWithStatus,
+                pendingIncoming,
+                pendingOutgoing
             });
 
         } catch (error) {

@@ -2,7 +2,7 @@ export const logToDatadog = async (
     apiKey: string,
     message: string,
     level: 'info' | 'warn' | 'error' = 'info',
-    meta: Record<string, any> = {}
+    meta: Record<string, unknown> = {}
 ) => {
     if (!apiKey) return;
 

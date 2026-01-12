@@ -38,21 +38,33 @@ export default function PlayersTab({ backendUrl, userId }: PlayersTabProps) {
 
     const fetchPlayers = async (pageNum: number, search?: string) => {
         setIsLoading(true);
+        console.log(`[PlayersTab] Fetching players page=${pageNum} search=${search}`);
         try {
-            const params = new URLSearchParams({ page: pageNum.toString(), limit: '10' });
+            const params = new URLSearchParams({
+                page: pageNum.toString(),
+                limit: '10',
+                _t: Date.now().toString() // Force cache bust
+            });
             if (search) params.append('search', search);
 
-            const res = await fetch(`${backendUrl}/api/moderator/players?${params}`, {
+            const url = `${backendUrl}/api/moderator/players?${params}`;
+            console.log(`[PlayersTab] Requesting: ${url}`);
+
+            const res = await fetch(url, {
                 headers: { 'X-User-Id': userId },
                 credentials: 'include'
             });
+            console.log(`[PlayersTab] Response status: ${res.status}`);
+
             if (res.ok) {
                 const data = await res.json();
+                console.log('[PlayersTab] Data received:', data);
                 setPlayers(data.players || []);
-                // Backend returns 'total' count, calculate totalPages (limit 50 in backend? Need to check limit)
-                // Backend moderator.ts line 831 says limit = 50.
-                setTotalPages(Math.ceil((data.total || 0) / 50));
+                setTotalPages(Math.ceil((data.total || 0) / 10)); // Fix limit 10
                 setPage(pageNum);
+            } else {
+                const errorText = await res.text();
+                console.error('[PlayersTab] Fetch failed:', errorText);
             }
         } catch (error) {
             console.error("Failed to fetch players", error);

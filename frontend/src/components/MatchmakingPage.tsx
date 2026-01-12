@@ -964,7 +964,7 @@ const MatchmakingPage: React.FC<MatchmakingPageProps> = ({ user, backendUrl, onV
             <AlertDialog open={errorDialogOpen} onOpenChange={setErrorDialogOpen}>
                 <AlertDialogContent>
                     <AlertDialogHeader>
-                        <AlertDialogTitle>Error</AlertDialogTitle>
+                        <AlertDialogTitle>Notification</AlertDialogTitle>
                         <AlertDialogDescription>
                             {errorMessage}
                         </AlertDialogDescription>

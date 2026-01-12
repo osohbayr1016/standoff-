@@ -1,7 +1,7 @@
 ﻿import { Hono } from 'hono';
 import { drizzle } from 'drizzle-orm/d1';
-import { eq, desc, and, sql } from 'drizzle-orm';
-import { matches, matchPlayers, eloHistory, players, clans, clanMembers } from '../db/schema';
+import { eq, desc, and, sql, like, or } from 'drizzle-orm';
+import { players, matches, matchPlayers, clans, clanMembers, clanRequests, moderatorLogs } from '../db/schema';
 import { TIERS, updateDiscordRole } from '../utils/discord';
 import { logToDatadog } from '../utils/logger';
 
@@ -11,6 +11,7 @@ interface Env {
     DISCORD_SERVER_ID: string;
     MATCH_QUEUE: DurableObjectNamespace;
     DD_API_KEY: string;
+    FRONTEND_URL: string;
 }
 
 const moderatorRoutes = new Hono<{ Bindings: Env }>();
@@ -146,13 +147,17 @@ moderatorRoutes.get('/pending-reviews', async (c) => {
 moderatorRoutes.get('/cancelled-matches', async (c) => {
     try {
         const result = await c.env.DB.prepare(`
-            SELECT 
+            SELECT
                 m.*,
                 p.discord_username as host_username,
-                p.discord_avatar as host_avatar
+                p.discord_avatar as host_avatar,
+                (SELECT COUNT(*) FROM match_players WHERE match_id = m.id) as player_count
             FROM matches m
             LEFT JOIN players p ON m.host_id = p.id
-            WHERE m.status = 'cancelled' AND m.match_type != 'casual'
+            WHERE m.status = 'cancelled' 
+            AND m.match_type != 'casual'
+            AND (SELECT COUNT(*) FROM match_players WHERE match_id = m.id) > 0
+            AND (m.review_notes IS NOT NULL OR m.alpha_score IS NOT NULL OR m.bravo_score IS NOT NULL)
             ORDER BY m.updated_at DESC
             LIMIT 50
         `).all();
@@ -171,16 +176,16 @@ moderatorRoutes.get('/cancelled-matches', async (c) => {
 moderatorRoutes.get('/active-matches', async (c) => {
     try {
         const result = await c.env.DB.prepare(`
-            SELECT 
-                m.*,
-                p.discord_username as host_username,
-                p.discord_avatar as host_avatar,
-                (SELECT COUNT(*) FROM match_players WHERE match_id = m.id) as player_count
+SELECT
+m.*,
+    p.discord_username as host_username,
+    p.discord_avatar as host_avatar,
+    (SELECT COUNT(*) FROM match_players WHERE match_id = m.id) as player_count
             FROM matches m
             LEFT JOIN players p ON m.host_id = p.id
-            WHERE m.status IN ('in_progress', 'waiting', 'drafting', 'map_ban')
+            WHERE m.status IN('in_progress', 'waiting', 'drafting', 'map_ban')
             ORDER BY m.created_at DESC
-        `).all();
+    `).all();
 
         return c.json({
             success: true,
@@ -196,16 +201,16 @@ moderatorRoutes.get('/active-matches', async (c) => {
 moderatorRoutes.get('/recent-matches', async (c) => {
     try {
         const matches = await c.env.DB.prepare(`
-            SELECT 
-                m.*,
-                p.discord_username as host_username,
-                p.discord_avatar as host_avatar
+SELECT
+m.*,
+    p.discord_username as host_username,
+    p.discord_avatar as host_avatar
             FROM matches m
             LEFT JOIN players p ON m.host_id = p.id
-            WHERE m.status IN ('completed', 'cancelled') 
+            WHERE m.status IN('completed', 'cancelled') 
             ORDER BY m.updated_at DESC 
             LIMIT 20
-        `).all();
+    `).all();
 
         return c.json({
             success: true,
@@ -256,12 +261,12 @@ moderatorRoutes.post('/matches/:id/edit-result', async (c) => {
         if (!wasCancelled && oldWinner === newWinner) {
             await c.env.DB.prepare(`
                 UPDATE matches 
-                SET alpha_score = ?, 
-                    bravo_score = ?, 
-                    review_notes = review_notes || ' | Score edited by ' || ?,
-                    updated_at = datetime('now')
+                SET alpha_score = ?,
+    bravo_score = ?,
+    review_notes = review_notes || ' | Score edited by ' || ?,
+    updated_at = datetime('now')
                 WHERE id = ?
-             `).bind(body.alpha_score, body.bravo_score, moderatorId, matchId).run();
+    `).bind(body.alpha_score, body.bravo_score, moderatorId, matchId).run();
 
             // Log Action
             await logModeratorAction(c, moderatorId || 'system', 'MATCH_EDIT_RESULT', matchId, {
@@ -273,7 +278,7 @@ moderatorRoutes.post('/matches/:id/edit-result', async (c) => {
 
         // Winner changed! Need to revert and re-apply.
         // Get players
-        const matchPlayers = await c.env.DB.prepare(`SELECT * FROM match_players WHERE match_id = ?`).bind(matchId).all();
+        const matchPlayers = await c.env.DB.prepare(`SELECT * FROM match_players WHERE match_id = ? `).bind(matchId).all();
         const playersList = matchPlayers.results || [];
 
         // Determine Elo Value
@@ -322,10 +327,10 @@ moderatorRoutes.post('/matches/:id/edit-result', async (c) => {
                 await c.env.DB.prepare(`
                     UPDATE players 
                     SET elo = MAX(0, elo + ?),
-                    wins = MAX(0, wins + ?),
-                    losses = MAX(0, losses + ?)
+    wins = MAX(0, wins + ?),
+    losses = MAX(0, losses + ?)
                     WHERE id = ?
-                 `).bind(eloDiff, winsDiff, lossesDiff, player.player_id).run();
+    `).bind(eloDiff, winsDiff, lossesDiff, player.player_id).run();
 
                 // Get current Elo for history (after update)
                 const p = await c.env.DB.prepare('SELECT elo FROM players WHERE id=?').bind(player.player_id).first();
@@ -333,9 +338,9 @@ moderatorRoutes.post('/matches/:id/edit-result', async (c) => {
 
                 // Add History
                 await c.env.DB.prepare(`
-                    INSERT INTO elo_history (user_id, match_id, elo_before, elo_after, elo_change, reason, created_by, notes, created_at)
-                    VALUES (?, ?, ?, ?, ?, 'correction', ?, 'Result corrected', datetime('now'))
-                 `).bind(
+                    INSERT INTO elo_history(user_id, match_id, elo_before, elo_after, elo_change, reason, created_by, notes, created_at)
+VALUES(?, ?, ?, ?, ?, 'correction', ?, 'Result corrected', datetime('now'))
+    `).bind(
                     player.player_id,
                     matchId,
                     currentElo - eloDiff,
@@ -353,17 +358,17 @@ moderatorRoutes.post('/matches/:id/edit-result', async (c) => {
         await c.env.DB.prepare(`
             UPDATE matches 
             SET status = 'completed',
-                winner_team = ?, 
-                alpha_score = ?, 
-                bravo_score = ?, 
-                reviewed_by = COALESCE(reviewed_by, ?),
-                review_notes = CASE 
-                    WHEN review_notes IS NULL THEN 'Result set by ' || ? 
-                    ELSE review_notes || ' | Winner changed by ' || ? 
-                END,
-                updated_at = datetime('now')
+    winner_team = ?,
+    alpha_score = ?,
+    bravo_score = ?,
+    reviewed_by = COALESCE(reviewed_by, ?),
+    review_notes = CASE 
+                    WHEN review_notes IS NULL THEN 'Result set by ' || ?
+    ELSE review_notes || ' | Winner changed by ' || ?
+        END,
+        updated_at = datetime('now')
             WHERE id = ?
-        `).bind(
+    `).bind(
             newWinner,
             body.alpha_score,
             body.bravo_score,
@@ -377,7 +382,7 @@ moderatorRoutes.post('/matches/:id/edit-result', async (c) => {
 
         // Log Action
         await logModeratorAction(c, moderatorId || 'system', 'MATCH_EDIT_RESULT', matchId, {
-            oldWinner, newWinner: body.winner_team, score: `${body.alpha_score}-${body.bravo_score}`
+            oldWinner, newWinner: body.winner_team, score: `${body.alpha_score} -${body.bravo_score} `
         });
 
         return c.json({ success: true, message: 'Match result corrected and Elo updated' });
@@ -395,16 +400,16 @@ moderatorRoutes.get('/matches/:id', async (c) => {
     try {
         // Get match details
         const match = await c.env.DB.prepare(`
-            SELECT 
-                m.*,
-                p.discord_username as host_username,
-                p.discord_avatar as host_avatar,
-                reviewer.discord_username as reviewer_username
+SELECT
+m.*,
+    p.discord_username as host_username,
+    p.discord_avatar as host_avatar,
+    reviewer.discord_username as reviewer_username
             FROM matches m
             LEFT JOIN players p ON m.host_id = p.id
             LEFT JOIN players reviewer ON m.reviewed_by = reviewer.id
             WHERE m.id = ?
-        `).bind(matchId).first();
+    `).bind(matchId).first();
 
         if (!match) {
             return c.json({ success: false, error: 'Match not found' }, 404);
@@ -412,18 +417,18 @@ moderatorRoutes.get('/matches/:id', async (c) => {
 
         // Get all players with their current ELO
         const playersResult = await c.env.DB.prepare(`
-            SELECT 
-                mp.*,
-                p.discord_username,
-                p.discord_avatar,
-                p.standoff_nickname,
-                p.elo,
-                p.wins,
-                p.losses
+            SELECT
+mp.*,
+    p.discord_username,
+    p.discord_avatar,
+    p.standoff_nickname,
+    p.elo,
+    p.wins,
+    p.losses
             FROM match_players mp
             LEFT JOIN players p ON mp.player_id = p.id
             WHERE mp.match_id = ?
-            ORDER BY mp.team, mp.is_captain DESC
+    ORDER BY mp.team, mp.is_captain DESC
         `).bind(matchId).all();
 
         return c.json({
@@ -458,7 +463,7 @@ moderatorRoutes.post('/matches/:id/review', async (c) => {
             UPDATE matches 
             SET status = 'review_processing' 
             WHERE id = ? AND status = 'pending_review'
-        `).bind(matchId).run();
+    `).bind(matchId).run();
 
         if (!lockResult.meta.changes) {
             return c.json({ success: false, error: 'Match already reviewed or not in pending state' }, 409);
@@ -480,12 +485,12 @@ moderatorRoutes.post('/matches/:id/review', async (c) => {
             await c.env.DB.prepare(`
                 UPDATE matches 
                 SET status = 'cancelled',
-                    reviewed_by = ?,
-                    reviewed_at = datetime('now'),
-                    review_notes = ?,
-                    updated_at = datetime('now')
+    reviewed_by = ?,
+    reviewed_at = datetime('now'),
+    review_notes = ?,
+    updated_at = datetime('now')
                 WHERE id = ?
-            `).bind(null, body.notes || 'Rejected by moderator', matchId).run();
+    `).bind(null, body.notes || 'Rejected by moderator', matchId).run();
 
             return c.json({
                 success: true,
@@ -516,7 +521,7 @@ moderatorRoutes.post('/matches/:id/review', async (c) => {
             FROM match_players mp
             JOIN players p ON mp.player_id = p.id
             WHERE mp.match_id = ?
-        `).bind(matchId).all();
+    `).bind(matchId).all();
 
         const playersList = matchPlayersResult.results || [];
 
@@ -553,17 +558,17 @@ moderatorRoutes.post('/matches/:id/review', async (c) => {
             if (isWinner) {
                 await c.env.DB.prepare(`
                     UPDATE players SET elo = ?, wins = wins + 1 WHERE id = ?
-                `).bind(newElo, player.player_id).run();
+    `).bind(newElo, player.player_id).run();
             } else {
                 await c.env.DB.prepare(`
                     UPDATE players SET elo = ?, losses = losses + 1 WHERE id = ?
-                `).bind(newElo, player.player_id).run();
+    `).bind(newElo, player.player_id).run();
             }
 
             // Record ELO history
             await c.env.DB.prepare(`
-                INSERT INTO elo_history (user_id, match_id, elo_before, elo_after, elo_change, reason, created_by, notes, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+                INSERT INTO elo_history(user_id, match_id, elo_before, elo_after, elo_change, reason, created_by, notes, created_at)
+VALUES(?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
             `).bind(
                 player.player_id,
                 matchId,
@@ -580,14 +585,14 @@ moderatorRoutes.post('/matches/:id/review', async (c) => {
 
         // Update Clan Elo if this was a Clan Match
         try {
-            if (match.match_type === 'clan_match') {
+            if (match.match_type === 'clan_war') {
                 const alphaPlayer = playersList.find((p: any) => p.team === 'alpha');
                 const bravoPlayer = playersList.find((p: any) => p.team === 'bravo');
 
                 if (alphaPlayer && bravoPlayer) {
                     // Find clans for both teams
-                    const clanAlpha = await c.env.DB.prepare(`SELECT c.* FROM clans c JOIN clan_members cm ON c.id = cm.clan_id WHERE cm.user_id = ?`).bind(alphaPlayer.player_id).first();
-                    const clanBravo = await c.env.DB.prepare(`SELECT c.* FROM clans c JOIN clan_members cm ON c.id = cm.clan_id WHERE cm.user_id = ?`).bind(bravoPlayer.player_id).first();
+                    const clanAlpha = await c.env.DB.prepare(`SELECT c.* FROM clans c JOIN clan_members cm ON c.id = cm.clan_id WHERE cm.user_id = ? `).bind(alphaPlayer.player_id).first();
+                    const clanBravo = await c.env.DB.prepare(`SELECT c.* FROM clans c JOIN clan_members cm ON c.id = cm.clan_id WHERE cm.user_id = ? `).bind(bravoPlayer.player_id).first();
 
                     if (clanAlpha && clanBravo && clanAlpha.id !== clanBravo.id) {
                         const clanEloChange = 25; // Standard change for clans
@@ -604,12 +609,12 @@ moderatorRoutes.post('/matches/:id/review', async (c) => {
                         // Update Alpha
                         await c.env.DB.prepare(`
                         UPDATE clans SET elo = ?, wins = wins + ?, losses = losses + ? WHERE id = ?
-                    `).bind(newAlphaElo, isAlphaWinner ? 1 : 0, isAlphaWinner ? 0 : 1, clanAlpha.id).run();
+    `).bind(newAlphaElo, isAlphaWinner ? 1 : 0, isAlphaWinner ? 0 : 1, clanAlpha.id).run();
 
                         // Update Bravo
                         await c.env.DB.prepare(`
                         UPDATE clans SET elo = ?, wins = wins + ?, losses = losses + ? WHERE id = ?
-                    `).bind(newBravoElo, isAlphaWinner ? 0 : 1, isAlphaWinner ? 1 : 0, clanBravo.id).run();
+    `).bind(newBravoElo, isAlphaWinner ? 0 : 1, isAlphaWinner ? 1 : 0, clanBravo.id).run();
                     }
                 }
             }
@@ -622,16 +627,16 @@ moderatorRoutes.post('/matches/:id/review', async (c) => {
         await c.env.DB.prepare(`
             UPDATE matches 
             SET status = 'completed',
-                winner_team = ?,
-                alpha_score = ?,
-                bravo_score = ?,
-                reviewed_by = ?,
-                host_id = ?,
-                reviewed_at = datetime('now'),
-                review_notes = ?,
-                updated_at = datetime('now')
+    winner_team = ?,
+    alpha_score = ?,
+    bravo_score = ?,
+    reviewed_by = ?,
+    host_id = ?,
+    reviewed_at = datetime('now'),
+    review_notes = ?,
+    updated_at = datetime('now')
             WHERE id = ?
-        `).bind(
+    `).bind(
             winnerTeam,
             body.alpha_score || 0,
             body.bravo_score || 0,
@@ -676,14 +681,14 @@ moderatorRoutes.post('/matches/:id/review', async (c) => {
             UPDATE matches 
             SET status = 'review_processing' 
             WHERE id = ? AND status = 'pending_review'
-        `).bind(matchId).run();
+    `).bind(matchId).run();
 
         if (!lockResult.meta.changes) {
             // It might already be reviewed or not pending.
             // Check if it's already completed/cancelled
             const m = await c.env.DB.prepare('SELECT status FROM matches WHERE id = ?').bind(matchId).first();
             if (m && (m.status === 'completed' || m.status === 'cancelled')) {
-                return c.json({ success: false, error: `Match already ${m.status}` }, 409);
+                return c.json({ success: false, error: `Match already ${m.status} ` }, 409);
             }
             return c.json({ success: false, error: 'Match not in pending state or locked' }, 409);
         }
@@ -702,12 +707,12 @@ moderatorRoutes.post('/matches/:id/review', async (c) => {
             await c.env.DB.prepare(`
                 UPDATE matches 
                 SET status = 'cancelled',
-                    reviewed_by = ?,
-                    reviewed_at = datetime('now'),
-                    review_notes = ?,
-                    updated_at = datetime('now')
+    reviewed_by = ?,
+    reviewed_at = datetime('now'),
+    review_notes = ?,
+    updated_at = datetime('now')
                 WHERE id = ?
-            `).bind(moderatorId, body.notes || 'Rejected by moderator', matchId).run();
+    `).bind(moderatorId, body.notes || 'Rejected by moderator', matchId).run();
 
             // Log Action
             await logModeratorAction(c, moderatorId || 'system', 'MATCH_REJECT', matchId, { notes: body.notes });
@@ -740,7 +745,7 @@ moderatorRoutes.post('/matches/:id/review', async (c) => {
             FROM match_players mp
             JOIN players p ON mp.player_id = p.id
             WHERE mp.match_id = ?
-        `).bind(matchId).all();
+    `).bind(matchId).all();
 
         const playersList = matchPlayersResult.results || [];
         const moderatorIdForTracking = null; // Avoid FK constraint issues
@@ -765,12 +770,12 @@ moderatorRoutes.post('/matches/:id/review', async (c) => {
             // Update player ELO and stats
             await c.env.DB.prepare(`
                 UPDATE players SET elo = ?, wins = wins + ?, losses = losses + ? WHERE id = ?
-             `).bind(newElo, isWinner ? 1 : 0, isWinner ? 0 : 1, player.player_id).run();
+    `).bind(newElo, isWinner ? 1 : 0, isWinner ? 0 : 1, player.player_id).run();
 
             // Record ELO history
             await c.env.DB.prepare(`
-                INSERT INTO elo_history (user_id, match_id, elo_before, elo_after, elo_change, reason, created_by, notes, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+                INSERT INTO elo_history(user_id, match_id, elo_before, elo_after, elo_change, reason, created_by, notes, created_at)
+VALUES(?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
             `).bind(
                 player.player_id,
                 matchId,
@@ -785,13 +790,13 @@ moderatorRoutes.post('/matches/:id/review', async (c) => {
 
         // Update Clan Elo if this was a Clan Match
         try {
-            if (match.match_type === 'clan_match') {
+            if (match.match_type === 'clan_war') {
                 const alphaPlayer = playersList.find((p: any) => p.team === 'alpha');
                 const bravoPlayer = playersList.find((p: any) => p.team === 'bravo');
 
                 if (alphaPlayer && bravoPlayer) {
-                    const clanAlpha = await c.env.DB.prepare(`SELECT c.* FROM clans c JOIN clan_members cm ON c.id = cm.clan_id WHERE cm.user_id = ?`).bind(alphaPlayer.player_id).first();
-                    const clanBravo = await c.env.DB.prepare(`SELECT c.* FROM clans c JOIN clan_members cm ON c.id = cm.clan_id WHERE cm.user_id = ?`).bind(bravoPlayer.player_id).first();
+                    const clanAlpha = await c.env.DB.prepare(`SELECT c.* FROM clans c JOIN clan_members cm ON c.id = cm.clan_id WHERE cm.user_id = ? `).bind(alphaPlayer.player_id).first();
+                    const clanBravo = await c.env.DB.prepare(`SELECT c.* FROM clans c JOIN clan_members cm ON c.id = cm.clan_id WHERE cm.user_id = ? `).bind(bravoPlayer.player_id).first();
 
                     if (clanAlpha && clanBravo && clanAlpha.id !== clanBravo.id) {
                         const clanEloChange = 25;
@@ -805,11 +810,11 @@ moderatorRoutes.post('/matches/:id/review', async (c) => {
 
                         await c.env.DB.prepare(`
                                 UPDATE clans SET elo = ?, wins = wins + ?, losses = losses + ? WHERE id = ?
-                            `).bind(newAlphaElo, isAlphaWinner ? 1 : 0, isAlphaWinner ? 0 : 1, clanAlpha.id).run();
+    `).bind(newAlphaElo, isAlphaWinner ? 1 : 0, isAlphaWinner ? 0 : 1, clanAlpha.id).run();
 
                         await c.env.DB.prepare(`
                                 UPDATE clans SET elo = ?, wins = wins + ?, losses = losses + ? WHERE id = ?
-                            `).bind(newBravoElo, isAlphaWinner ? 0 : 1, isAlphaWinner ? 1 : 0, clanBravo.id).run();
+    `).bind(newBravoElo, isAlphaWinner ? 0 : 1, isAlphaWinner ? 1 : 0, clanBravo.id).run();
                     }
                 }
             }
@@ -821,16 +826,16 @@ moderatorRoutes.post('/matches/:id/review', async (c) => {
         await c.env.DB.prepare(`
             UPDATE matches 
             SET status = 'completed',
-                winner_team = ?,
-                alpha_score = ?,
-                bravo_score = ?,
-                reviewed_by = ?,
-                host_id = ?,
-                reviewed_at = datetime('now'),
-                review_notes = ?,
-                updated_at = datetime('now')
+    winner_team = ?,
+    alpha_score = ?,
+    bravo_score = ?,
+    reviewed_by = ?,
+    host_id = ?,
+    reviewed_at = datetime('now'),
+    review_notes = ?,
+    updated_at = datetime('now')
             WHERE id = ?
-        `).bind(
+    `).bind(
             winnerTeam,
             body.alpha_score || 0,
             body.bravo_score || 0,
@@ -860,45 +865,7 @@ moderatorRoutes.post('/matches/:id/review', async (c) => {
 
 // ============= PLAYER MANAGEMENT =============
 
-// GET /api/moderator/players - Search/list players
-moderatorRoutes.get('/players', async (c) => {
-    const search = c.req.query('search');
-    const page = parseInt(c.req.query('page') || '1');
-    const limit = 50;
-    const offset = (page - 1) * limit;
 
-    try {
-        let query = `
-            SELECT id, discord_username, discord_avatar, standoff_nickname, elo, wins, losses, role, banned, is_vip, vip_until
-            FROM players
-        `;
-        const params: any[] = [];
-
-        if (search) {
-            query += ` WHERE discord_username LIKE ? OR standoff_nickname LIKE ?`;
-            params.push(`%${search}%`, `%${search}%`);
-        }
-
-        query += ` ORDER BY elo DESC LIMIT ? OFFSET ?`;
-        params.push(limit, offset);
-
-        const result = await c.env.DB.prepare(query).bind(...params).all();
-
-        const countResult = await c.env.DB.prepare(
-            'SELECT COUNT(*) as count FROM players'
-        ).first();
-
-        return c.json({
-            success: true,
-            players: result.results || [],
-            page,
-            total: countResult?.count || 0
-        });
-    } catch (error: any) {
-        console.error('Error fetching players:', error);
-        return c.json({ success: false, error: error.message }, 500);
-    }
-});
 
 // GET /api/moderator/players/:id/history - Get player's full history
 moderatorRoutes.get('/players/:id/history', async (c) => {
@@ -908,7 +875,7 @@ moderatorRoutes.get('/players/:id/history', async (c) => {
         // Get player info
         const player = await c.env.DB.prepare(`
             SELECT * FROM players WHERE id = ? OR discord_id = ?
-        `).bind(playerId, playerId).first();
+    `).bind(playerId, playerId).first();
 
         if (!player) {
             return c.json({ success: false, error: 'Player not found' }, 404);
@@ -916,33 +883,33 @@ moderatorRoutes.get('/players/:id/history', async (c) => {
 
         // Get ELO history
         const eloHistoryResult = await c.env.DB.prepare(`
-            SELECT 
-                eh.*,
-                m.id as match_id,
-                m.result_screenshot_url,
-                m.winner_team,
-                moderator.discord_username as moderator_username
+            SELECT
+eh.*,
+    m.id as match_id,
+    m.result_screenshot_url,
+    m.winner_team,
+    moderator.discord_username as moderator_username
             FROM elo_history eh
             LEFT JOIN matches m ON eh.match_id = m.id
             LEFT JOIN players moderator ON eh.created_by = moderator.id
             WHERE eh.user_id = ?
-            ORDER BY eh.created_at DESC
+    ORDER BY eh.created_at DESC
             LIMIT 100
-        `).bind(playerId).all();
+    `).bind(playerId).all();
 
         // Get match history
         const matchHistoryResult = await c.env.DB.prepare(`
-            SELECT 
-                m.*,
-                mp.team,
-                host.discord_username as host_username
+SELECT
+m.*,
+    mp.team,
+    host.discord_username as host_username
             FROM match_players mp
             JOIN matches m ON mp.match_id = m.id
             LEFT JOIN players host ON m.host_id = host.id
             WHERE mp.player_id = ? AND m.status = 'completed'
             ORDER BY m.updated_at DESC
             LIMIT 50
-        `).bind(playerId).all();
+    `).bind(playerId).all();
 
         return c.json({
             success: true,
@@ -989,8 +956,8 @@ moderatorRoutes.post('/players/:id/elo-adjust', async (c) => {
 
         // Record in history
         await c.env.DB.prepare(`
-            INSERT INTO elo_history (user_id, match_id, elo_before, elo_after, elo_change, reason, created_by, notes, created_at)
-            VALUES (?, NULL, ?, ?, ?, 'manual_adjustment', ?, ?, datetime('now'))
+            INSERT INTO elo_history(user_id, match_id, elo_before, elo_after, elo_change, reason, created_by, notes, created_at)
+VALUES(?, NULL, ?, ?, ?, 'manual_adjustment', ?, ?, datetime('now'))
         `).bind(
             playerId,
             player.elo,
@@ -1097,13 +1064,84 @@ moderatorRoutes.post('/players/:id/role', async (c) => {
 
         return c.json({
             success: true,
-            message: `Role changed to ${body.role}`
+            message: `Role changed to ${body.role} `
         });
     } catch (error: any) {
         console.error('Error changing role:', error);
         return c.json({ success: false, error: error.message }, 500);
     }
 });
+
+// GET /api/moderator/version-check
+moderatorRoutes.get('/version-check', (c) => c.json({
+    version: 'v5-deployment-check',
+    timestamp: Date.now(),
+    env: c.env.FRONTEND_URL
+}));
+
+// GET /api/moderator/players - Get all players with pagination and search
+moderatorRoutes.get('/players', async (c) => {
+
+    // Prevent caching
+    c.header('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    c.header('X-Worker-Version', 'v10-final-fix');
+
+    try {
+        const page = Math.max(1, parseInt(c.req.query('page') || '1'));
+        const limit = Math.max(1, Math.min(100, parseInt(c.req.query('limit') || '50')));
+        const offset = (page - 1) * limit;
+        const search = c.req.query('search') || '';
+
+        console.log(`[players-v10] Fetching p=${page} l=${limit} s='${search}'`);
+
+        let query = `
+            SELECT id, discord_username, standoff_nickname, elo, role, is_vip, vip_until, discord_avatar, created_at 
+            FROM players 
+        `;
+
+        const params: any[] = [];
+
+        if (search.trim()) {
+            query += ` WHERE (lower(discord_username) LIKE ? OR lower(standoff_nickname) LIKE ? OR id LIKE ?) `;
+            const s = `%${search.toLowerCase()}%`;
+            params.push(s, s, s);
+        }
+
+        query += ` ORDER BY elo DESC LIMIT ${limit} OFFSET ${offset}`;
+
+        const result = await c.env.DB.prepare(query).bind(...params).all();
+        const players = result.results || [];
+
+        // Count
+        let countQuery = `SELECT COUNT(*) as count FROM players`;
+        const countParams: any[] = [];
+        if (search.trim()) {
+            countQuery += ` WHERE (lower(discord_username) LIKE ? OR lower(standoff_nickname) LIKE ? OR id LIKE ?) `;
+            const s = `%${search.toLowerCase()}%`;
+            countParams.push(s, s, s);
+        }
+        const countRes = await c.env.DB.prepare(countQuery).bind(...countParams).first();
+
+        // Sanity Check for 'd'
+        const sanity = await c.env.DB.prepare("SELECT * FROM players WHERE discord_username LIKE '%d%' LIMIT 1").first();
+
+        return c.json({
+            success: true,
+            _version: 'v10-final-fix',
+            players: players,
+            page,
+            total: countRes?.count || 0,
+            debug: {
+                query_sample: query.substring(0, 100),
+                sanity_d_check: sanity
+            }
+        });
+    } catch (error: any) {
+        console.error('Fetch error:', error);
+        return c.json({ success: false, error: error.message }, 500);
+    }
+});
+
 
 // POST /api/moderator/players/:id/vip/grant - Grant VIP status for 1 month (Admin only)
 moderatorRoutes.post('/players/:id/vip/grant', async (c) => {
@@ -1128,10 +1166,10 @@ moderatorRoutes.post('/players/:id/vip/grant', async (c) => {
         // Set VIP status for 1 month
         await c.env.DB.prepare(`
             UPDATE players 
-            SET is_vip = 1, 
-                vip_until = ?
-            WHERE id = ? OR discord_id = ?
-        `).bind(isoVipUntil, playerId, playerId).run();
+            SET is_vip = 1,
+    vip_until = ?
+        WHERE id = ? OR discord_id = ?
+            `).bind(isoVipUntil, playerId, playerId).run();
 
         // Instant Discord Role assignment
         await updateDiscordRole(c.env, playerId, TIERS.VIP, true);
@@ -1163,10 +1201,10 @@ moderatorRoutes.post('/players/:id/vip/revoke', async (c) => {
 
         await c.env.DB.prepare(`
             UPDATE players 
-            SET is_vip = 0, 
-                vip_until = NULL 
+            SET is_vip = 0,
+    vip_until = NULL 
             WHERE id = ? OR discord_id = ?
-        `).bind(playerId, playerId).run();
+    `).bind(playerId, playerId).run();
 
         // Remove Discord Role instantly
         await updateDiscordRole(c.env, playerId, TIERS.VIP, false);
@@ -1224,11 +1262,11 @@ moderatorRoutes.post('/matches/:id/cancel', async (c) => {
     try {
         await c.env.DB.prepare(`
             UPDATE matches 
-            SET status = 'cancelled', 
-                reviewed_by = ?,
-                updated_at = datetime('now')
+            SET status = 'cancelled',
+    reviewed_by = ?,
+    updated_at = datetime('now')
             WHERE id = ?
-        `).bind(moderatorId, matchId).run();
+    `).bind(moderatorId, matchId).run();
 
         // Log Action
         await logModeratorAction(c, moderatorId || 'system', 'MATCH_CANCEL', matchId, {});
@@ -1251,9 +1289,9 @@ moderatorRoutes.post('/matches/:id/force-start', async (c) => {
         await c.env.DB.prepare(`
             UPDATE matches 
             SET status = 'in_progress',
-                updated_at = datetime('now')
+    updated_at = datetime('now')
             WHERE id = ?
-        `).bind(matchId).run();
+    `).bind(matchId).run();
 
         return c.json({ success: true });
     } catch (error: any) {
@@ -1301,7 +1339,7 @@ moderatorRoutes.post('/matches/:id/force-result', async (c) => {
             FROM match_players mp
             LEFT JOIN players p ON mp.player_id = p.id
             WHERE mp.match_id = ?
-        `).bind(matchId).all();
+    `).bind(matchId).all();
 
         const playersList = matchPlayersResult.results || [];
 
@@ -1315,16 +1353,16 @@ moderatorRoutes.post('/matches/:id/force-result', async (c) => {
             // Update player
             await c.env.DB.prepare(`
                 UPDATE players 
-                SET elo = ?, 
-                    wins = wins + ?, 
-                    losses = losses + ? 
-                WHERE id = ?
+                SET elo = ?,
+    wins = wins + ?,
+    losses = losses + ?
+        WHERE id = ?
             `).bind(newElo, isWinner ? 1 : 0, isWinner ? 0 : 1, player.player_id).run();
 
             // History
             await c.env.DB.prepare(`
-                INSERT INTO elo_history (user_id, match_id, elo_before, elo_after, elo_change, reason, created_by, notes, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, 'Force result by moderator', datetime('now'))
+                INSERT INTO elo_history(user_id, match_id, elo_before, elo_after, elo_change, reason, created_by, notes, created_at)
+VALUES(?, ?, ?, ?, ?, ?, ?, 'Force result by moderator', datetime('now'))
             `).bind(
                 player.player_id,
                 matchId,
@@ -1340,13 +1378,13 @@ moderatorRoutes.post('/matches/:id/force-result', async (c) => {
         }
 
         // Clan Logic
-        if (match.match_type === 'clan_match' || match.match_type === 'clan_war') {
+        if (match.match_type === 'clan_war') {
             const alphaPlayer = playersList.find((p: any) => p.team === 'alpha');
             const bravoPlayer = playersList.find((p: any) => p.team === 'bravo');
 
             if (alphaPlayer && bravoPlayer) {
-                const clanAlpha = await c.env.DB.prepare(`SELECT c.* FROM clans c JOIN clan_members cm ON c.id = cm.clan_id WHERE cm.user_id = ?`).bind(alphaPlayer.player_id).first();
-                const clanBravo = await c.env.DB.prepare(`SELECT c.* FROM clans c JOIN clan_members cm ON c.id = cm.clan_id WHERE cm.user_id = ?`).bind(bravoPlayer.player_id).first();
+                const clanAlpha = await c.env.DB.prepare(`SELECT c.* FROM clans c JOIN clan_members cm ON c.id = cm.clan_id WHERE cm.user_id = ? `).bind(alphaPlayer.player_id).first();
+                const clanBravo = await c.env.DB.prepare(`SELECT c.* FROM clans c JOIN clan_members cm ON c.id = cm.clan_id WHERE cm.user_id = ? `).bind(bravoPlayer.player_id).first();
 
                 if (clanAlpha && clanBravo && clanAlpha.id !== clanBravo.id) {
                     const clanEloChange = 25;
@@ -1354,12 +1392,12 @@ moderatorRoutes.post('/matches/:id/force-result', async (c) => {
 
                     // Update Alpha
                     const newAlphaElo = Math.max(0, (clanAlpha.elo as number || 1000) + (isAlphaWinner ? clanEloChange : -clanEloChange));
-                    await c.env.DB.prepare(`UPDATE clans SET elo = ?, wins = wins + ?, losses = losses + ? WHERE id = ?`)
+                    await c.env.DB.prepare(`UPDATE clans SET elo = ?, wins = wins + ?, losses = losses + ? WHERE id = ? `)
                         .bind(newAlphaElo, isAlphaWinner ? 1 : 0, isAlphaWinner ? 0 : 1, clanAlpha.id).run();
 
                     // Update Bravo
                     const newBravoElo = Math.max(0, (clanBravo.elo as number || 1000) + (isAlphaWinner ? -clanEloChange : clanEloChange));
-                    await c.env.DB.prepare(`UPDATE clans SET elo = ?, wins = wins + ?, losses = losses + ? WHERE id = ?`)
+                    await c.env.DB.prepare(`UPDATE clans SET elo = ?, wins = wins + ?, losses = losses + ? WHERE id = ? `)
                         .bind(newBravoElo, isAlphaWinner ? 0 : 1, isAlphaWinner ? 1 : 0, clanBravo.id).run();
                 }
             }
@@ -1369,16 +1407,16 @@ moderatorRoutes.post('/matches/:id/force-result', async (c) => {
         await c.env.DB.prepare(`
             UPDATE matches 
             SET status = 'completed',
-                winner_team = ?,
-                alpha_score = ?,
-                bravo_score = ?,
-                result_screenshot_url = ?,
-                reviewed_by = ?,
-                reviewed_at = datetime('now'),
-                review_notes = 'Force ended by moderator',
-                updated_at = datetime('now')
+    winner_team = ?,
+    alpha_score = ?,
+    bravo_score = ?,
+    result_screenshot_url = ?,
+    reviewed_by = ?,
+    reviewed_at = datetime('now'),
+    review_notes = 'Force ended by moderator',
+    updated_at = datetime('now')
             WHERE id = ?
-        `).bind(
+    `).bind(
             body.winner_team,
             body.alpha_score,
             body.bravo_score,
@@ -1402,7 +1440,7 @@ moderatorRoutes.post('/matches/:id/force-result', async (c) => {
 moderatorRoutes.post('/matches/create', async (c) => {
     const body = await c.req.json<{
         host_id: string;
-        match_type: 'casual' | 'league' | 'clan_lobby' | 'clan_match' | 'competitive';
+        match_type: 'casual' | 'league' | 'clan_lobby' | 'clan_war' | 'competitive';
         map_name: string;
         max_players: number;
         clan_id?: string;
@@ -1425,14 +1463,14 @@ moderatorRoutes.post('/matches/create', async (c) => {
 
     try {
         await c.env.DB.prepare(`
-            INSERT INTO matches (id, lobby_url, host_id, map_name, match_type, status, player_count, max_players, clan_id, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, 'waiting', 1, ?, ?, datetime('now'), datetime('now'))
-        `).bind(matchId, 'manual_create', realHostId, body.map_name || null, matchType, maxPlayers, body.clan_id || null).run();
+            INSERT INTO matches(id, lobby_url, host_id, map_name, match_type, status, player_count, max_players, clan_id, created_at, updated_at)
+VALUES(?, ?, ?, ?, ?, 'waiting', 1, ?, ?, datetime('now'), datetime('now'))
+    `).bind(matchId, 'manual_create', realHostId, body.map_name || null, matchType, maxPlayers, body.clan_id || null).run();
 
         await c.env.DB.prepare(`
-            INSERT INTO match_players (match_id, player_id, team, is_captain, joined_at)
-            VALUES (?, ?, 'alpha', 1, datetime('now'))
-        `).bind(matchId, realHostId).run();
+            INSERT INTO match_players(match_id, player_id, team, is_captain, joined_at)
+VALUES(?, ?, 'alpha', 1, datetime('now'))
+    `).bind(matchId, realHostId).run();
 
         return c.json({ success: true, matchId });
     } catch (error: any) {
@@ -1453,18 +1491,18 @@ moderatorRoutes.get('/clans', async (c) => {
     try {
         let query = `
             SELECT c.*, p.discord_username as leader_username,
-            (SELECT COUNT(*) FROM clan_members WHERE clan_id = c.id) as member_count
+    (SELECT COUNT(*) FROM clan_members WHERE clan_id = c.id) as member_count
             FROM clans c
             LEFT JOIN players p ON c.leader_id = p.id
-        `;
+    `;
         const params: any[] = [];
 
         if (search) {
-            query += ` WHERE c.name LIKE ? OR c.tag LIKE ?`;
-            params.push(`%${search}%`, `%${search}%`);
+            query += ` WHERE c.name LIKE ? OR c.tag LIKE ? `;
+            params.push(`% ${search}% `, ` % ${search}% `);
         }
 
-        query += ` ORDER BY c.created_at DESC LIMIT ? OFFSET ?`;
+        query += ` ORDER BY c.created_at DESC LIMIT ? OFFSET ? `;
         params.push(limit, offset);
 
         const result = await c.env.DB.prepare(query).bind(...params).all();
@@ -1507,7 +1545,7 @@ moderatorRoutes.get('/clans/:id', async (c) => {
             FROM clans c
             LEFT JOIN players p ON c.leader_id = p.id
             WHERE c.id = ?
-        `).bind(clanId).first();
+    `).bind(clanId).first();
 
         if (!clan) return c.json({ success: false, error: 'Clan not found' }, 404);
 
@@ -1516,13 +1554,13 @@ moderatorRoutes.get('/clans/:id', async (c) => {
             FROM clan_members cm
             LEFT JOIN players p ON cm.user_id = p.id
             WHERE cm.clan_id = ?
-            ORDER BY 
-                CASE 
+    ORDER BY
+CASE 
                     WHEN cm.role = 'leader' THEN 1 
                     WHEN cm.role = 'co_leader' THEN 2 
-                    ELSE 3 
-                END
-        `).bind(clanId).all();
+                    ELSE 3
+END
+    `).bind(clanId).all();
 
         return c.json({ success: true, clan, members: members.results || [] });
     } catch (error: any) {
@@ -1545,7 +1583,7 @@ moderatorRoutes.post('/clans/:id/update', async (c) => {
         await c.env.DB.prepare(`
             UPDATE clans 
             SET name = ?, tag = ?, elo = ?, leader_id = ?
-            WHERE id = ?
+    WHERE id = ?
         `).bind(body.name, body.tag, body.elo, body.leader_id, clanId).run();
 
         // Also update the leader role in clan_members table specifically? 
@@ -1571,7 +1609,7 @@ moderatorRoutes.get('/clan-requests', async (c) => {
             LEFT JOIN players p ON cr.user_id = p.id
             WHERE cr.status = 'pending'
             ORDER BY cr.created_at ASC
-        `).all();
+    `).all();
 
         return c.json({
             success: true,
@@ -1602,20 +1640,20 @@ moderatorRoutes.post('/clan-requests/:id/approve', async (c) => {
         // Transaction: Create Clan -> Add Member -> Update Request -> Deduct Balance? (No, manual payment)
         const batch = await c.env.DB.batch([
             c.env.DB.prepare(`
-                INSERT INTO clans (id, name, tag, leader_id, max_members, created_at)
-                VALUES (?, ?, ?, ?, ?, datetime('now'))
-            `).bind(clanId, request.clan_name, request.clan_tag, request.user_id, request.clan_size),
+                INSERT INTO clans(id, name, tag, leader_id, max_members, created_at)
+VALUES(?, ?, ?, ?, ?, datetime('now'))
+    `).bind(clanId, request.clan_name, request.clan_tag, request.user_id, request.clan_size),
 
             c.env.DB.prepare(`
-                INSERT INTO clan_members (clan_id, user_id, role, joined_at)
-                VALUES (?, ?, 'leader', datetime('now'))
-            `).bind(clanId, request.user_id),
+                INSERT INTO clan_members(clan_id, user_id, role, joined_at)
+VALUES(?, ?, 'leader', datetime('now'))
+    `).bind(clanId, request.user_id),
 
             c.env.DB.prepare(`
                 UPDATE clan_requests 
                 SET status = 'approved', reviewed_by = ?, updated_at = datetime('now')
                 WHERE id = ?
-            `).bind(moderatorId, requestId)
+    `).bind(moderatorId, requestId)
         ]);
 
         return c.json({ success: true, message: 'Clan created successfully' });
@@ -1636,7 +1674,7 @@ moderatorRoutes.post('/clan-requests/:id/reject', async (c) => {
             UPDATE clan_requests 
             SET status = 'rejected', reviewed_by = ?, rejection_reason = ?, updated_at = datetime('now')
             WHERE id = ?
-        `).bind(moderatorId, reason || 'No reason provided', requestId).run();
+    `).bind(moderatorId, reason || 'No reason provided', requestId).run();
 
         return c.json({ success: true, message: 'Request rejected' });
     } catch (error: any) {
@@ -1653,16 +1691,16 @@ moderatorRoutes.get('/vip-requests', async (c) => {
 
     try {
         const requests = await c.env.DB.prepare(`
-            SELECT 
-                vr.*,
-                p.discord_username as user_discord_username,
-                p.discord_avatar as user_discord_avatar,
-                reviewer.discord_username as reviewer_username
+            SELECT
+vr.*,
+    p.discord_username as user_discord_username,
+    p.discord_avatar as user_discord_avatar,
+    reviewer.discord_username as reviewer_username
             FROM vip_requests vr
             LEFT JOIN players p ON vr.user_id = p.id
             LEFT JOIN players reviewer ON vr.reviewed_by = reviewer.id
             WHERE vr.status = ?
-            ORDER BY vr.created_at DESC
+    ORDER BY vr.created_at DESC
         `).bind(status).all();
 
         return c.json({
@@ -1713,17 +1751,17 @@ moderatorRoutes.post('/vip-requests/:id/approve', async (c) => {
         await c.env.DB.prepare(`
             UPDATE players 
             SET is_vip = 1, vip_until = ?
-            WHERE id = ? OR discord_id = ?
+    WHERE id = ? OR discord_id = ?
         `).bind(isoVipUntil, request.user_id, request.user_id).run();
 
         // Update request status
         await c.env.DB.prepare(`
             UPDATE vip_requests
             SET status = 'approved',
-                reviewed_by = ?,
-                reviewed_at = ?
-            WHERE id = ?
-        `).bind(adminId, isoNow, requestId).run();
+    reviewed_by = ?,
+    reviewed_at = ?
+        WHERE id = ?
+            `).bind(adminId, isoNow, requestId).run();
 
         // Add Discord VIP role
         await updateDiscordRole(c.env, request.user_id as string, TIERS.VIP, true);
@@ -1774,11 +1812,11 @@ moderatorRoutes.post('/vip-requests/:id/reject', async (c) => {
         await c.env.DB.prepare(`
             UPDATE vip_requests
             SET status = 'rejected',
-                reviewed_by = ?,
-                reviewed_at = ?,
-                rejection_reason = ?
-            WHERE id = ?
-        `).bind(adminId, now, body.reason || 'No reason provided', requestId).run();
+    reviewed_by = ?,
+    reviewed_at = ?,
+    rejection_reason = ?
+        WHERE id = ?
+            `).bind(adminId, now, body.reason || 'No reason provided', requestId).run();
 
         return c.json({
             success: true,
@@ -1799,15 +1837,15 @@ moderatorRoutes.get('/audit-logs', async (c) => {
 
     try {
         const result = await c.env.DB.prepare(`
-            SELECT 
-                l.*,
-                m.discord_username as moderator_username,
-                m.discord_avatar as moderator_avatar
+            SELECT
+l.*,
+    m.discord_username as moderator_username,
+    m.discord_avatar as moderator_avatar
             FROM moderator_logs l
             LEFT JOIN players m ON l.moderator_id = m.id
             ORDER BY l.created_at DESC
-            LIMIT ? OFFSET ?
-        `).bind(limit, offset).all();
+LIMIT ? OFFSET ?
+    `).bind(limit, offset).all();
 
         const countResult = await c.env.DB.prepare(
             'SELECT COUNT(*) as count FROM moderator_logs'
@@ -1834,12 +1872,12 @@ moderatorRoutes.get('/clans', async (c) => {
     // Simple search
     const results = await c.env.DB.prepare(`
         SELECT c.*, p.discord_username as leader_name,
-        (SELECT COUNT(*) FROM clan_members WHERE clan_id = c.id) as member_count
+    (SELECT COUNT(*) FROM clan_members WHERE clan_id = c.id) as member_count
         FROM clans c
         LEFT JOIN players p ON c.leader_id = p.id
         WHERE c.name LIKE ? OR c.tag LIKE ?
-        LIMIT 50
-    `).bind(`%${query}%`, `%${query}%`).all();
+    LIMIT 50
+        `).bind(` % ${query}% `, ` % ${query}% `).all();
 
     return c.json({ success: true, clans: results.results });
 });
@@ -1856,14 +1894,14 @@ moderatorRoutes.post('/clans', async (c) => {
         const id = crypto.randomUUID();
         // Insert clan
         await c.env.DB.prepare(`
-            INSERT INTO clans (id, name, tag, leader_id, max_members, description)
-            VALUES (?, ?, ?, ?, ?, ?)
-        `).bind(id, name, tag, leader_id, max_members || 20, description || '').run();
+            INSERT INTO clans(id, name, tag, leader_id, max_members, description)
+VALUES(?, ?, ?, ?, ?, ?)
+    `).bind(id, name, tag, leader_id, max_members || 20, description || '').run();
 
         // Add leader to members
         await c.env.DB.prepare(`
-            INSERT INTO clan_members (clan_id, user_id, role) VALUES (?, ?, 'leader')
-        `).bind(id, leader_id).run();
+            INSERT INTO clan_members(clan_id, user_id, role) VALUES(?, ?, 'leader')
+    `).bind(id, leader_id).run();
 
         await logModeratorAction(c, moderatorId, 'create_clan', id, { name, tag, leader_id });
 
@@ -1881,8 +1919,8 @@ moderatorRoutes.put('/clans/:id', async (c) => {
 
     await c.env.DB.prepare(`
         UPDATE clans SET name = ?, tag = ?, description = ?, logo_url = ?
-        WHERE id = ?
-    `).bind(name, tag, description, logo_url, id).run();
+    WHERE id = ?
+        `).bind(name, tag, description, logo_url, id).run();
 
     await logModeratorAction(c, moderatorId, 'edit_clan', id, { name, tag });
 
@@ -1962,8 +2000,8 @@ moderatorRoutes.post('/players/:id/elo-adjust', async (c) => {
 
         // Record History
         await c.env.DB.prepare(`
-            INSERT INTO elo_history (user_id, elo_before, elo_after, elo_change, reason, created_by, notes, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
+            INSERT INTO elo_history(user_id, elo_before, elo_after, elo_change, reason, created_by, notes, created_at)
+VALUES(?, ?, ?, ?, ?, ?, ?, datetime('now'))
         `).bind(
             userId,
             currentElo,

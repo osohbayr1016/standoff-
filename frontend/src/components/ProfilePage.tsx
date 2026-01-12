@@ -370,8 +370,15 @@ export default function ProfilePage({
 
                 {/* VIP Badge */}
                 {!!profile?.is_vip && (
-                  <div className="bg-[#ffcc00] text-black text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded skew-x-[-10deg]">
-                    VIP
+                  <div className="flex flex-col items-center">
+                    <div className="bg-[#ffcc00] text-black text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded skew-x-[-10deg]">
+                      VIP
+                    </div>
+                    {profile.vip_until && (
+                      <span className="text-[9px] text-[#ffcc00] font-bold mt-1 uppercase tracking-wider">
+                        Exp: {new Date(profile.vip_until).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                      </span>
+                    )}
                   </div>
                 )}
 

@@ -113,11 +113,22 @@ export const useWebSocketStore = create<WebSocketState>((set, get) => {
 
                     // Chat Messages
                     if (data.type === 'CHAT_MESSAGE') {
-                        const isLobby = !!data.message.lobbyId;
+                        // Handle both nested 'message' object (standard) and flat structure (system errors)
+                        const msgPayload = data.message || {
+                            id: data.id || `sys-${Date.now()}`,
+                            userId: data.senderId || 'SYSTEM',
+                            username: data.senderId || 'SYSTEM',
+                            content: data.content,
+                            timestamp: data.timestamp || Date.now(),
+                            lobbyId: data.lobbyId,
+                            type: 'system'
+                        };
+
+                        const isLobby = !!msgPayload.lobbyId;
                         if (isLobby) {
-                            set(state => ({ lobbyChatMessages: [...state.lobbyChatMessages.slice(-49), data.message] }));
+                            set(state => ({ lobbyChatMessages: [...state.lobbyChatMessages.slice(-49), msgPayload] }));
                         } else {
-                            set(state => ({ chatMessages: [...state.chatMessages.slice(-49), data.message] }));
+                            set(state => ({ chatMessages: [...state.chatMessages.slice(-49), msgPayload] }));
                         }
                     }
                     else if (data.type === 'CHAT_HISTORY') {
@@ -153,10 +164,17 @@ export const useWebSocketStore = create<WebSocketState>((set, get) => {
 
         sendMessage: (message: any) => {
             const { socket } = get();
+            console.log('[WebSocket Store] 📨 sendMessage called:', {
+                messageType: message.type,
+                socketExists: !!socket,
+                socketState: socket?.readyState,
+                isOpen: socket?.readyState === WebSocket.OPEN
+            });
             if (socket && socket.readyState === WebSocket.OPEN) {
+                console.log('[WebSocket Store] ✅ Sending immediately:', message);
                 socket.send(JSON.stringify(message));
             } else {
-                console.warn('WebSocket not connected, buffering message:', message.type);
+                console.warn('[WebSocket Store] ⚠️ Buffering message (socket not ready):', message.type);
                 set(state => ({ messageQueue: [...state.messageQueue, message] }));
             }
         },

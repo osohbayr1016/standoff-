@@ -19,7 +19,7 @@ import {
     TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import type { MatchPlayer } from "./LobbyDetailPage";
+import type { MatchPlayer } from '../types/match';
 
 interface VoiceChatProps {
     channelName: string;

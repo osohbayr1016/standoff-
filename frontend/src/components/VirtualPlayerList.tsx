@@ -1,7 +1,7 @@
 
 import React, { memo } from 'react';
 import { Virtuoso } from 'react-virtuoso';
-import type { MatchPlayer } from './LobbyDetailPage';
+import type { MatchPlayer } from '../types/match';
 
 interface VirtualPlayerListProps {
     players: MatchPlayer[];

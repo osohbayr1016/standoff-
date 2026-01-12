@@ -1,0 +1,21 @@
+
+import { drizzle } from 'drizzle-orm/d1';
+import { players } from './src/db/schema';
+import { like, or, sql, desc } from 'drizzle-orm';
+import * as schema from './src/db/schema';
+
+// Mock Env for local testing if needed, or use wrangler d1 execute
+// Actually, we can't easily run Drizzle locally against remote D1 without binding.
+// The best way is to write a small script that we run via `wrangler dev` or just use `wrangler d1 execute` with raw SQL that MIMICS the Drizzle query.
+
+// Let's generate the SQL that Drizzle WOULD produce and run THAT.
+// search = "d"
+// Query: SELECT ... FROM players WHERE discord_username LIKE '%d%' OR standoff_nickname LIKE '%d%' OR id LIKE '%d%' ...
+
+console.log("Use 'wrangler d1 execute' with the following SQL to verify:");
+console.log(`
+SELECT id, discord_username, standoff_nickname 
+FROM players 
+WHERE discord_username LIKE '%d%' OR standoff_nickname LIKE '%d%' 
+LIMIT 10;
+`);

@@ -63,7 +63,10 @@ const PlayerCard: React.FC<{
             exit={{ scale: 0.8, opacity: 0 }}
             whileHover={onClick && !disabled ? { scale: 1.02 } : undefined}
             whileTap={onClick && !disabled ? { scale: 0.98 } : undefined}
-            onClick={onClick && !disabled ? onClick : undefined}
+            onClick={onClick && !disabled ? () => {
+                console.log('👆 PlayerCard Clicked:', player.username, player.id);
+                onClick();
+            } : undefined}
             className={cn(
                 "relative flex items-center gap-2 lg:gap-3 p-2 lg:p-3 rounded-xl border bg-black/40 backdrop-blur-sm transition-all",
                 borderColor,

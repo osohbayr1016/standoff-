@@ -1,8 +1,9 @@
-import React, { useState, useEffect, memo, useMemo, useRef, useCallback, useTransition, Suspense, lazy } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback, useTransition, Suspense, lazy } from 'react';
 import { useWebSocket } from './WebSocketContext';
+import { useWebSocketStore } from '../stores/websocketStore';
+import { toast } from "sonner";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import {
     AlertDialog,
@@ -13,153 +14,34 @@ import {
     AlertDialogHeader,
     AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+// import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"; // Used in header? check
 import { Input } from "@/components/ui/input";
 import {
-    Trophy,
-    Map as MapIcon,
-    User,
-    LogOut,
-    Play,
+    Loader2,
     AlertTriangle,
-    Upload,
+    ArrowLeft,
+    Map as MapIcon,
+    Crown,
     Check,
     X,
-    RotateCcw,
-    Crown,
+    Upload,
     ExternalLink,
-    Loader2,
-    UserPlus,
-    ArrowLeft,
-    Gamepad2,
     Pencil,
-    ShieldAlert,
-    Bot
+    RotateCcw,
+    Gamepad2,
+    Trophy
 } from "lucide-react";
-import LevelBadge from './LevelBadge';
 import Chat from './Chat';
 const InviteFriendModal = lazy(() => import('./InviteFriendModal'));
 const VoiceChat = lazy(() => import('./VoiceChat'));
-import VirtualPlayerList from './VirtualPlayerList';
 import LobbyWorker from '../workers/lobby.worker?worker';
 import { DraftPhase } from './DraftPhase';
 import { CompetitiveLobbyWaiting } from './CompetitiveLobbyWaiting';
 
-
-export interface MatchPlayer {
-    player_id: string;
-    team: string;
-    discord_username?: string;
-    discord_avatar?: string;
-    elo?: number;
-    is_vip?: number | boolean;
-    standoff_nickname?: string;
-    role?: string;
-}
-
-interface Match {
-    id: string;
-    lobby_url: string;
-    host_id: string;
-    host_username?: string;
-    host_avatar?: string;
-    status: string;
-    player_count: number;
-    max_players: number;
-    map_name?: string;
-    match_type?: 'casual' | 'league' | 'competitive' | 'clan_lobby' | 'clan_war';
-    created_at: string;
-    alpha_avg_elo?: number;
-    bravo_avg_elo?: number;
-    draftState?: any;
-    captain_alpha_id?: string;
-    captain_bravo_id?: string;
-    alpha_clan?: { name: string; tag: string; avatar: string };
-    bravo_clan?: { name: string; tag: string; avatar: string };
-}
-
-interface LobbyDetailPageProps {
-    matchId: string;
-    user: {
-        id: string;
-        username: string;
-        avatar?: string;
-        role?: string;
-    } | null;
-    backendUrl: string;
-    onBack: () => void;
-    previousProfileUserId?: string | null;
-    onNavigateToProfile?: (userId: string) => void;
-}
-
-// Custom equality check for PlayerCard to prevent re-renders on new object references
-const arePlayerPropsEqual = (prevProps: any, nextProps: any) => {
-    return (
-        prevProps.player.player_id === nextProps.player.player_id &&
-        prevProps.player.team === nextProps.player.team &&
-        prevProps.player.elo === nextProps.player.elo &&
-        prevProps.player.role === nextProps.player.role &&
-        prevProps.player.is_vip === nextProps.player.is_vip &&
-        prevProps.player.standoff_nickname === nextProps.player.standoff_nickname &&
-        prevProps.player.discord_username === nextProps.player.discord_username &&
-        prevProps.player.discord_avatar === nextProps.player.discord_avatar &&
-        prevProps.teamColor === nextProps.teamColor &&
-        prevProps.isHost === nextProps.isHost &&
-        prevProps.currentUserId === nextProps.currentUserId &&
-        prevProps.onKick === nextProps.onKick
-    );
-};
-
-const PlayerCard = memo(({
-    player,
-    teamColor,
-    isHost,
-    currentUserId,
-    onKick
-}: {
-    player: MatchPlayer;
-    teamColor: string;
-    isHost: boolean;
-    currentUserId?: string;
-    onKick: (playerId: string) => void;
-}) => {
-    return (
-        <div className={`bg-[#1c1e22] hover:bg-[#23252a] transition-all duration-200 rounded-lg border border-[${teamColor}]/20 p-3 lg:p-4 group relative`}>
-            {isHost && player.player_id !== currentUserId && (
-                <button
-                    onClick={() => onKick(player.player_id)}
-                    className="absolute top-2 right-2 p-1.5 rounded-md bg-red-500/20 hover:bg-red-500/40 text-red-400 hover:text-red-300 transition-colors z-10"
-                    title="Kick player"
-                >
-                    <X className="h-4 w-4" />
-                </button>
-            )}
-            <div className="flex items-center gap-3 lg:gap-4">
-                <Avatar className={`h-11 w-11 lg:h-14 lg:w-14 border-2 border-[${teamColor}]/30 group-hover:border-[${teamColor}]/60 transition-colors`}>
-                    <AvatarImage src={`https://cdn.discordapp.com/avatars/${player.player_id}/${player.discord_avatar}.png`} />
-                    <AvatarFallback className={`bg-[${teamColor}]/20 text-[${teamColor}]`}><User className="h-5 w-5 lg:h-6 lg:w-6" /></AvatarFallback>
-                </Avatar>
-                <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between gap-2 mb-1">
-                        <div className="flex items-center gap-2 min-w-0 flex-1">
-                            <span className="font-semibold text-white truncate text-sm lg:text-base">
-                                {player.standoff_nickname || player.discord_username || 'Player'}
-                            </span>
-                            {player.role === 'admin' && <Badge className="text-[9px] lg:text-[10px] px-1.5 py-0 bg-[#ff5500] text-white border-0 font-bold">ADMIN</Badge>}
-                            {player.role === 'moderator' && <Badge className={`text-[9px] lg:text-[10px] px-1.5 py-0 bg-[${teamColor}] text-white border-0 font-bold`}>MOD</Badge>}
-                        </div>
-                        <div className="flex items-center gap-1.5 flex-shrink-0">
-                            <LevelBadge elo={player.elo || 1000} showElo={true} className="gap-1" />
-                        </div>
-                    </div>
-                    <div className="text-[11px] lg:text-xs text-white/40 font-mono">
-                        ELO: <span className="text-white/60 font-semibold">{player.elo || 1000}</span>
-                    </div>
-                </div>
-            </div>
-        </div>
-    );
-}, arePlayerPropsEqual);
+// NEW IMPORTS
+import type { Match, MatchPlayer } from '../types/match';
+import { LobbyActionButtons } from './lobby/LobbyActionButtons';
+import { TeamColumn } from './lobby/TeamColumn';
 
 // Helper to map MatchPlayer to DraftPhase QueuePlayer (Moved outside for stability)
 const mapToQueuePlayer = (p: MatchPlayer | undefined) => {
@@ -177,9 +59,24 @@ const mapToQueuePlayer = (p: MatchPlayer | undefined) => {
     };
 };
 
+interface LobbyDetailPageProps {
+    matchId: string;
+    user: {
+        id: string;
+        username: string;
+        avatar?: string;
+        role?: string;
+    } | null;
+    backendUrl: string;
+    onBack: () => void;
+    previousProfileUserId?: string | null;
+    onNavigateToProfile?: (userId: string) => void;
+}
+
 const LobbyDetailPage: React.FC<LobbyDetailPageProps> = ({ matchId, user, backendUrl, onBack, previousProfileUserId }) => {
     // Atomic selectors to prevent unnecessary re-renders
     const sendMessage = useWebSocket(state => state.sendMessage);
+    const requestMatchState = useWebSocket(state => state.requestMatchState);
     // const lastMessage = useWebSocket(state => state.lastMessage); // <-- REMOVED to prevent re-renders
 
     const [match, setMatch] = useState<Match | null>(null);
@@ -311,12 +208,24 @@ const LobbyDetailPage: React.FC<LobbyDetailPageProps> = ({ matchId, user, backen
     // HANDSHAKE RECOVERY: Proactively request live draft state from DO on mount
     useEffect(() => {
         // If we know match is drafting (from localStorage or initial API call), immediately ping DO
-        // This ensures we get the latest in-memory state even if DB is slightly stale
-        if (match?.status === 'drafting') {
+        // Fix: Only request if logic is missing draftState to prevent infinite loop on updates
+        if (match?.status === 'drafting' && !match.draftState) {
             console.log('[LobbyDetailPage] Requesting live draft state from DO on mount...');
             sendMessage({ type: 'REQUEST_MATCH_STATE', lobbyId: matchId });
+
+            // SAFETY NET: Retry every 3s if still stuck without draftState
+            const interval = setInterval(() => {
+                if (match?.status === 'drafting' && !match.draftState) {
+                    console.log('[LobbyDetailPage] Retry: Requesting draft state...');
+                    sendMessage({ type: 'REQUEST_MATCH_STATE', lobbyId: matchId });
+                } else {
+                    clearInterval(interval);
+                }
+            }, 3000);
+
+            return () => clearInterval(interval);
         }
-    }, [match?.status, matchId, sendMessage]);
+    }, [match?.status, matchId, sendMessage, match?.draftState]);
 
     useEffect(() => {
         fetchMatchDetails();
@@ -384,6 +293,7 @@ const LobbyDetailPage: React.FC<LobbyDetailPageProps> = ({ matchId, user, backen
                     }
 
 
+
                     // HANDLE DRAFT UPDATE (Picks)
                     if (msg.type === 'DRAFT_UPDATE' && msg.matchId === matchId) {
                         setMatch(prev => prev ? ({
@@ -393,6 +303,27 @@ const LobbyDetailPage: React.FC<LobbyDetailPageProps> = ({ matchId, user, backen
                         // Update teams if included
                         if (msg.teamA) setAlphaPlayers(msg.teamA);
                         if (msg.teamB) setBravoPlayers(msg.teamB);
+                        return;
+                    }
+
+                    // HANDLE BACKEND ERRORS
+                    if (msg.type === 'ERROR') {
+                        console.error('[LobbyDetailPage] Received Backend Error:', msg.message);
+                        toast.error(`Error: ${msg.message}`);
+                        // Force resync state on error (e.g. "Not your turn" desync)
+                        if (matchId) requestMatchState(matchId);
+                        return;
+                    }
+
+                    // HANDLE MATCH START (Draft → In Progress)
+                    if (msg.type === 'MATCH_START' && msg.lobbyId === matchId) {
+                        console.log('[LobbyDetailPage] 🎮 Match Starting!');
+                        setMatch(prev => prev ? ({
+                            ...prev,
+                            status: 'in_progress',
+                            draftState: undefined // Clear draft state
+                        }) : null);
+                        toast.success('Match is starting!');
                         return;
                     }
 
@@ -449,6 +380,10 @@ const LobbyDetailPage: React.FC<LobbyDetailPageProps> = ({ matchId, user, backen
                         }
                         if (msg.lobby.teamB && msg.lobby.teamB.length > 0) {
                             setBravoPlayers(msg.lobby.teamB);
+                        }
+                        // FIX: Sync main players list from DO state (Fixes "Empty Players" on refresh)
+                        if (msg.lobby.players && msg.lobby.players.length > 0) {
+                            setPlayers(msg.lobby.players);
                         }
                     }
                 }
@@ -573,31 +508,7 @@ const LobbyDetailPage: React.FC<LobbyDetailPageProps> = ({ matchId, user, backen
         }
     };
 
-    // Balance teams (host only)
-    const handleBalanceTeams = async () => {
-        if (!user || !match || !isHost) return;
-        setIsProcessing(true);
-        try {
-            const response = await fetch(`${backendUrl}/api/matches/${matchId}/balance`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ host_id: user.id })
-            });
 
-            const data = await response.json();
-            if (data.success) {
-                fetchMatchDetails();
-            } else {
-                setErrorMessage(data.error || 'Failed to balance teams');
-                setErrorDialogOpen(true);
-            }
-        } catch (err) {
-            setErrorMessage('Network error');
-            setErrorDialogOpen(true);
-        } finally {
-            setIsProcessing(false);
-        }
-    };
 
     // Fill with bots (host/admin only - for testing)
     const handleFillBots = async () => {
@@ -743,17 +654,30 @@ const LobbyDetailPage: React.FC<LobbyDetailPageProps> = ({ matchId, user, backen
 
     // Draft Pick Handler - MEMOIZED
     const handleDraftPick = useCallback((playerId: string) => {
+        const wsState = useWebSocketStore.getState();
+        console.log('[DRAFT_PICK] 🔍 Debug Info:', {
+            wsConnected: wsState.isConnected,
+            socketState: wsState.socket?.readyState,
+            socketStateText: wsState.socket?.readyState === 1 ? 'OPEN' : wsState.socket?.readyState === 0 ? 'CONNECTING' : 'CLOSED',
+            userId: user?.id,
+            lobbyId: matchId,
+            playerId: playerId,
+            hasSocket: !!wsState.socket,
+            hasSendMessage: !!sendMessage
+        });
         console.log('[LobbyDetailPage] Picking player:', playerId);
         if (!sendMessage || !matchId) {
-            console.error('[LobbyDetailPage] Cannot pick: No socket or matchId');
+            console.error('[LobbyDetailPage] ❌ Cannot pick: No socket or matchId');
             return;
         }
-        sendMessage({
+        const payload = {
             type: 'DRAFT_PICK',
             lobbyId: matchId,
             pickedPlayerId: playerId
-        });
-    }, [sendMessage, matchId]);
+        };
+        console.log('[DRAFT_PICK] 📤 Sending payload:', payload);
+        sendMessage(payload);
+    }, [sendMessage, matchId, user?.id]);
 
     // Finish match directly (for casual)
     const handleFinishMatch = async () => {
@@ -1048,6 +972,14 @@ const LobbyDetailPage: React.FC<LobbyDetailPageProps> = ({ matchId, user, backen
                     <Loader2 className="h-12 w-12 animate-spin text-blue-500" />
                     <h3 className="text-xl font-bold animate-pulse">Recovering Draft State...</h3>
                     <p className="text-muted-foreground">Syncing with server, please wait...</p>
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => sendMessage({ type: 'REQUEST_MATCH_STATE', lobbyId: matchId })}
+                        className="mt-4"
+                    >
+                        <RotateCcw className="mr-2 h-4 w-4" /> Rewrite Handshake
+                    </Button>
                 </div>
             ) : match.status === 'waiting' && (match.match_type === 'competitive' || match.match_type === 'league') ? (
                 /* Competitive/League Waiting - Different UI */
@@ -1061,31 +993,15 @@ const LobbyDetailPage: React.FC<LobbyDetailPageProps> = ({ matchId, user, backen
                 /* Teams Grid - Casual/Clan War UI */
                 <div className="grid grid-cols-1 lg:grid-cols-9 gap-6 items-start lg:max-w-7xl lg:mx-auto">
                     {/* Alpha Team */}
-                    <div className="lg:col-span-4 space-y-3">
-                        <div className="flex items-center justify-between px-4 lg:px-5 py-3 lg:py-4 bg-[#23252a] rounded-lg border-l-4 border-[#5b9bd5]">
-                            <div className="flex items-center gap-2 lg:gap-3">
-                                <div className="w-2 h-2 lg:w-3 lg:h-3 rounded-full bg-[#5b9bd5] animate-pulse"></div>
-                                <div className="flex flex-col">
-                                    <h2 className="text-sm lg:text-base font-bold uppercase tracking-wider text-[#5b9bd5] truncate max-w-[200px]">
-                                        {alphaTeamName}
-                                    </h2>
-                                    <span className="text-[10px] text-white/40 uppercase font-bold tracking-tighter">Avg Elo: {match.alpha_avg_elo || 1000}</span>
-                                </div>
-                            </div>
-                            <Badge variant="secondary" className="bg-[#5b9bd5]/20 text-[#5b9bd5] font-mono text-xs lg:text-sm">
-                                {alphaPlayers.length}/5
-                            </Badge>
-                        </div>
-
-                        <VirtualPlayerList
-                            players={alphaPlayers}
+                    <div className="lg:col-span-4">
+                        <TeamColumn
+                            teamName={alphaTeamName}
                             teamColor="#5b9bd5"
+                            players={alphaPlayers}
                             isHost={isHost || isStaff}
                             currentUserId={user?.id}
                             onKick={handleKickPlayer}
-                            PlayerCardComponent={PlayerCard}
-                            minHeight={Math.min(500, alphaPlayers.length * 100 + 100)}
-                            emptyMessage="Waiting for player..."
+                            emptySlots={5 - alphaPlayers.length}
                         />
                     </div>
 
@@ -1095,31 +1011,15 @@ const LobbyDetailPage: React.FC<LobbyDetailPageProps> = ({ matchId, user, backen
                     </div>
 
                     {/* Bravo Team */}
-                    <div className="lg:col-span-4 space-y-3">
-                        <div className="flex items-center justify-between px-4 lg:px-5 py-3 lg:py-4 bg-[#23252a] rounded-lg border-r-4 border-[#e74c3c] lg:flex-row-reverse">
-                            <div className="flex items-center gap-2 lg:gap-3 lg:flex-row-reverse text-right">
-                                <div className="w-2 h-2 lg:w-3 lg:h-3 rounded-full bg-[#e74c3c] animate-pulse"></div>
-                                <div className="flex flex-col items-end">
-                                    <h2 className="text-sm lg:text-base font-bold uppercase tracking-wider text-[#e74c3c] truncate max-w-[200px]">
-                                        {bravoTeamName}
-                                    </h2>
-                                    <span className="text-[10px] text-white/40 uppercase font-bold tracking-tighter">Avg Elo: {match.bravo_avg_elo || 1000}</span>
-                                </div>
-                            </div>
-                            <Badge variant="secondary" className="bg-[#e74c3c]/20 text-[#e74c3c] font-mono text-xs lg:text-sm">
-                                {bravoPlayers.length}/5
-                            </Badge>
-                        </div>
-
-                        <VirtualPlayerList
-                            players={bravoPlayers}
+                    <div className="lg:col-span-4">
+                        <TeamColumn
+                            teamName={bravoTeamName}
                             teamColor="#e74c3c"
+                            players={bravoPlayers}
                             isHost={isHost || isStaff}
                             currentUserId={user?.id}
                             onKick={handleKickPlayer}
-                            PlayerCardComponent={PlayerCard}
-                            minHeight={Math.min(500, bravoPlayers.length * 100 + 100)}
-                            emptyMessage="Waiting for player..."
+                            emptySlots={5 - bravoPlayers.length}
                         />
                     </div>
                 </div> /* End Teams Grid */
@@ -1129,119 +1029,20 @@ const LobbyDetailPage: React.FC<LobbyDetailPageProps> = ({ matchId, user, backen
             <div className="mt-6 -mx-4 md:-mx-8 lg:col-span-9 lg:mx-0">
                 <Card className="border border-border bg-card shadow-lg w-full">
                     <div className="p-4 lg:p-6 w-full">
-                        {match.status === 'waiting' && (
-                            <div className="w-full flex flex-col md:flex-row md:items-center md:justify-between gap-3 md:gap-4">
-                                {/* Left Side: Primary Actions */}
-                                <div className="flex flex-col sm:flex-row gap-2 md:gap-4 flex-1 min-w-0">
-                                    {isHost && players.length > 2 && (
-                                        <Button
-                                            variant="outline"
-                                            onClick={handleBalanceTeams}
-                                            disabled={isProcessing}
-                                            className="flex-shrink-0 h-12 md:h-11 border-white/10 hover:bg-white/5 text-xs font-bold uppercase"
-                                        >
-                                            {isProcessing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="mr-2 h-4 w-4" />}
-                                            Balance Teams
-                                        </Button>
-                                    )}
-                                    {/* Start Match Button - Host Only */}
-                                    {isHost && (
-                                        <Button
-                                            onClick={handleStartMatch}
-                                            disabled={players.length < 2 || isProcessing}
-                                            className="flex-shrink-0 h-12 md:h-11 px-4 md:px-6 lg:px-8 bg-[#ff5500] hover:bg-[#e64d00] text-white font-bold shadow-lg uppercase tracking-wide transition-all text-sm whitespace-nowrap active:scale-95"
-                                        >
-                                            {isProcessing ? (
-                                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                            ) : (
-                                                <Play className="mr-2 h-4 w-4 fill-current" />
-                                            )}
-                                            Start Match ({players.length}/10)
-                                        </Button>
-                                    )}
-
-                                    {/* Invite Friends Button */}
-                                    {isInMatch && (
-                                        <Button
-                                            onClick={() => setShowInviteModal(true)}
-                                            className="flex-shrink-0 h-12 md:h-11 px-4 md:px-6 lg:px-8 bg-[#5b9bd5] hover:bg-[#4a8ac0] text-white font-bold shadow-md uppercase tracking-wide text-sm whitespace-nowrap"
-                                        >
-                                            <UserPlus className="mr-2 h-4 w-4" /> Invite Friends
-                                        </Button>
-                                    )}
-                                </div>
-
-                                {/* Right Side: Secondary Actions */}
-                                <div className="flex flex-col sm:flex-row gap-3 md:gap-4 flex-shrink-0">
-                                    {/* Join Match Button for Non-Participants */}
-                                    {!isInMatch && match.status === 'waiting' && (
-                                        <Button
-                                            onClick={handleJoinLobby}
-                                            disabled={players.length >= match.max_players || isProcessing}
-                                            className="flex-shrink-0 h-12 md:h-11 px-4 md:px-6 bg-green-600 hover:bg-green-700 text-white font-bold shadow-md uppercase tracking-wide text-sm whitespace-nowrap active:scale-95"
-                                        >
-                                            {isProcessing ? (
-                                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                            ) : (
-                                                <UserPlus className="mr-2 h-4 w-4" />
-                                            )}
-                                            {players.length >= match.max_players ? 'Full Lobby' : 'Join Match'}
-                                        </Button>
-                                    )}
-
-                                    {/* Switch Team & Leave Buttons */}
-                                    {isInMatch && (
-                                        <>
-                                            <Button
-                                                onClick={handleSwitchTeam}
-                                                disabled={isProcessing}
-                                                className="flex-shrink-0 h-12 md:h-11 px-4 md:px-6 bg-[#18181b] hover:bg-[#27272a] text-white border border-white/5 font-semibold text-sm whitespace-nowrap active:scale-95"
-                                            >
-                                                {isProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RotateCcw className="mr-2 h-4 w-4" />}
-                                                Switch Team
-                                            </Button>
-
-                                            <Button
-                                                onClick={handleLeaveLobby}
-                                                variant="outline"
-                                                disabled={isProcessing}
-                                                className="flex-shrink-0 h-12 md:h-11 px-4 md:px-6 border-white/10 text-muted-foreground hover:text-white hover:bg-white/5 font-semibold text-sm bg-transparent whitespace-nowrap active:scale-95"
-                                            >
-                                                {isProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <LogOut className="mr-2 h-4 w-4" />}
-                                                Leave
-                                            </Button>
-                                        </>
-                                    )}
-
-                                    {/* Cancel Button - Staff Only */}
-                                    {(isStaff || isHost) && (match.status === 'waiting' || match.status === 'drafting') && (
-                                        <>
-                                            <Button
-                                                onClick={handleFillBots}
-                                                disabled={isProcessing}
-                                                variant="outline"
-                                                className="hidden md:flex h-11 px-4 border-yellow-500/20 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400 font-semibold"
-                                                title="Fill with Bots (Testing)"
-                                            >
-                                                <Bot className="mr-2 h-4 w-4" /> Fill Bots
-                                            </Button>
-
-                                            <Button
-                                                onClick={handleCancelMatch}
-                                                disabled={isProcessing}
-                                                variant="destructive"
-                                                className="h-12 md:h-11 px-4 md:px-6 shadow-md"
-                                                title="Cancel Match"
-                                            >
-                                                {isProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ShieldAlert className="mr-2 h-4 w-4" />}
-                                                <span className="hidden md:inline">Cancel Match</span>
-                                                <span className="md:hidden">Cancel</span>
-                                            </Button>
-                                        </>
-                                    )}
-                                </div>
-                            </div>
-                        )}
+                        <LobbyActionButtons
+                            match={match}
+                            user={user}
+                            isHost={isHost}
+                            isInMatch={isInMatch}
+                            isProcessing={isProcessing}
+                            onJoin={handleJoinLobby}
+                            onLeave={handleLeaveLobby}
+                            onStart={handleStartMatch}
+                            onSwitchTeam={handleSwitchTeam}
+                            onFillBots={handleFillBots}
+                            onCancel={handleCancelMatch}
+                            onBack={onBack}
+                        />
 
 
 
@@ -1255,7 +1056,7 @@ const LobbyDetailPage: React.FC<LobbyDetailPageProps> = ({ matchId, user, backen
                         {match.status === 'in_progress' && (isStaff || isHost || isCaptain) && (
                             <div className="w-full flex flex-col md:flex-row items-center gap-4">
                                 <div className="flex-1 w-full p-4 bg-muted/30 rounded-lg border border-border/50">
-                                    {match.match_type === 'league' || match.match_type === 'competitive' ? (
+                                    {match.match_type === 'league' || match.match_type === 'competitive' || match.match_type === 'clan_war' ? (
                                         <>
                                             <h3 className="text-sm font-black uppercase tracking-widest mb-4 flex items-center gap-2 text-primary">
                                                 <Trophy className="h-4 w-4" /> Submit Match Result
@@ -1404,7 +1205,7 @@ const LobbyDetailPage: React.FC<LobbyDetailPageProps> = ({ matchId, user, backen
                 <AlertDialog open={errorDialogOpen} onOpenChange={setErrorDialogOpen}>
                     <AlertDialogContent>
                         <AlertDialogHeader>
-                            <AlertDialogTitle>Error</AlertDialogTitle>
+                            <AlertDialogTitle>Notification</AlertDialogTitle>
                             <AlertDialogDescription>
                                 {errorMessage}
                             </AlertDialogDescription>

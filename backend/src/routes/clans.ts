@@ -300,7 +300,7 @@ app.get('/:id/profile', async (c) => {
                 m.created_at,
                 m.updated_at
             FROM matches m
-            WHERE m.match_type = 'clan_match' 
+            WHERE m.match_type = 'clan_war' 
             AND m.id IN (
                 SELECT DISTINCT match_id 
                 FROM match_players 
