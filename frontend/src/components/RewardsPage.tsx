@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Gift, Play, CheckCircle2, AlertCircle, Sparkles, Clock, Coins, Crown, Zap } from 'lucide-react';
+import { Gift, Play, CheckCircle2, AlertCircle, Sparkles, Coins, Crown, Zap } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
@@ -15,7 +15,6 @@ const RewardsPage: React.FC<RewardsPageProps> = ({ user, backendUrl }) => {
     const [status, setStatus] = useState<{ claims_today: number; limit: number } | null>(null);
     const [loading, setLoading] = useState(true);
     const [isWatching, setIsWatching] = useState(false);
-    const [countdown, setCountdown] = useState(0);
     const [error, setError] = useState<string | null>(null);
     const [success, setSuccess] = useState<string | null>(null);
 
