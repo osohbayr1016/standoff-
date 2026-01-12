@@ -99,13 +99,22 @@ goldRoutes.post('/manual', requireGoldSeller, async (c) => {
     const user = await db.select().from(players).where(eq(players.id, userId)).get();
     if (!user) return c.json({ error: 'User not found' }, 404);
 
-    // Update Balance
-    await db.update(players)
-        .set({ gold: sql`${players.gold} + ${amount}` })
-        .where(eq(players.id, userId))
-        .run();
+    // Check user exists
+    const user = await db.select().from(players).where(eq(players.id, userId)).get();
+    if (!user) return c.json({ error: 'User not found' }, 404);
 
-    // Log Transaction
+    // Create Completed Order for Visibility (History)
+    await db.insert(goldOrders).values({
+        user_id: userId,
+        gold_amount: Number(amount),
+        price_mnt: 0, // Manual transfer has no website payment record
+        proof_url: 'manual_transfer',
+        graffiti_url: 'manual_transfer',
+        status: 'completed',
+        processed_by: c.get('user').id
+    }).run();
+
+    // Log Transaction (Audit)
     await db.insert(goldTransactions).values({
         user_id: userId,
         amount: amount,
@@ -113,7 +122,7 @@ goldRoutes.post('/manual', requireGoldSeller, async (c) => {
         created_by: c.get('user').id
     }).run();
 
-    return c.json({ success: true, message: 'Transaction successful' });
+    return c.json({ success: true, message: 'Transaction logged successfully' });
 });
 
 // GET /api/gold/balance - Get current user's gold balance
@@ -303,10 +312,7 @@ goldRoutes.post('/orders/:id/status', requireGoldSeller, async (c) => {
         if (status === 'completed') {
             const order = await db.select().from(goldOrders).where(eq(goldOrders.id, orderId)).get();
             if (order) {
-                await c.env.DB.prepare('UPDATE players SET gold = gold + ? WHERE id = ?')
-                    .bind(order.gold_amount, order.user_id).run();
-
-                // Also log transaction for history
+                // Log transaction for history (Audit)
                 await db.insert(goldTransactions).values({
                     user_id: order.user_id,
                     amount: order.gold_amount,
