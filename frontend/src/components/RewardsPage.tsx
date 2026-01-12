@@ -40,26 +40,53 @@ const RewardsPage: React.FC<RewardsPageProps> = ({ user, backendUrl }) => {
         }
     }, [user?.id]);
 
+    // Extend window interface for AdSense H5 API
+    useEffect(() => {
+        // Prepare Sound/Game pause logic here if needed
+    }, []);
+
     const handleWatchAd = () => {
         if (!status || status.claims_today >= status.limit) return;
-
         setError(null);
         setSuccess(null);
-        setIsWatching(true);
-        setCountdown(15); // 15 second "ad" simulation
+
+        // Check if adBreak is available
+        if (typeof (window as any).adBreak !== 'function') {
+            console.warn('adBreak not found, attempting fallback or waiting...');
+            // Optional: fallback to manual timer for dev/testing if adblock is on
+            // But for production proper, we want to warn user.
+            setError("Ad system is initializing or blocked. Please disable AdBlock and try again.");
+            return;
+        }
+
+        const adBreak = (window as any).adBreak;
+
+        adBreak({
+            type: 'reward',
+            name: 'daily_reward_match',
+            beforeReward: (showAdFn: () => void) => {
+                // Ad is ready
+                setIsWatching(true);
+                showAdFn();
+            },
+            adViewed: () => {
+                // Ad completed successfully
+                claimReward();
+            },
+            adDismissed: () => {
+                // Ad closed early
+                setIsWatching(false);
+                setError("You must watch the entire ad to claim the reward.");
+            },
+            adBreakDone: (placementInfo: any) => {
+                // Ad finished (success or fail)
+                setIsWatching(false);
+                console.log("AdBreak done:", placementInfo);
+            }
+        });
     };
 
-    useEffect(() => {
-        let timer: any;
-        if (isWatching && countdown > 0) {
-            timer = setInterval(() => {
-                setCountdown((prev) => prev - 1);
-            }, 1000);
-        } else if (isWatching && countdown === 0) {
-            claimReward();
-        }
-        return () => clearInterval(timer);
-    }, [isWatching, countdown]);
+    // Removed manual timer effect
 
     const claimReward = async () => {
         setIsWatching(false);
@@ -166,10 +193,10 @@ const RewardsPage: React.FC<RewardsPageProps> = ({ user, backendUrl }) => {
                                         {isWatching ? (
                                             <div className="space-y-4 py-4 w-full max-w-md">
                                                 <div className="flex items-center justify-center gap-3 text-primary">
-                                                    <Clock className="h-6 w-6 animate-spin" />
-                                                    <span className="text-2xl font-black">AD IN PROGRESS: {countdown}s</span>
+                                                    <div className="animate-spin rounded-full h-6 w-6 border-t-2 border-primary" />
+                                                    <span className="text-xl font-black">Loading Ad...</span>
                                                 </div>
-                                                <p className="text-zinc-400 text-sm">Please do not close this window to claim your reward</p>
+                                                <p className="text-zinc-400 text-sm">Please watch the ad to the end.</p>
 
                                                 {/* Google AdSense Unit */}
                                                 <div className="w-full bg-zinc-800/20 rounded-xl border border-white/5 relative min-h-[250px] flex items-center justify-center">
