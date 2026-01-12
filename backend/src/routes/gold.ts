@@ -1,7 +1,7 @@
 
 import { Hono } from 'hono';
 import { players, goldTransactions, goldOrders, goldPrices } from '../db/schema';
-import { eq, desc, and, asc } from 'drizzle-orm';
+import { eq, desc, and, asc, sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/d1';
 
 interface Env {
@@ -86,6 +86,34 @@ goldRoutes.post('/prices', requireGoldSeller, async (c) => {
         .run();
 
     return c.json({ success: true, message: 'Price updated' });
+});
+
+// POST /api/gold/manual - Manual Gold Transfer (Seller Only)
+goldRoutes.post('/manual', requireGoldSeller, async (c) => {
+    const { userId, amount, reason } = await c.req.json();
+    if (!userId || !amount || !reason) return c.json({ error: 'Missing fields' }, 400);
+
+    const db = drizzle(c.env.DB);
+
+    // Check user exists
+    const user = await db.select().from(players).where(eq(players.id, userId)).get();
+    if (!user) return c.json({ error: 'User not found' }, 404);
+
+    // Update Balance
+    await db.update(players)
+        .set({ gold: sql`${players.gold} + ${amount}` })
+        .where(eq(players.id, userId))
+        .run();
+
+    // Log Transaction
+    await db.insert(goldTransactions).values({
+        user_id: userId,
+        amount: amount,
+        reason: reason,
+        created_by: c.get('user').id
+    }).run();
+
+    return c.json({ success: true, message: 'Transaction successful' });
 });
 
 // GET /api/gold/balance - Get current user's gold balance

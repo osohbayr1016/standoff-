@@ -200,6 +200,42 @@ export default function GoldPage() {
         }
     };
 
+    const [transferUserId, setTransferUserId] = useState('');
+    const [transferAmount, setTransferAmount] = useState('');
+    const [transferReason, setTransferReason] = useState('');
+
+    const handleManualTransfer = async () => {
+        if (!transferUserId || !transferAmount || !transferReason) return toast.warning('Fill all fields');
+        if (!confirm(`Are you sure you want to transfer ${transferAmount} G to ${transferUserId}?`)) return;
+
+        try {
+            const res = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'http://localhost:8787'}/api/gold/manual`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`,
+                    'X-User-Id': user?.id || ''
+                },
+                body: JSON.stringify({
+                    userId: transferUserId,
+                    amount: Number(transferAmount),
+                    reason: transferReason
+                })
+            });
+            const data = await res.json();
+            if (data.success) {
+                toast.success('Transfer successful');
+                setTransferUserId('');
+                setTransferAmount('');
+                setTransferReason('');
+            } else {
+                toast.error(data.error || 'Transfer failed');
+            }
+        } catch (e) {
+            toast.error('Failed to execute transfer');
+        }
+    };
+
     if (!user) return <div className="text-white text-center pt-20">Please log in.</div>;
 
     return (
@@ -476,6 +512,44 @@ export default function GoldPage() {
                                         ))}
                                     </div>
                                 </div>
+
+                                <div className="p-4 border-b border-white/10 bg-zinc-900/30">
+                                    <h4 className="text-white font-bold mb-4">Manual Tool</h4>
+                                    <div className="flex flex-col sm:flex-row gap-3 items-end">
+                                        <div className="space-y-1 w-full sm:w-auto">
+                                            <Label className="text-xs text-gray-400">User ID</Label>
+                                            <input
+                                                className="w-full sm:w-48 bg-zinc-950 text-white text-sm p-2 rounded border border-white/10"
+                                                placeholder="Discord User ID"
+                                                value={transferUserId}
+                                                onChange={e => setTransferUserId(e.target.value)}
+                                            />
+                                        </div>
+                                        <div className="space-y-1 w-full sm:w-auto">
+                                            <Label className="text-xs text-gray-400">Amount (+/-)</Label>
+                                            <input
+                                                className="w-full sm:w-32 bg-zinc-950 text-white text-sm p-2 rounded border border-white/10"
+                                                type="number"
+                                                placeholder="e.g. 100 or -100"
+                                                value={transferAmount}
+                                                onChange={e => setTransferAmount(e.target.value)}
+                                            />
+                                        </div>
+                                        <div className="space-y-1 w-full">
+                                            <Label className="text-xs text-gray-400">Reason</Label>
+                                            <input
+                                                className="w-full bg-zinc-950 text-white text-sm p-2 rounded border border-white/10"
+                                                placeholder="e.g. Refund, Bonus, Correction"
+                                                value={transferReason}
+                                                onChange={e => setTransferReason(e.target.value)}
+                                            />
+                                        </div>
+                                        <Button className="w-full sm:w-auto bg-yellow-600 hover:bg-yellow-700" onClick={handleManualTransfer}>
+                                            Execute
+                                        </Button>
+                                    </div>
+                                </div>
+
                                 <div className="overflow-x-auto">
                                     <Table>
                                         <TableHeader>
