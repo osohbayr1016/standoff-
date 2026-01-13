@@ -133,14 +133,14 @@ async function validateMatchAction(
             `).bind(player.id, `${today}%`).first<{ count: number }>();
 
             const bonusMatches = rewardResult?.count || 0;
-            const totalAllowed = 3 + bonusMatches;
+            const totalAllowed = 2 + bonusMatches;
 
             if ((countResult?.count || 0) >= totalAllowed) {
                 return {
                     allowed: false,
                     error: bonusMatches >= 2
                         ? 'Daily limit reached (including bonus matches). Upgrade to VIP for unlimited access.'
-                        : 'Daily limit reached. Basic members can play 3 competitive matches per day. You can watch an AD to get +1 match (limited twice) or upgrade to VIP for unlimited access.',
+                        : 'Daily limit reached. Basic members can play 2 competitive matches per day. You can watch an AD to get +1 match (limited twice) or upgrade to VIP for unlimited access.',
                     status: 403
                 };
             }
@@ -1105,13 +1105,21 @@ matchesRoutes.post('/:id/result', async (c) => {
             'SELECT is_captain FROM match_players WHERE match_id = ? AND player_id = ?'
         ).bind(matchId, body.host_id).first();
 
-        // Allow Host OR Captains to submit
+        // Check if submitter is Staff (Admin/Moderator)
+        const submitter = await c.env.DB.prepare(
+            'SELECT role FROM players WHERE id = ? OR discord_id = ?'
+        ).bind(body.host_id, body.host_id).first<{ role: string }>();
+
+        const isStaff = submitter && (submitter.role === 'admin' || submitter.role === 'moderator');
+
+        // Allow Host OR Captains OR Staff to submit
         const isAuthorized =
             match.host_id === body.host_id ||
-            (committerRole && committerRole.is_captain === 1);
+            (committerRole && committerRole.is_captain === 1) ||
+            isStaff;
 
         if (!isAuthorized) {
-            return c.json({ success: false, error: 'Only host or captains can submit result' }, 403);
+            return c.json({ success: false, error: 'Only host, captains, or staff can submit result' }, 403);
         }
 
         // Allow 'in_progress' OR 'drafting' (if status update lagged)
