@@ -107,7 +107,8 @@ app.post('/create', verifyAuth, async (c) => {
 
     } catch (e: any) {
         console.error("Clan creation error:", e);
-        if (e.message?.includes('UNIQUE')) {
+        const errString = String(e);
+        if (errString.includes('UNIQUE') || e.message?.includes('UNIQUE')) {
             return c.json({ error: 'Clan name already taken' }, 400);
         }
         return c.json({ error: 'Failed to create clan' }, 500);
@@ -365,6 +366,10 @@ app.post('/update', verifyAuth, async (c) => {
         return c.json({ success: true });
     } catch (e: any) {
         console.error('Update clan error:', e);
+        const errString = String(e);
+        if (errString.includes('UNIQUE') || e.message?.includes('UNIQUE')) {
+            return c.json({ error: 'Clan name already taken' }, 400);
+        }
         return c.json({ error: 'Failed to update clan' }, 500);
     }
 });

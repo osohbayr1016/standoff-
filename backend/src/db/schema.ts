@@ -52,6 +52,15 @@ export const matches = sqliteTable('matches', {
     reviewed_by: text('reviewed_by'), // .references(() => players.id) removed to prevent FK errors
     reviewed_at: text('reviewed_at'),
     review_notes: text('review_notes'),
+    // Tournament Fields
+    tournament_id: text('tournament_id'), // .references(() => tournaments.id) - loose link to avoid circular ref issues if order matters, but here schema order is fine if tournaments is above. However keeping it loose for simplicity in this replace block or I should move tournaments up? 
+    // Actually, since I appended tournaments at the bottom, I can't reference it here if I don't move it. 
+    // I will just use text for now and manage consistency in app logic or moves schema later. 
+    // Wait, I can't easily move the whole table up without a huge replace.
+    // I will leave it as text with a comment, or just `text('tournament_id')`.
+    tournament_round: integer('tournament_round'), // 1 = Ro16, 2 = Quarters, 3 = Semis, 4 = Finals (approx)
+    bracket_match_id: integer('bracket_match_id'), // 1-15 for 16 teams
+    next_match_id: text('next_match_id'), // ID of the match the winner advances to
     created_at: text('created_at').default('CURRENT_TIMESTAMP'),
     updated_at: text('updated_at').default('CURRENT_TIMESTAMP')
 }, (table) => ({
@@ -202,3 +211,30 @@ export const goldPrices = sqliteTable('gold_prices', {
     gold: integer('gold').primaryKey(),
     price: integer('price').notNull(),
 });
+
+// Tournaments / Battle Cup
+export const tournaments = sqliteTable('tournaments', {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    name: text('name').notNull(),
+    description: text('description'),
+    start_time: text('start_time').notNull(), // ISO Date
+    status: text('status').default('registration').notNull(), // registration, active, completed, cancelled
+    bracket_type: text('bracket_type').default('single_elimination').notNull(),
+    min_teams: integer('min_teams').default(4).notNull(),
+    max_teams: integer('max_teams').default(16).notNull(),
+    prizepool: text('prizepool'), // Text description of prize
+    created_at: text('created_at').default(sql`CURRENT_TIMESTAMP`),
+    winner_clan_id: text('winner_clan_id').references(() => clans.id),
+});
+
+export const tournamentParticipants = sqliteTable('tournament_participants', {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    tournament_id: text('tournament_id').notNull().references(() => tournaments.id),
+    clan_id: text('clan_id').notNull().references(() => clans.id),
+    registered_at: text('registered_at').default(sql`CURRENT_TIMESTAMP`),
+    status: text('status').default('registered'), // registered, disqualified
+    seed: integer('seed'), // 1-16
+}, (table) => ({
+    idxTourneyPartClan: index('idx_tourney_part_clan').on(table.clan_id),
+    idxTourneyPartTourney: index('idx_tourney_part_tourney').on(table.tournament_id),
+}));

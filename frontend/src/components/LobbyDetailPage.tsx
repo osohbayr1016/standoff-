@@ -38,10 +38,23 @@ import LobbyWorker from '../workers/lobby.worker?worker';
 import { DraftPhase } from './DraftPhase';
 import { CompetitiveLobbyWaiting } from './CompetitiveLobbyWaiting';
 
-// NEW IMPORTS
 import type { Match, MatchPlayer } from '../types/match';
 import { LobbyActionButtons } from './lobby/LobbyActionButtons';
 import { TeamColumn } from './lobby/TeamColumn';
+
+// Tournament Header
+const TournamentHeader = ({ match }: { match: Match }) => {
+    if (!match.tournament_id || !match.tournament_name) return null;
+    return (
+        <div className="bg-yellow-500/10 border-b border-yellow-500/20 p-2 text-center">
+            <div className="flex items-center justify-center gap-2 text-yellow-500 font-bold uppercase tracking-widest text-sm">
+                <Trophy className="w-4 h-4" />
+                {match.tournament_name}
+                {match.tournament_round ? ` - Round ${match.tournament_round}` : ''}
+            </div>
+        </div>
+    );
+};
 
 // Helper to map MatchPlayer to DraftPhase QueuePlayer (Moved outside for stability)
 const mapToQueuePlayer = (p: MatchPlayer | undefined) => {
@@ -483,13 +496,17 @@ const LobbyDetailPage: React.FC<LobbyDetailPageProps> = ({ matchId, user, backen
         if (!user || !match) return;
         setIsProcessing(true);
 
+        const targetStatus = (match.match_type === 'league' || match.match_type === 'competitive') && !match.tournament_id
+            ? 'in_progress' // Triggers draft for non-tournament
+            : 'in_progress';
+
         try {
             const response = await fetch(`${backendUrl}/api/matches/${matchId}/status`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     host_id: user.id,
-                    status: 'in_progress'
+                    status: targetStatus
                 })
             });
 
@@ -851,6 +868,7 @@ const LobbyDetailPage: React.FC<LobbyDetailPageProps> = ({ matchId, user, backen
 
     return (
         <div className="space-y-6 container mx-auto max-w-7xl animate-fade-in pb-12">
+            <TournamentHeader match={match} />
             {/* Header Section */}
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-border/50 pb-6">
                 <div className="flex items-center gap-4">

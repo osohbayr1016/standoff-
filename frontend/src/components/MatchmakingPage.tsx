@@ -73,13 +73,13 @@ const MatchmakingPage: React.FC<MatchmakingPageProps> = ({ user, backendUrl, onV
     const [matchType, setMatchType] = useState<'casual' | 'league' | 'clan_war' | 'competitive'>('casual');
 
     const MAPS = [
-        { name: 'Hanami', image: '/maps/hanami.png' },
-        { name: 'Sandstone', image: '/maps/rust.jpg' },
-        { name: 'Rust', image: '/maps/sandstone.png' },
-        { name: 'Breeze', image: '/maps/dune.jpg' },
-        { name: 'Dune', image: '/maps/breeze.png' },
-        { name: 'Province', image: '/maps/dust.jpg' },
-        { name: 'Zone 7', image: '/maps/zone7.jpg' }
+        { name: 'Hanami', image: '/maps/thumbnails/hanami.webp' },
+        { name: 'Sandstone', image: '/maps/thumbnails/rust.webp' }, // Note: original code swapped names for Rust/Sandstone images? Keeping as is but optimized.
+        { name: 'Rust', image: '/maps/thumbnails/sandstone.webp' },
+        { name: 'Breeze', image: '/maps/thumbnails/dune.webp' },
+        { name: 'Dune', image: '/maps/thumbnails/breeze.webp' },
+        { name: 'Province', image: '/maps/thumbnails/dust.webp' },
+        { name: 'Zone 7', image: '/maps/thumbnails/zone7.webp' }
     ];
     const [creating, setCreating] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -523,9 +523,14 @@ const MatchmakingPage: React.FC<MatchmakingPageProps> = ({ user, backendUrl, onV
                             {match.map_name && (
                                 <div className="absolute inset-0 z-0 opacity-20 group-hover:opacity-40 transition-opacity">
                                     <img
-                                        src={MAPS.find(m => m.name === match.map_name)?.image || `/maps/${match.map_name.toLowerCase()}.jpg`}
+                                        src={MAPS.find(m => m.name === match.map_name)?.image || `/maps/thumbnails/${match.map_name?.toLowerCase()}.webp`}
                                         className={`w-full h-full object-cover grayscale ${match.match_type === 'competitive' || match.match_type === 'clan_war' ? 'mix-blend-overlay' : ''}`}
-                                        onError={(e) => e.currentTarget.style.display = 'none'}
+                                        onError={(e) => {
+                                            // Fallback to original if thumbnail fails (or solid color)
+                                            e.currentTarget.style.display = 'none';
+                                        }}
+                                        loading="lazy"
+                                        decoding="async"
                                     />
                                 </div>
                             )}

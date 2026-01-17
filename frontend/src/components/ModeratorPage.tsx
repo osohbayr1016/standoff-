@@ -2,7 +2,7 @@ import { useState, useEffect, Suspense, lazy } from 'react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { LayoutDashboard, Swords, Users, Shield, ClipboardList, RefreshCw } from "lucide-react";
+import { LayoutDashboard, Swords, Users, Shield, ClipboardList, RefreshCw, Trophy } from "lucide-react";
 import LoadingSpinner from "./LoadingSpinner";
 import type { ModeratorStats } from "./moderator/types";
 
@@ -12,6 +12,7 @@ const MatchesTab = lazy(() => import("./moderator/MatchesTab"));
 const PlayersTab = lazy(() => import("./moderator/PlayersTab"));
 const ClansTab = lazy(() => import("./moderator/ClansTab"));
 const AuditLogTab = lazy(() => import("./moderator/AuditLogTab"));
+const TournamentsTab = lazy(() => import("./moderator/TournamentsTab"));
 
 interface ModeratorPageProps {
     user: { id: string; role?: string } | null;
@@ -88,6 +89,9 @@ export default function ModeratorPage({ user, backendUrl, onViewLobby }: Moderat
                     <TabsTrigger value="overview" className="gap-2 px-4 py-2">
                         <LayoutDashboard className="h-4 w-4" /> Overview
                     </TabsTrigger>
+                    <TabsTrigger value="tournaments" className="gap-2 px-4 py-2">
+                        <Trophy className="h-4 w-4" /> Tournaments
+                    </TabsTrigger>
                     <TabsTrigger value="matches" className="gap-2 px-4 py-2">
                         <Swords className="h-4 w-4" /> Matches
                         {stats.pendingReviews > 0 && (
@@ -109,6 +113,10 @@ export default function ModeratorPage({ user, backendUrl, onViewLobby }: Moderat
                     <Suspense fallback={<div className="flex h-64 items-center justify-center"><LoadingSpinner /></div>}>
                         <TabsContent value="overview">
                             <OverviewTab stats={stats} refreshStats={fetchStats} />
+                        </TabsContent>
+
+                        <TabsContent value="tournaments">
+                            <TournamentsTab backendUrl={backendUrl} userId={user.id} />
                         </TabsContent>
 
                         <TabsContent value="matches">

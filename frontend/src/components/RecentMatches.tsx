@@ -31,15 +31,15 @@ interface RecentMatchesProps {
 }
 
 const MAP_IMAGES: Record<string, string> = {
-  'Hanami': '/maps/hanami.png',
-  'Sandstone': '/maps/sandstone.png',
-  'Breeze': '/maps/breeze.png',
-  'Dune': '/maps/dune.jpg',
-  'Dust': '/maps/dust.jpg',
-  'Rust': '/maps/rust.jpg',
-  'Zone 7': '/maps/zone7.jpg',
-  'Sakura': '/maps/hanami.png',
-  'Provence': '/maps/breeze.png',
+  'Hanami': '/maps/thumbnails/hanami.webp',
+  'Sandstone': '/maps/thumbnails/sandstone.webp',
+  'Breeze': '/maps/thumbnails/breeze.webp',
+  'Dune': '/maps/thumbnails/dune.webp',
+  'Dust': '/maps/thumbnails/dust.webp',
+  'Rust': '/maps/thumbnails/rust.webp',
+  'Zone 7': '/maps/thumbnails/zone7.webp',
+  'Sakura': '/maps/thumbnails/hanami.webp',
+  'Provence': '/maps/thumbnails/breeze.webp',
 };
 
 function RecentMatches({ userId, backendUrl, onNavigate }: RecentMatchesProps) {
@@ -123,7 +123,7 @@ function RecentMatches({ userId, backendUrl, onNavigate }: RecentMatchesProps) {
                 const isWinner = match.winner_team === match.player_team;
                 const mapImage = match.map_name && MAP_IMAGES[match.map_name]
                   ? MAP_IMAGES[match.map_name]
-                  : '/maps/sandstone.png';
+                  : '/maps/thumbnails/sandstone.webp';
 
                 return (
                   <TableRow
@@ -134,7 +134,13 @@ function RecentMatches({ userId, backendUrl, onNavigate }: RecentMatchesProps) {
                     {/* Map Image Column */}
                     <TableCell className="p-2">
                       <div className="h-10 w-16 rounded overflow-hidden relative shadow-sm border border-white/10">
-                        <img src={mapImage} alt={match.map_name} className="h-full w-full object-cover" />
+                        <img
+                          src={mapImage}
+                          alt={match.map_name}
+                          className="h-full w-full object-cover"
+                          loading="lazy"
+                          decoding="async"
+                        />
                         <div className="absolute inset-0 bg-black/20" />
                       </div>
                     </TableCell>

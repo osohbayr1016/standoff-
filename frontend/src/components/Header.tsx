@@ -159,6 +159,17 @@ function Header({
         <Flag className="mr-2 h-4 w-4" />
         CLANS
       </Button>
+      <Button
+        variant={currentPage === "tournaments" ? "secondary" : "ghost"}
+        className={`justify-start ${mobile ? "w-full" : ""}`}
+        onClick={() => {
+          onNavigate("tournaments");
+          if (mobile) setIsOpen(false);
+        }}
+      >
+        <Trophy className="mr-2 h-4 w-4 text-yellow-500" />
+        TOURNAMENTS
+      </Button>
       {(user?.role === 'moderator' || user?.role === 'admin') && (
         <Button
           variant={currentPage === "moderator" ? "destructive" : "ghost"}

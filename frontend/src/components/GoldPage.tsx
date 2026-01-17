@@ -1,6 +1,6 @@
 
 import { useAuth } from '../utils/auth';
-import { Coins } from "lucide-react";
+import { Coins, ExternalLink } from "lucide-react";
 
 export default function GoldPage() {
     const { user } = useAuth();
@@ -22,6 +22,16 @@ export default function GoldPage() {
                             <p className="text-xs text-gray-400">Secure Delivery via Daisuke.mn</p>
                         </div>
                     </div>
+
+                    <a
+                        href="https://daisuke.mn/category/3"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="px-4 py-2 bg-yellow-500/10 hover:bg-yellow-500/20 text-yellow-500 text-sm font-medium rounded-lg border border-yellow-500/20 transition-colors flex items-center gap-2"
+                    >
+                        <span>Open in New Tab</span>
+                        <ExternalLink className="w-4 h-4" />
+                    </a>
                 </div>
 
                 {/* Daisuke.mn Iframe */}

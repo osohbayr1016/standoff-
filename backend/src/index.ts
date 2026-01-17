@@ -139,6 +139,9 @@ app.route('/api', uploadRoutes);
 
 app.get('/', (c) => c.text('Standoff 2 Platform API is Online!'));
 
+import { tournamentRoutes } from './routes/tournaments';
+app.route('/api/tournaments', tournamentRoutes);
+
 // Debug endpoint to check environment variables (remove in production)
 app.get('/api/debug/env', async (c) => {
   return c.json({

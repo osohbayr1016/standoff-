@@ -28,4 +28,9 @@ export interface Match {
     captain_bravo_id?: string;
     alpha_clan?: { name: string; tag: string };
     bravo_clan?: { name: string; tag: string };
+    tournament_id?: string;
+    tournament_name?: string;
+    tournament_round?: number;
+    bracket_match_id?: number;
+    next_match_id?: string;
 }
