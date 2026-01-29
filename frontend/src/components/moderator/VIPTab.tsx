@@ -1,34 +1,62 @@
 import { useState, useEffect } from 'react';
-import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Check, X, ExternalLink, CreditCard } from "lucide-react";
-import { toast } from "sonner";
-import type { VIPRequest } from "./types";
+import { TrendingUp, Users, Calendar, DollarSign } from "lucide-react";
 
 interface VIPTabProps {
     backendUrl: string;
     userId: string;
 }
 
+interface VIPPurchase {
+    id: string;
+    user_id: string;
+    discord_username: string;
+    phone_number: string;
+    screenshot_url: string;
+    purchase_date: string;
+    approved_date: string;
+    user_avatar: string;
+    standoff_nickname: string;
+    is_vip: number;
+    vip_until: string;
+    reviewer_username: string;
+    price: number;
+    price_listed: number;
+    payment_method: string;
+}
+
+interface VIPStats {
+    total_purchases: number;
+    unique_buyers: number;
+    total_revenue: number;
+    last_30_days: number;
+    last_7_days: number;
+    vip_price_net: number;
+    vip_price_listed: number;
+}
+
 export default function VIPTab({ backendUrl, userId }: VIPTabProps) {
-    const [requests, setRequests] = useState<VIPRequest[]>([]);
-    const [selectedImage, setSelectedImage] = useState<string | null>(null);
-    const [isLoading, setIsLoading] = useState(false);
+    const [purchases, setPurchases] = useState<VIPPurchase[]>([]);
+    const [stats, setStats] = useState<VIPStats | null>(null);
+    const [isLoading, setIsLoading] = useState(true);
 
     useEffect(() => {
-        fetchRequests();
+        fetchPurchases();
     }, []);
 
-    const fetchRequests = async () => {
+    const fetchPurchases = async () => {
         setIsLoading(true);
         try {
-            const res = await fetch(`${backendUrl}/api/moderator/vip-requests/pending`, {
+            const res = await fetch(`${backendUrl}/api/moderator/vip-purchases`, {
                 headers: { 'X-User-Id': userId },
                 credentials: 'include'
             });
-            if (res.ok) setRequests(await res.json());
+            if (res.ok) {
+                const data = await res.json();
+                setPurchases(data.purchases || []);
+                setStats(data.stats || null);
+            }
         } catch (error) {
             console.error(error);
         } finally {
@@ -36,91 +64,140 @@ export default function VIPTab({ backendUrl, userId }: VIPTabProps) {
         }
     };
 
-    const handleAction = async (requestId: string, action: 'approve' | 'reject') => {
-        try {
-            const res = await fetch(`${backendUrl}/api/moderator/vip-requests/${requestId}/${action}`, {
-                method: 'POST',
-                headers: { 'X-User-Id': userId },
-                credentials: 'include'
-            });
-            if (res.ok) {
-                toast.success(`Request ${action}ed`);
-                fetchRequests();
-            } else {
-                toast.error("Failed to process request");
-            }
-        } catch (error) {
-            toast.error("Error connecting to server");
-        }
+    const formatPrice = (price: number) => {
+        return new Intl.NumberFormat('mn-MN').format(price) + '₮';
     };
 
+    const formatDate = (dateStr: string) => {
+        return new Date(dateStr).toLocaleDateString('en-US', {
+            year: 'numeric',
+            month: 'short',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+    };
+
+    if (isLoading) {
+        return <div className="text-center py-12 text-zinc-500">Loading...</div>;
+    }
+
     return (
-        <div className="space-y-4">
-            {isLoading ? (
-                <div className="text-center py-12 text-zinc-500">Loading...</div>
-            ) : requests.length === 0 ? (
-                <div className="text-center py-12 text-zinc-500 bg-[#1e1f22]/50 rounded-xl border border-white/5 border-dashed">
-                    <CreditCard className="h-12 w-12 mx-auto mb-4 opacity-20" />
-                    <p>No pending VIP requests</p>
-                </div>
-            ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {requests.map(req => (
-                        <Card key={req.id} className="bg-[#1e1f22] border-white/5 overflow-hidden">
-                            <CardContent className="p-0">
-                                <div
-                                    className="h-48 bg-black/50 relative group cursor-pointer"
-                                    onClick={() => setSelectedImage(req.screenshot_url)}
-                                >
-                                    <img
-                                        src={req.screenshot_url}
-                                        alt="Proof"
-                                        className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity"
-                                    />
-                                    <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/40">
-                                        <ExternalLink className="text-white h-8 w-8" />
-                                    </div>
-                                </div>
-                                <div className="p-4">
-                                    <div className="flex items-center gap-3 mb-4">
-                                        <Avatar>
-                                            <AvatarImage src={`https://cdn.discordapp.com/avatars/${req.user_id}/${req.user_discord_avatar}.png`} />
-                                            <AvatarFallback>U</AvatarFallback>
-                                        </Avatar>
-                                        <div>
-                                            <p className="font-bold text-white">{req.discord_username}</p>
-                                            <p className="text-xs text-zinc-400">Submitted: {new Date(req.created_at).toLocaleDateString()}</p>
-                                        </div>
-                                    </div>
+        <div className="space-y-6">
+            {/* Stats Cards */}
+            {stats && (
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <Card className="bg-gradient-to-br from-green-500/10 to-green-500/5 border-green-500/20">
+                        <CardHeader className="pb-2">
+                            <CardTitle className="text-sm text-green-400 flex items-center gap-2">
+                                <DollarSign className="h-4 w-4" /> Net Revenue
+                            </CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                            <p className="text-2xl font-bold text-white">{formatPrice(stats.total_revenue)}</p>
+                            <p className="text-xs text-zinc-400">{stats.total_purchases} purchases @ {formatPrice(stats.vip_price_net)}</p>
+                        </CardContent>
+                    </Card>
 
-                                    {req.phone_number && (
-                                        <div className="mb-4 p-2 bg-zinc-900 rounded text-sm font-mono text-zinc-300">
-                                            Phone: {req.phone_number}
-                                        </div>
-                                    )}
+                    <Card className="bg-gradient-to-br from-blue-500/10 to-blue-500/5 border-blue-500/20">
+                        <CardHeader className="pb-2">
+                            <CardTitle className="text-sm text-blue-400 flex items-center gap-2">
+                                <Users className="h-4 w-4" /> Unique Buyers
+                            </CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                            <p className="text-2xl font-bold text-white">{stats.unique_buyers}</p>
+                            <p className="text-xs text-zinc-400">VIP members</p>
+                        </CardContent>
+                    </Card>
 
-                                    <div className="flex gap-2">
-                                        <Button className="flex-1 bg-green-600 hover:bg-green-700" onClick={() => handleAction(req.id, 'approve')}>
-                                            <Check className="h-4 w-4 mr-2" /> Approve
-                                        </Button>
-                                        <Button className="flex-1" variant="destructive" onClick={() => handleAction(req.id, 'reject')}>
-                                            <X className="h-4 w-4 mr-2" /> Reject
-                                        </Button>
-                                    </div>
-                                </div>
-                            </CardContent>
-                        </Card>
-                    ))}
+                    <Card className="bg-gradient-to-br from-yellow-500/10 to-yellow-500/5 border-yellow-500/20">
+                        <CardHeader className="pb-2">
+                            <CardTitle className="text-sm text-yellow-400 flex items-center gap-2">
+                                <TrendingUp className="h-4 w-4" /> Last 7 Days
+                            </CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                            <p className="text-2xl font-bold text-white">{stats.last_7_days}</p>
+                            <p className="text-xs text-zinc-400">{formatPrice(stats.last_7_days * stats.vip_price_net)}</p>
+                        </CardContent>
+                    </Card>
+
+                    <Card className="bg-gradient-to-br from-purple-500/10 to-purple-500/5 border-purple-500/20">
+                        <CardHeader className="pb-2">
+                            <CardTitle className="text-sm text-purple-400 flex items-center gap-2">
+                                <Calendar className="h-4 w-4" /> Last 30 Days
+                            </CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                            <p className="text-2xl font-bold text-white">{stats.last_30_days}</p>
+                            <p className="text-xs text-zinc-400">{formatPrice(stats.last_30_days * stats.vip_price_net)}</p>
+                        </CardContent>
+                    </Card>
                 </div>
             )}
 
-            <Dialog open={!!selectedImage} onOpenChange={() => setSelectedImage(null)}>
-                <DialogContent className="max-w-4xl bg-black border-white/10 p-0 overflow-hidden">
-                    {selectedImage && (
-                        <img src={selectedImage} alt="Full Proof" className="w-full h-full object-contain" />
+            {/* Purchases Table */}
+            <Card className="bg-[#1e1f22] border-white/5">
+                <CardHeader>
+                    <CardTitle className="text-lg text-white">Purchase History</CardTitle>
+                </CardHeader>
+                <CardContent>
+                    {purchases.length === 0 ? (
+                        <div className="text-center py-8 text-zinc-500">
+                            No VIP purchases yet
+                        </div>
+                    ) : (
+                        <div className="overflow-x-auto">
+                            <table className="w-full">
+                                <thead>
+                                    <tr className="border-b border-white/10 text-left text-xs text-zinc-400 uppercase">
+                                        <th className="pb-3 pr-4">User</th>
+                                        <th className="pb-3 pr-4">Date</th>
+                                        <th className="pb-3 pr-4">Net Received</th>
+                                        <th className="pb-3 pr-4">Method</th>
+                                        <th className="pb-3 pr-4">VIP Until</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {purchases.map(purchase => (
+                                        <tr key={purchase.id} className="border-b border-white/5 hover:bg-white/5">
+                                            <td className="py-3 pr-4">
+                                                <div className="flex items-center gap-2">
+                                                    <Avatar className="h-8 w-8">
+                                                        <AvatarImage src={`https://cdn.discordapp.com/avatars/${purchase.user_id}/${purchase.user_avatar}.png`} />
+                                                        <AvatarFallback>U</AvatarFallback>
+                                                    </Avatar>
+                                                    <div>
+                                                        <p className="text-sm font-medium text-white">{purchase.discord_username}</p>
+                                                        {purchase.standoff_nickname && (
+                                                            <p className="text-xs text-zinc-400">{purchase.standoff_nickname}</p>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            <td className="py-3 pr-4 text-sm text-zinc-300">
+                                                {formatDate(purchase.purchase_date)}
+                                            </td>
+                                            <td className="py-3 pr-4">
+                                                <span className="text-sm font-mono text-green-400">{formatPrice(purchase.price)}</span>
+                                            </td>
+                                            <td className="py-3 pr-4">
+                                                <span className="text-xs px-2 py-1 rounded bg-blue-500/20 text-blue-400">
+                                                    {purchase.payment_method}
+                                                </span>
+                                            </td>
+                                            <td className="py-3 pr-4 text-sm text-zinc-300">
+                                                {purchase.vip_until ? formatDate(purchase.vip_until) : '-'}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
                     )}
-                </DialogContent>
-            </Dialog>
+                </CardContent>
+            </Card>
         </div>
     );
 }

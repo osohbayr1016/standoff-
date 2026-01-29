@@ -791,32 +791,56 @@ const LobbyDetailPage: React.FC<LobbyDetailPageProps> = ({ matchId, user, backen
         }
     };
 
-    // Update match link (host only)
+    // Update match link
     const handleUpdateLink = async () => {
-        if (!user || !match || !newLobbyUrl.trim()) return;
+        if (!newLobbyUrl.trim() || !user) return;
         setUpdatingLink(true);
 
         try {
-            const response = await fetch(`${backendUrl}/api/matches/${matchId}/link`, {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    host_id: user.id,
-                    lobby_url: newLobbyUrl.trim()
-                })
-            });
+            // For tournament matches, use the new PATCH endpoint
+            if (match?.tournament_id) {
+                const response = await fetch(`${backendUrl}/api/matches/${matchId}/lobby-url`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        lobby_url: newLobbyUrl.trim(),
+                        user_id: user.id
+                    })
+                });
 
-            const data = await response.json();
-            if (data.success) {
-                setIsEditingLink(false);
-                fetchMatchDetails();
+                const data = await response.json();
+                if (data.success) {
+                    toast.success('Lobby URL updated');
+                    setIsEditingLink(false);
+                    setNewLobbyUrl('');
+                    fetchMatchDetails();
+                } else {
+                    toast.error(data.error || 'Failed to update lobby URL');
+                }
             } else {
-                setErrorMessage(data.error || 'Failed to update link');
-                setErrorDialogOpen(true);
+                // Original logic for non-tournament matches (host only)
+                const response = await fetch(`${backendUrl}/api/matches/${matchId}/update-link`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        host_id: user.id,
+                        lobby_url: newLobbyUrl.trim()
+                    })
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    toast.success('Lobby link updated');
+                    setIsEditingLink(false);
+                    setNewLobbyUrl('');
+                    fetchMatchDetails();
+                } else {
+                    toast.error(data.error || 'Failed to update lobby link');
+                }
             }
         } catch (err) {
-            setErrorMessage('Network error');
-            setErrorDialogOpen(true);
+            console.error('Update link error:', err);
+            toast.error('Network error - please try again');
         } finally {
             setUpdatingLink(false);
         }

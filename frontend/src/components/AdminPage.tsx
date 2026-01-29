@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense, lazy } from 'react';
 import { useWebSocket } from './WebSocketContext';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -6,6 +6,10 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import LoadingSpinner from "./LoadingSpinner";
+
+// Lazy load VIPTab
+const VIPTab = lazy(() => import("./moderator/VIPTab"));
 import {
     Users,
     Layers,
@@ -18,7 +22,8 @@ import {
     ShieldAlert,
     Search,
     Calendar,
-    RefreshCw
+    RefreshCw,
+    CreditCard
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from 'sonner';
@@ -57,7 +62,7 @@ const AdminPage = ({ user, backendUrl }: AdminPageProps) => {
     const [importResult, setImportResult] = useState<{ success: boolean; message: string } | null>(null);
 
     // User management state
-    const [activeTab, setActiveTab] = useState<'overview' | 'users'>('overview');
+    const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'vip'>('overview');
     const [users, setUsers] = useState<User[]>([]);
     const [currentPage, setCurrentPage] = useState(1);
     const [searchQuery, setSearchQuery] = useState('');
@@ -537,10 +542,25 @@ const AdminPage = ({ user, backendUrl }: AdminPageProps) => {
                         <Users className="w-4 h-4" />
                         USER MGMT
                     </Button>
+                    <Button
+                        onClick={() => setActiveTab('vip')}
+                        variant={activeTab === 'vip' ? 'default' : 'ghost'}
+                        size="sm"
+                        className="gap-2 h-9"
+                    >
+                        <CreditCard className="w-4 h-4" />
+                        VIP PURCHASES
+                    </Button>
                 </div>
             </div>
 
-            {activeTab === 'overview' ? renderOverview() : renderUserManagement()}
+            {activeTab === 'overview' && renderOverview()}
+            {activeTab === 'users' && renderUserManagement()}
+            {activeTab === 'vip' && (
+                <Suspense fallback={<div className="flex h-64 items-center justify-center"><LoadingSpinner /></div>}>
+                    <VIPTab backendUrl={backendUrl} userId={user?.id || ''} />
+                </Suspense>
+            )}
         </div>
     );
 };

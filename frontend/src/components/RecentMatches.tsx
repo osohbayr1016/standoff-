@@ -38,8 +38,6 @@ const MAP_IMAGES: Record<string, string> = {
   'Dust': '/maps/thumbnails/dust.webp',
   'Rust': '/maps/thumbnails/rust.webp',
   'Zone 7': '/maps/thumbnails/zone7.webp',
-  'Sakura': '/maps/thumbnails/hanami.webp',
-  'Provence': '/maps/thumbnails/breeze.webp',
 };
 
 function RecentMatches({ userId, backendUrl, onNavigate }: RecentMatchesProps) {

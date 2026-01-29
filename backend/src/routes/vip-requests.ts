@@ -187,16 +187,22 @@ vipRequestsRoutes.post('/check-payment', async (c) => {
         const isPaid = await QPayService.checkInvoice(invoice_id);
 
         if (isPaid) {
-            // Create VIP request automatically approved or pending admin check? 
-            // Plan says: "If paid, automatically creates the VIP request"
-            // Since it's paid, maybe set status to 'pending' (for admin to give role) or 'approved' (if auto-role).
-            // Let's stick to 'pending' for safety as per current flow (admin needs to verify logic/assign role).
-            // But actually, if payment is confirmed, we should probably mark it as "paid_pending_role" or similar.
-            // For now, insert as 'pending' but with a note or flag.
-            // Better: Insert into vip_requests with status 'pending' and maybe existing fields.
-            // We don't need screenshot anymore. We can use invoice_id as screenshot_url placeholder or add a column.
-            // Reusing screenshot_url to store "QPAY:{invoice_id}" to indicate it's a QPay payment.
+            // Check if this invoice was already processed (prevent duplicate records)
+            const existingRecord = await c.env.DB.prepare(
+                "SELECT id FROM vip_requests WHERE screenshot_url = ?"
+            ).bind(`QPAY:${invoice_id}`).first();
 
+            if (existingRecord) {
+                // Invoice already processed, just return success
+                return c.json({
+                    success: true,
+                    paid: true,
+                    message: 'Payment already confirmed. VIP is active!',
+                    already_processed: true
+                });
+            }
+
+            // First time processing this invoice
             const requestId = crypto.randomUUID();
             const now = new Date().toISOString();
 

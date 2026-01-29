@@ -224,10 +224,13 @@ app.get('/api/auth/callback', async (c) => {
     let tierElo = 1000;
     let discordRolesJson = '[]';
 
+    // Server Profile Data
+    let serverBanner: string | null | undefined = null;
+    let serverAvatar: string | null | undefined = null;
 
     if (requiredGuildId && botToken) {
       try {
-        // Fetch guild member info to get roles
+        // Fetch guild member info
         const memberResponse = await fetch(`https://discord.com/api/v10/guilds/${requiredGuildId}/members/${userData.id}`, {
           headers: {
             Authorization: `Bot ${botToken}`
@@ -240,6 +243,18 @@ app.get('/api/auth/callback', async (c) => {
           const roles = memberData.roles || [];
           discordRolesJson = JSON.stringify(roles);
 
+          // Capture Server Profile Data
+          serverBanner = memberData.banner;
+          serverAvatar = memberData.avatar;
+
+          console.log(`[DEBUG] User ${userData.id} Discord Data:`, {
+            globalBanner: userData.banner,
+            globalAvatar: userData.avatar,
+            globalAccentColor: userData.accent_color,
+            serverBanner: memberData.banner,
+            serverAvatar: memberData.avatar
+          });
+
           // Role IDs provided by user:
           // Admin: 1453054732141854751
           // VIP: 1454234806933258382
@@ -249,7 +264,6 @@ app.get('/api/auth/callback', async (c) => {
           // Moderator check
           const moderatorRoleId = c.env.MODERATOR_ROLE_ID;
           if (moderatorRoleId) {
-
             hasModeratorRole = roles.includes(moderatorRoleId);
           }
 
@@ -272,9 +286,15 @@ app.get('/api/auth/callback', async (c) => {
       }
     }
 
+    // Determine finalized Banner/Avatar (Prioritize Server Profile)
+    const finalBanner = serverBanner || userData.banner;
+    const finalAvatar = serverAvatar || userData.avatar;
+    const isGuildBanner = !!serverBanner;
+    const isGuildAvatar = !!serverAvatar;
+
     // 4. Update Database
     // Define the type inline to avoid 'never' issues from typeof
-    type PlayerDBRow = { role: string; elo: number; is_discord_member: number; created_at: string; is_vip: number; vip_until: string; discord_roles: string; gold: number };
+    type PlayerDBRow = { role: string; elo: number; is_discord_member: number; created_at: string; is_vip: number; vip_until: string; discord_roles: string; gold: number; discord_banner: string; discord_accent_color: number; is_guild_banner: number; is_guild_avatar: number };
     let player: PlayerDBRow | null = null;
     try {
       // Determine role and VIP status
@@ -293,8 +313,8 @@ app.get('/api/auth/callback', async (c) => {
       const vipUntilDate = oneMonthFromNow.toISOString();
 
       await c.env.DB.prepare(
-        `INSERT INTO players (id, discord_id, discord_username, discord_avatar, is_discord_member, role, is_vip, vip_until, elo, discord_roles) 
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `INSERT INTO players (id, discord_id, discord_username, discord_avatar, is_discord_member, role, is_vip, vip_until, elo, discord_roles, discord_banner, discord_accent_color, is_guild_banner, is_guild_avatar) 
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(id) DO UPDATE SET
          discord_username = excluded.discord_username,
          discord_avatar = excluded.discord_avatar,
@@ -307,6 +327,10 @@ app.get('/api/auth/callback', async (c) => {
             ELSE players.vip_until 
          END,
          discord_roles = excluded.discord_roles,
+         discord_banner = excluded.discord_banner,
+         discord_accent_color = excluded.discord_accent_color,
+         is_guild_banner = excluded.is_guild_banner,
+         is_guild_avatar = excluded.is_guild_avatar,
          elo = CASE 
             WHEN excluded.elo > 1000 AND excluded.elo > players.elo THEN excluded.elo 
             ELSE players.elo 
@@ -315,17 +339,21 @@ app.get('/api/auth/callback', async (c) => {
         userData.id,
         userData.id,
         userData.username,
-        userData.avatar,
+        finalAvatar,
         isDiscordMember ? 1 : 0,
         roleToSet,
         hasVipRole ? 1 : 0,
         hasVipRole ? vipUntilDate : null,
         tierElo,
-        discordRolesJson
+        discordRolesJson,
+        finalBanner || null,
+        userData.accent_color || null,
+        isGuildBanner ? 1 : 0,
+        isGuildAvatar ? 1 : 0
       ).run();
 
       const { results } = await c.env.DB.prepare(
-        `SELECT role, elo, is_vip, vip_until, discord_roles, gold FROM players WHERE id = ?`
+        `SELECT role, elo, is_vip, vip_until, discord_roles, gold, discord_banner, discord_accent_color FROM players WHERE id = ?`
       ).bind(userData.id).all();
 
       if (results && results.length > 0) {
@@ -356,9 +384,11 @@ app.get('/api/auth/callback', async (c) => {
     const vipUntil = player?.vip_until || '';
     const discordRoles = player?.discord_roles || '[]';
     const gold = player?.gold || 0;
+    const banner = player?.discord_banner || '';
+    const accentColor = player?.discord_accent_color || '';
 
     return c.redirect(
-      `${frontendUrl}?id=${userData.id}&username=${userData.username}&avatar=${userData.avatar || ''}&role=${role}&elo=${elo}&is_vip=${isVip}&vip_until=${vipUntil}&is_discord_member=${isMember === 1}&created_at=${createdAt}&discord_roles=${encodeURIComponent(String(discordRoles))}&gold=${gold}`
+      `${frontendUrl}?id=${userData.id}&username=${userData.username}&avatar=${userData.avatar || ''}&role=${role}&elo=${elo}&is_vip=${isVip}&vip_until=${vipUntil}&is_discord_member=${isMember === 1}&created_at=${createdAt}&discord_roles=${encodeURIComponent(String(discordRoles))}&gold=${gold}&banner=${banner}&accent_color=${accentColor}`
     );
   } catch (error) {
     console.error('Auth error:', error);

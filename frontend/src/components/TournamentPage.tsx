@@ -4,7 +4,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Trophy, Calendar, Users } from "lucide-react";
-import Bracket from './tournament/Bracket';
+import TournamentBracket from './moderator/TournamentBracket';
 import { toast } from "sonner";
 import LoadingSpinner from './LoadingSpinner';
 
@@ -168,7 +168,10 @@ export default function TournamentPage({ user }: TournamentPageProps) {
                             </div>
 
                             {/* BRACKET COMPONENT */}
-                            <Bracket matches={bracketData.bracket} />
+                            {/* BRACKET COMPONENT */}
+                            <div className="overflow-x-auto">
+                                <TournamentBracket matches={bracketData.bracket} />
+                            </div>
                         </div>
                     ) : (
                         <div className="py-20 flex justify-center"><LoadingSpinner /></div>

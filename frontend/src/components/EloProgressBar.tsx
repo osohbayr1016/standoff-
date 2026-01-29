@@ -59,6 +59,8 @@ const EloProgressBar: React.FC<EloProgressBarProps> = ({ elo, className, average
                                 src={`/ranks/${currentLevel}.png`}
                                 alt={`Level ${currentLevel}`}
                                 className="w-20 h-20 md:w-24 md:h-24 object-contain drop-shadow-2xl z-10"
+                                // @ts-ignore - React 19 support
+                                fetchPriority="high"
                             />
                         </div>
 

@@ -17,25 +17,62 @@ export function setupProfileRoutes(app: Hono<any>) {
                 return c.json({ error: 'User not found' }, 404);
             }
 
+            // Compute URLs for Discord Assets (handling Global vs Guild Profiles)
+            const getExtension = (hash: string) => hash.startsWith('a_') ? 'gif' : 'png';
+            const serverId = c.env.DISCORD_SERVER_ID;
+            const isVip = user.is_vip === 1;
+
+            const bannerHash = user.discord_banner as string | null;
+            let bannerUrl: string | null = null;
+
+            // PRIORITY: Custom Banner (VIP Only) > Server Banner > Global Banner
+            if (isVip && user.custom_banner) {
+                bannerUrl = user.custom_banner as string;
+            } else if (bannerHash) {
+                if (user.is_guild_banner && serverId) {
+                    bannerUrl = `https://cdn.discordapp.com/guilds/${serverId}/users/${user.discord_id}/banners/${bannerHash}.${getExtension(bannerHash)}?size=2048`;
+                } else {
+                    bannerUrl = `https://cdn.discordapp.com/banners/${user.discord_id}/${bannerHash}.${getExtension(bannerHash)}?size=2048`;
+                }
+            }
+
+            const avatarHash = user.discord_avatar as string | null;
+            let avatarUrl: string | null = null;
+            if (avatarHash) {
+                if (user.is_guild_avatar && serverId) {
+                    avatarUrl = `https://cdn.discordapp.com/guilds/${serverId}/users/${user.discord_id}/avatars/${avatarHash}.${getExtension(avatarHash)}`;
+                } else {
+                    avatarUrl = `https://cdn.discordapp.com/avatars/${user.discord_id}/${avatarHash}.${getExtension(avatarHash)}`;
+                }
+            }
+
             // Standardize response
             return c.json({
                 id: user.id, // Use the actual DB primary key
                 discord_id: user.discord_id,
                 discord_username: user.discord_username,
-                discord_avatar: user.discord_avatar,
+                discord_avatar: user.discord_avatar, // Raw hash
                 username: user.discord_username,
-                avatar: user.discord_avatar, // Map to avatar
+                avatar: user.discord_avatar, // Map to avatar hash
+
+                // Computed URLs (Use these in Frontend)
+                discord_banner_url: bannerUrl,
+                discord_avatar_url: avatarUrl,
+
                 standoff_nickname: user.standoff_nickname,
                 elo: user.elo || 1000,
                 wins: user.wins || 0,
                 losses: user.losses || 0,
                 role: user.role || 'user',
-                is_vip: user.is_vip === 1,
+                is_vip: isVip,
                 vip_until: user.vip_until,
                 is_discord_member: user.is_discord_member === 1,
                 created_at: user.created_at,
                 discord_roles: user.discord_roles ? JSON.parse(user.discord_roles as string) : [],
                 gold: user.gold || 0,
+                discord_accent_color: user.discord_accent_color,
+                custom_banner: user.custom_banner, // Return raw custom banner for editing
+                banner_mode: user.banner_mode || 'discord', // Current mode
                 daily_comp_matches_used: await (async () => {
                     const today = new Date().toISOString().split('T')[0];
                     const count = await c.env.DB.prepare(`
@@ -47,7 +84,12 @@ export function setupProfileRoutes(app: Hono<any>) {
                         AND m.updated_at LIKE ?
                     `).bind(user.id, user.discord_id, `${today}%`).first() as { count: number } | null;
                     return count?.count || 0;
-                })()
+                })(),
+                // These fields are not defined in the original code, but added as per instruction.
+                // They would typically be fetched from other tables or calculated.
+                clans: [], // Placeholder
+                rank: null, // Placeholder
+                next_rank: null // Placeholder
             });
         } catch (error) {
             console.error('❌ Profile fetch error:', error);
@@ -58,6 +100,153 @@ export function setupProfileRoutes(app: Hono<any>) {
                 error: 'Failed to fetch profile',
                 details: error instanceof Error ? error.message : String(error)
             }, 500);
+        }
+    });
+
+    // POST /api/profile/banner - Update Custom Banner URL (VIP Only)
+    app.post('/api/profile/banner', async (c) => {
+        try {
+            const body = await c.req.json();
+            const { userId, bannerUrl } = body;
+
+            if (!userId) return c.json({ error: 'Missing userId' }, 400);
+
+            // 1. Verify user is VIP
+            const user = await c.env.DB.prepare(
+                'SELECT is_vip FROM players WHERE id = ? OR discord_id = ?'
+            ).bind(userId, userId).first();
+
+            if (!user) return c.json({ error: 'User not found' }, 404);
+            if (user.is_vip !== 1) {
+                return c.json({ error: 'Only VIP members can set custom banners' }, 403);
+            }
+
+            // 2. Update Database & Set Mode to Custom
+            await c.env.DB.prepare(
+                'UPDATE players SET custom_banner = ?, banner_mode = ? WHERE id = ? OR discord_id = ?'
+            ).bind(bannerUrl, 'custom', userId, userId).run();
+
+            return c.json({ success: true, bannerUrl, banner_mode: 'custom' });
+        } catch (error) {
+            console.error('❌ Banner update error:', error);
+            return c.json({ error: 'Failed to update banner' }, 500);
+        }
+    });
+
+    // POST /api/profile/banner/upload - Upload Custom Banner to R2 (VIP Only)
+    app.post('/api/profile/banner/upload', async (c) => {
+        try {
+            const formData = await c.req.formData();
+            const userId = formData.get('userId') as string;
+            const file = formData.get('file') as unknown as File;
+
+            if (!userId) return c.json({ error: 'Missing userId' }, 400);
+            if (!file) return c.json({ error: 'Missing file' }, 400);
+
+            // Validate file type
+            const allowedTypes = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
+            if (!allowedTypes.includes(file.type)) {
+                return c.json({ error: 'Invalid file type. Allowed: PNG, JPG, GIF, WEBP' }, 400);
+            }
+
+            // Validate file size (max 5MB)
+            const maxSize = 5 * 1024 * 1024;
+            if (file.size > maxSize) {
+                return c.json({ error: 'File too large. Maximum size is 5MB' }, 400);
+            }
+
+            // Verify user is VIP
+            const user = await c.env.DB.prepare(
+                'SELECT is_vip FROM players WHERE id = ? OR discord_id = ?'
+            ).bind(userId, userId).first();
+
+            if (!user) return c.json({ error: 'User not found' }, 404);
+            if (user.is_vip !== 1) {
+                return c.json({ error: 'Only VIP members can upload custom banners' }, 403);
+            }
+
+            // Generate unique filename
+            const ext = file.name.split('.').pop() || 'png';
+            const filename = `banners/${userId}_${Date.now()}.${ext}`;
+
+            // Upload to R2
+            const arrayBuffer = await file.arrayBuffer();
+            await c.env.IMAGES_BUCKET.put(filename, arrayBuffer, {
+                httpMetadata: {
+                    contentType: file.type,
+                }
+            });
+
+            // Construct URL using our own backend as proxy
+            const backendDomain = c.req.url.split('/api/')[0];
+            const publicUrl = `${backendDomain}/api/images/${filename}`;
+
+            // Update database & Set Mode to Custom
+            await c.env.DB.prepare(
+                'UPDATE players SET custom_banner = ?, banner_mode = ? WHERE id = ? OR discord_id = ?'
+            ).bind(publicUrl, 'custom', userId, userId).run();
+
+            return c.json({ success: true, bannerUrl: publicUrl, banner_mode: 'custom' });
+        } catch (error) {
+            console.error('❌ Banner upload error:', error);
+            return c.json({ error: 'Failed to upload banner' }, 500);
+        }
+    });
+
+    // POST /api/profile/banner/mode - Toggle Banner Mode (VIP Only)
+    app.post('/api/profile/banner/mode', async (c) => {
+        try {
+            const body = await c.req.json();
+            const { userId, mode } = body;
+
+            if (!userId || !mode) return c.json({ error: 'Missing required fields' }, 400);
+            if (!['discord', 'custom'].includes(mode)) return c.json({ error: 'Invalid mode' }, 400);
+
+            // 1. Verify user is VIP
+            const user = await c.env.DB.prepare(
+                'SELECT is_vip FROM players WHERE id = ? OR discord_id = ?'
+            ).bind(userId, userId).first();
+
+            if (!user) return c.json({ error: 'User not found' }, 404);
+            if (user.is_vip !== 1) {
+                return c.json({ error: 'Only VIP members can change banner mode' }, 403);
+            }
+
+            // 2. Update Mode
+            await c.env.DB.prepare(
+                'UPDATE players SET banner_mode = ? WHERE id = ? OR discord_id = ?'
+            ).bind(mode, userId, userId).run();
+
+            return c.json({ success: true, mode });
+        } catch (error) {
+            console.error('❌ Banner mode update error:', error);
+            return c.json({ error: 'Failed to update banner mode' }, 500);
+        }
+    });
+
+    // GET /api/images/* - Serve images from R2 bucket
+    app.get('/api/images/*', async (c) => {
+        try {
+            const key = c.req.path.replace('/api/images/', '');
+
+            if (!key) {
+                return c.json({ error: 'Missing image key' }, 400);
+            }
+
+            const object = await c.env.IMAGES_BUCKET.get(key);
+
+            if (!object) {
+                return c.json({ error: 'Image not found' }, 404);
+            }
+
+            const headers = new Headers();
+            headers.set('Content-Type', object.httpMetadata?.contentType || 'image/png');
+            headers.set('Cache-Control', 'public, max-age=31536000'); // Cache for 1 year
+
+            return new Response(object.body, { headers });
+        } catch (error) {
+            console.error('❌ Image fetch error:', error);
+            return c.json({ error: 'Failed to fetch image' }, 500);
         }
     });
 

@@ -286,9 +286,34 @@ matchesRoutes.get('/', async (c) => {
             };
         });
 
+        // Hydrate Clan Info for Tournament/Clan War matches
+        const clanIds = new Set<string>();
+        matchesWithPlayers.forEach((m: any) => {
+            if (m.alpha_clan_id) clanIds.add(m.alpha_clan_id);
+            if (m.bravo_clan_id) clanIds.add(m.bravo_clan_id);
+        });
+
+        let clansMap: Record<string, any> = {};
+        if (clanIds.size > 0) {
+            const clanIdArray = Array.from(clanIds);
+            const clanPlaceholders = clanIdArray.map(() => '?').join(',');
+            const clansResult = await c.env.DB.prepare(`
+                SELECT id, name, tag, logo_url, elo FROM clans WHERE id IN (${clanPlaceholders})
+            `).bind(...clanIdArray).all();
+            (clansResult.results || []).forEach((clan: any) => {
+                clansMap[clan.id] = clan;
+            });
+        }
+
+        const hydratedMatches = matchesWithPlayers.map((match: any) => ({
+            ...match,
+            alpha_clan: match.alpha_clan_id ? clansMap[match.alpha_clan_id] || null : null,
+            bravo_clan: match.bravo_clan_id ? clansMap[match.bravo_clan_id] || null : null
+        }));
+
         const responseData = {
             success: true,
-            matches: matchesWithPlayers
+            matches: hydratedMatches
         };
 
         // Update Cache
@@ -605,9 +630,6 @@ matchesRoutes.post('/:id/join', async (c) => {
                 return c.json({ success: false, error: 'You must be in a clan to join Clan War matches' }, 403);
             }
 
-            // Get host clan (Team Alpha)
-            const hostClanId = match.clan_id as string;
-
             // Get all current players and their clans
             const currentPlayers = await c.env.DB.prepare(`
                 SELECT mp.player_id, mp.team, cm.clan_id
@@ -616,29 +638,38 @@ matchesRoutes.post('/:id/join', async (c) => {
                 WHERE mp.match_id = ?
             `).bind(matchId).all();
 
-            // Determine opponent clan (Team Bravo)
-            let opponentClanId: string | null = null;
+            // Determine which clans are already in the match
+            let alphaClanId: string | null = null;
+            let bravoClanId: string | null = null;
+
             for (const p of (currentPlayers.results || [])) {
                 const pClanId = (p as any).clan_id;
-                if (pClanId && pClanId !== hostClanId) {
-                    opponentClanId = pClanId;
-                    break;
+                const team = (p as any).team;
+                if (pClanId && team === 'alpha' && !alphaClanId) {
+                    alphaClanId = pClanId;
+                }
+                if (pClanId && team === 'bravo' && !bravoClanId) {
+                    bravoClanId = pClanId;
                 }
             }
 
             // Determine which team this player should join
             let assignedTeam: 'alpha' | 'bravo';
-            if (playerClan.clan_id === hostClanId) {
-                // Player is from host clan -> Team Alpha
+
+            if (playerClan.clan_id === alphaClanId) {
+                // Player is from Team Alpha's clan
                 assignedTeam = 'alpha';
-            } else if (!opponentClanId) {
-                // No opponent clan set yet, this player's clan becomes Team Bravo
+            } else if (playerClan.clan_id === bravoClanId) {
+                // Player is from Team Bravo's clan
                 assignedTeam = 'bravo';
-            } else if (playerClan.clan_id === opponentClanId) {
-                // Player is from opponent clan -> Team Bravo
+            } else if (!alphaClanId) {
+                // No clan in Alpha yet, this player's clan joins as Alpha
+                assignedTeam = 'alpha';
+            } else if (!bravoClanId) {
+                // No clan in Bravo yet, this player's clan joins as Bravo
                 assignedTeam = 'bravo';
             } else {
-                // Player is from a third clan, not allowed
+                // Both teams have clans set and player is from a third clan
                 return c.json({
                     success: false,
                     error: 'This Clan War is between two specific clans. You cannot join from a different clan.'
@@ -728,6 +759,65 @@ matchesRoutes.post('/:id/join', async (c) => {
     }
 });
 
+// PATCH /api/matches/:id/lobby-url - Update lobby URL for tournament matches
+matchesRoutes.patch('/:id/lobby-url', async (c) => {
+    const matchId = c.req.param('id');
+    const { lobby_url, user_id } = await c.req.json<{ lobby_url: string; user_id: string }>();
+
+    if (!lobby_url || !user_id) {
+        return c.json({ error: 'Missing lobby_url or user_id' }, 400);
+    }
+
+    const db = drizzle(c.env.DB);
+
+    try {
+        // Get the match details
+        const match = await db.select().from(matches).where(eq(matches.id, matchId)).get();
+        if (!match) {
+            return c.json({ error: 'Match not found' }, 404);
+        }
+
+        // Only allow updates for tournament matches
+        if (!match.tournament_id) {
+            return c.json({ error: 'Only tournament matches can have URLs updated this way' }, 400);
+        }
+
+        if (match.status !== 'waiting') {
+            return c.json({ error: 'Cannot update URL after match has started' }, 400);
+        }
+
+        // Check if user is host OR a clan leader/coleader
+        const isHost = match.host_id === user_id;
+
+        // Check clan membership
+        const userMembership = await db.select()
+            .from(clanMembers)
+            .where(eq(clanMembers.user_id, user_id))
+            .get();
+
+        const isClanCaptain = userMembership && ['leader', 'coleader'].includes(userMembership.role || '');
+
+        if (!isHost && !isClanCaptain) {
+            return c.json({ error: 'Only host or clan leaders/coleaders can update lobby URL' }, 403);
+        }
+
+        // Update the lobby URL
+        await db.update(matches)
+            .set({
+                lobby_url,
+                updated_at: new Date().toISOString()
+            })
+            .where(eq(matches.id, matchId))
+            .execute();
+
+        return c.json({ success: true, message: 'Lobby URL updated' });
+
+    } catch (error) {
+        console.error('Error updating lobby URL:', error);
+        return c.json({ error: 'Failed to update lobby URL' }, 500);
+    }
+});
+
 // POST /api/matches/:id/leave - Leave a match
 matchesRoutes.post('/:id/leave', async (c) => {
     const matchId = c.req.param('id');
@@ -750,15 +840,15 @@ matchesRoutes.post('/:id/leave', async (c) => {
 
         // Check if match is still waiting
         const match = await c.env.DB.prepare(
-            'SELECT host_id, status FROM matches WHERE id = ?'
+            'SELECT host_id, status, tournament_id FROM matches WHERE id = ?'
         ).bind(matchId).first();
 
         if (!match || match.status !== 'waiting') {
             return c.json({ success: false, error: 'Cannot leave match in progress' }, 400);
         }
 
-        // If host leaves, cancel the match
-        if (match.host_id === body.player_id || (await c.env.DB.prepare('SELECT id FROM players WHERE id = ? AND discord_id = ?').bind(match.host_id, body.player_id).first())) {
+        // If host leaves, cancel the match (UNLESS it's a tournament match)
+        if ((match.host_id === body.player_id || (await c.env.DB.prepare('SELECT id FROM players WHERE id = ? AND discord_id = ?').bind(match.host_id, body.player_id).first())) && !match.tournament_id) {
             await c.env.DB.prepare(
                 'UPDATE matches SET status = ?, updated_at = datetime(\'now\') WHERE id = ?'
             ).bind('cancelled', matchId).run();
@@ -1028,8 +1118,8 @@ matchesRoutes.patch('/:id/status', async (c) => {
     }
 });
 
-// PATCH /api/matches/:id/link - Update match lobby link (host only)
-matchesRoutes.patch('/:id/link', async (c) => {
+// PATCH /api/matches/:id/update-link - Update match lobby link (host only)
+matchesRoutes.patch('/:id/update-link', async (c) => {
     const matchId = c.req.param('id');
 
     try {

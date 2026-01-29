@@ -20,7 +20,13 @@ export const players = sqliteTable('players', {
     is_vip: integer('is_vip').default(0),
     vip_until: text('vip_until'),
     discord_roles: text('discord_roles', { mode: 'json' }), // Store JSON array of role IDs
-    gold: integer('gold').default(0).notNull() // Premium currency
+    gold: integer('gold').default(0).notNull(), // Premium currency
+    discord_banner: text('discord_banner'),
+    discord_accent_color: integer('discord_accent_color'),
+    is_guild_banner: integer('is_guild_banner').default(0),
+    is_guild_avatar: integer('is_guild_avatar').default(0),
+    custom_banner: text('custom_banner'), // VIP Custom Banner URL
+    banner_mode: text('banner_mode').default('discord'), // 'discord' or 'custom'
 }, (table) => ({
     idxPlayersVipElo: index('idx_players_vip_elo').on(table.is_vip, table.elo),
 }));
@@ -61,6 +67,8 @@ export const matches = sqliteTable('matches', {
     tournament_round: integer('tournament_round'), // 1 = Ro16, 2 = Quarters, 3 = Semis, 4 = Finals (approx)
     bracket_match_id: integer('bracket_match_id'), // 1-15 for 16 teams
     next_match_id: text('next_match_id'), // ID of the match the winner advances to
+    alpha_clan_id: text('alpha_clan_id'),
+    bravo_clan_id: text('bravo_clan_id'),
     created_at: text('created_at').default('CURRENT_TIMESTAMP'),
     updated_at: text('updated_at').default('CURRENT_TIMESTAMP')
 }, (table) => ({

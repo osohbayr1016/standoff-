@@ -28,6 +28,7 @@ const ClanProfilePage = lazy(() => import("@/components/ClanProfilePage"));
 const GoldPage = lazy(() => import("./components/GoldPage"));
 const RewardsPage = lazy(() => import("./components/RewardsPage"));
 const TournamentPage = lazy(() => import("./components/TournamentPage"));
+const ChatPage = lazy(() => import("./components/ChatPage"));
 
 // Placeholder components (to be implemented)
 const DailyRewards = () => <div className="placeholder-card border border-white/5 bg-white/5 rounded-xl p-6 flex items-center justify-center text-muted-foreground italic h-full">Daily Rewards - Coming Soon</div>;
@@ -56,7 +57,7 @@ function AppContent() {
   const [currentPage, setCurrentPage] = useState(() => {
     const savedPage = localStorage.getItem("currentPage");
     const validPages = [
-      "home", "profile", "leaderboard", "friends", "vip", "join_gate", "matchmaking", "streamers", "streamer-dashboard", "clans", "clan-profile", "gold-dashboard"
+      "home", "profile", "leaderboard", "friends", "vip", "join_gate", "matchmaking", "streamers", "streamer-dashboard", "clans", "clan-profile", "gold-dashboard", "chat"
     ];
     if (savedPage && validPages.includes(savedPage)) {
       return savedPage;
@@ -425,7 +426,7 @@ function AppContent() {
 
   const validPages = [
     "home", "profile", "leaderboard", "rewards", "friends",
-    "matchmaking", "moderator", "admin", "vip", "join_gate", "matchgame", "streamers", "streamer-dashboard", "clans", "clan-profile", "gold-dashboard", "tournaments"
+    "matchmaking", "moderator", "admin", "vip", "join_gate", "matchgame", "streamers", "streamer-dashboard", "clans", "clan-profile", "gold-dashboard", "tournaments", "chat"
   ];
 
   if (!validPages.includes(currentPage)) return <NotFoundPage onGoHome={handleGoHome} />;
@@ -495,6 +496,7 @@ function AppContent() {
           {currentPage === "streamer-dashboard" && <StreamerDashboard />}
           {currentPage === "gold-dashboard" && <GoldPage />}
           {currentPage === "tournaments" && <TournamentPage user={user} />}
+          {currentPage === "chat" && <ChatPage />}
           {currentPage === "matchmaking" && (
             <MatchmakingPage
               user={user}

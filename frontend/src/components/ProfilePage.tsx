@@ -17,6 +17,8 @@ import { LogOut, Swords, Trophy, X, Check, Users, ImageIcon, ArrowLeft, Play } f
 import EloProgressBar from "./EloProgressBar";
 import { VerifiedBadge } from "./VerifiedBadge";
 
+import BannerEditModal from "./BannerEditModal";
+
 interface User {
   id: string;
   username: string;
@@ -45,14 +47,22 @@ interface ProfileData {
   discord_id: string;
   discord_username: string;
   discord_avatar?: string;
+  discord_banner?: string;
+  discord_accent_color?: number;
+  // Computed URLs from backend
+  discord_banner_url?: string | null;
+  discord_avatar_url?: string | null;
   standoff_nickname?: string;
   elo: number;
   wins: number;
   losses: number;
   is_discord_member?: boolean;
   is_vip?: number | boolean;
-  vip_until?: string;
+  vip_until?: string | null;
   matches?: MatchHistoryItem[];
+  custom_banner?: string | null;
+  banner_mode?: 'discord' | 'custom';
+  gold?: number;
 }
 
 interface MatchPlayer {
@@ -106,6 +116,7 @@ export default function ProfilePage({
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [loading, setLoading] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
+  const [isEditingBanner, setIsEditingBanner] = useState(false);
   const [newNickname, setNewNickname] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
@@ -308,6 +319,10 @@ export default function ProfilePage({
   const totalMatches = profile ? profile.wins + profile.losses : 0;
   const isWin = (match: MatchHistoryItem) => match.winner_team === match.player_team;
 
+  const themeColor = profile?.discord_accent_color
+    ? `#${profile.discord_accent_color.toString(16).padStart(6, '0')}`
+    : '#ff5500';
+
   return (
     <div className="min-h-screen bg-[#0E0F12] text-white font-sans selection:bg-[#ff5500] selection:text-white pb-20">
 
@@ -323,82 +338,96 @@ export default function ProfilePage({
         </Button>
       </div>
 
-      {/* 1. Header Section: Faceit Style Banner & Avatar */}
-      <div className="relative min-h-[19rem] md:h-80 w-full overflow-hidden bg-[#121418]">
+      {/* 1. Header Section: Discord Style Layout */}
+
+      {/* A. Banner Area */}
+      <div className="relative h-48 md:h-64 w-full bg-[#121418] overflow-hidden group">
         {/* Banner Image / Gradient */}
-        <div className="absolute inset-0 bg-gradient-to-r from-[#121418] via-[#1E2126] to-[#121418]" />
+        {profile?.discord_banner_url ? (
+          <div
+            className="absolute inset-0 bg-cover bg-center transition-transform duration-700 group-hover:scale-105"
+            style={{
+              backgroundImage: `url(${profile.discord_banner_url})`
+            }}
+          />
+        ) : profile?.discord_accent_color ? (
+          <div
+            className="absolute inset-0"
+            style={{ backgroundColor: `#${profile.discord_accent_color.toString(16).padStart(6, '0')}` }}
+          />
+        ) : (
+          <div className="absolute inset-0 bg-[linear-gradient(45deg,#1e2024_25%,#232529_25%,#232529_50%,#1e2024_50%,#1e2024_75%,#232529_75%,#232529_100%)] bg-[length:40px_40px] opacity-20" />
+        )}
 
-        {/* Abstract Background Elements (Lines/Grid) */}
-        <div className="absolute inset-0 opacity-10 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-white/20 via-transparent to-transparent" />
-        <div className="absolute inset-0 bg-[url('/grid.svg')] opacity-5" />
+        {/* Subtle shadow at bottom to ground the overlap */}
+        <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-[#0E0F12]/80 to-transparent" />
+      </div>
 
-        <div className="absolute bottom-0 left-0 w-full h-32 bg-gradient-to-t from-[#0E0F12] to-transparent z-10" />
+      {/* B. Profile Info Area (Overlapping) */}
+      <div className="relative max-w-7xl mx-auto px-4 md:px-6 mb-8 -mt-16 md:-mt-20 z-10">
+        <div className="flex flex-col md:flex-row items-center md:items-end gap-6">
 
-        {/* Header Content Container */}
-        <div className="relative z-20 max-w-7xl mx-auto px-4 md:px-6 flex flex-col justify-end pb-6 md:pb-8 pt-24 md:pt-0 md:h-full">
-          <div className="flex flex-col items-center md:flex-row md:items-end gap-6 md:gap-8">
+          {/* Avatar Area */}
+          <div className="relative shrink-0">
+            {/* Cutout / Border effect */}
+            <div className="h-32 w-32 md:h-44 md:w-44 rounded-full bg-[#0E0F12] p-1.5 md:p-2 relative shadow-2xl">
+              <Avatar className="h-full w-full rounded-full border-2 border-[#1e2024] bg-[#121418]">
+                <AvatarImage
+                  src={!avatarError && profile?.discord_avatar_url
+                    ? profile.discord_avatar_url
+                    : undefined}
+                  onError={() => setAvatarError(true)}
+                  className="object-cover h-full w-full"
+                />
+                <AvatarFallback
+                  className="text-3xl md:text-5xl bg-[#1e2024] font-black"
+                  style={{ color: themeColor }}
+                >
+                  {profile?.standoff_nickname?.[0]?.toUpperCase() || profile?.discord_username?.[0]?.toUpperCase()}
+                </AvatarFallback>
+              </Avatar>
 
-            {/* Avatar - Hexagon or Square with border */}
-            <div className="relative shrink-0 group">
-              <div className="h-28 w-28 md:h-40 md:w-40 bg-[#1e2024] rounded border-4 border-[#2d2f33] shadow-2xl relative overflow-hidden group-hover:border-[#ff5500] transition-colors duration-300">
-                <Avatar className="h-full w-full rounded-none">
-                  <AvatarImage
-                    src={!avatarError && profile?.discord_avatar
-                      ? `https://cdn.discordapp.com/avatars/${profile?.discord_id}/${profile?.discord_avatar}.png`
-                      : undefined}
-                    onError={() => setAvatarError(true)}
-                    className="object-cover h-full w-full"
-                  />
-                  <AvatarFallback className="text-3xl md:text-4xl bg-[#1e2024] text-[#ff5500] font-black rounded-none">
-                    {profile?.standoff_nickname?.[0]?.toUpperCase() || profile?.discord_username?.[0]?.toUpperCase()}
-                  </AvatarFallback>
-                </Avatar>
-              </div>
-
-              {/* Online Dot */}
-              <div className="absolute -top-2 -right-2 h-5 w-5 md:h-6 md:w-6 bg-[#0E0F12] rounded-full flex items-center justify-center p-1">
-                <div className="h-full w-full bg-green-500 rounded-full shadow-[0_0_10px_#22c55e]" />
+              {/* Online Status Dot */}
+              <div className="absolute bottom-1 right-1 md:bottom-2 md:right-2 h-7 w-7 md:h-9 md:w-9 bg-[#0E0F12] rounded-full flex items-center justify-center p-1.5 z-20">
+                <div className="h-full w-full bg-green-500 rounded-full shadow-[0_0_8px_#22c55e]" />
               </div>
             </div>
+          </div>
 
-            {/* Profile Text Info */}
-            <div className="flex-1 mb-2 text-center md:text-left">
-              <div className="flex flex-wrap items-center justify-center md:justify-start gap-3 md:gap-4 mb-2">
-                <h1 className="text-3xl md:text-6xl font-black italic tracking-tighter text-white uppercase">
+          {/* User Text Info & Actions */}
+          <div className="flex-1 flex flex-col md:flex-row items-center md:items-end justify-between gap-6 md:pb-4 w-full md:w-auto">
+
+            {/* Name & Details */}
+            <div className="text-center md:text-left space-y-2">
+              <div className="flex flex-wrap items-center justify-center md:justify-start gap-3">
+                <h1 className="text-3xl md:text-5xl font-black italic tracking-tighter text-white uppercase leading-none filter drop-shadow-lg">
                   {profile?.standoff_nickname || profile?.discord_username || "Unknown"}
                 </h1>
 
                 {/* VIP Badge */}
                 {!!profile?.is_vip && (
-                  <div className="flex flex-col items-center">
-                    <div className="bg-[#ffcc00] text-black text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded skew-x-[-10deg]">
-                      VIP
-                    </div>
-                    {profile.vip_until && (
-                      <span className="text-[9px] text-[#ffcc00] font-bold mt-1 uppercase tracking-wider">
-                        Exp: {new Date(profile.vip_until).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
-                      </span>
-                    )}
+                  <div className="bg-[#ffcc00] text-black text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded skew-x-[-10deg] shadow-[0_0_10px_#ffcc0040]">
+                    VIP
                   </div>
                 )}
 
                 {/* Verified Badge */}
                 {profile?.is_discord_member && (
-                  <div className="bg-[#5865F2] text-white p-1 rounded-full shadow-lg" title="Verified Discord Member">
+                  <div className="bg-[#5865F2] text-white p-1 rounded-full shadow-lg flex items-center justify-center" title="Verified Discord Member">
                     <Check className="w-3 h-3" />
                   </div>
                 )}
               </div>
 
-              <div className="flex items-center justify-center md:justify-start gap-4 md:gap-6 text-xs md:text-sm text-[#9ca3af] font-bold uppercase tracking-wider mb-2">
-                <span className="flex items-center gap-2">
-                  <span className="w-1.5 h-1.5 rounded-full bg-[#ff5500]" />
+              {/* Subtext */}
+              <div className="flex items-center justify-center md:justify-start gap-4 text-xs md:text-sm text-[#9ca3af] font-bold uppercase tracking-wider">
+                <span className="flex items-center gap-2 bg-white/5 px-2 py-1 rounded-full border border-white/5">
+                  <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: themeColor }} />
                   ID: {profile?.id.substring(0, 8)}
                 </span>
                 {profile?.discord_username && (
-                  <span className="flex items-center gap-2">
-                    <span className="hidden md:inline opacity-50">DISCORD:</span>
-                    <span className="md:hidden opacity-50">DSC:</span> {profile.discord_username}
+                  <span className="flex items-center gap-2 bg-white/5 px-2 py-1 rounded-full border border-white/5">
+                    <span className="opacity-50">DISCORD:</span> {profile.discord_username}
                   </span>
                 )}
               </div>
@@ -408,31 +437,44 @@ export default function ProfilePage({
               {successMsg && <p className="text-green-500 text-xs font-bold uppercase tracking-widest">{successMsg}</p>}
             </div>
 
-            {/* Header Actions */}
-            <div className="flex flex-wrap justify-center gap-2 md:gap-3 mb-2 w-full md:w-auto">
+            {/* Actions */}
+            <div className="flex flex-wrap justify-center gap-3 w-full md:w-auto">
               {isOwnProfile ? (
                 <>
                   <Button
                     onClick={onFindMatch}
-                    className="bg-[#ff5500] hover:bg-[#e64d00] text-white font-black uppercase tracking-wider rounded-sm h-10 px-6 shadow-lg shadow-[#ff5500]/20 flex-1 md:flex-none"
+                    className="text-white font-black uppercase tracking-wider rounded-md h-11 px-8 shadow-lg flex-1 md:flex-none hover:scale-105 transition-all active:scale-95"
+                    style={{ backgroundColor: themeColor, boxShadow: `0 8px 16px -4px ${themeColor}40` }}
                   >
-                    <Play className="mr-2 h-4 w-4" /> Play
+                    <Play className="mr-2 h-5 w-5" /> Play
                   </Button>
                   <Button
                     onClick={() => setIsEditing(true)}
                     variant="outline"
                     size="sm"
-                    className="bg-[#2d2f33] border-none text-white hover:bg-[#3d4045] font-bold uppercase tracking-wide rounded-sm h-10 px-4 md:px-6 flex-1 md:flex-none"
+                    className="bg-[#2d2f33] border-white/5 text-white hover:bg-[#3d4045] font-bold uppercase tracking-wide rounded-md h-11 px-6 flex-1 md:flex-none transition-all"
                   >
                     Edit
                   </Button>
+
+                  {user && (user.is_vip === 1 || user.is_vip === true) && (
+                    <Button
+                      onClick={() => setIsEditingBanner(true)}
+                      variant="outline"
+                      size="sm"
+                      className="bg-purple-500/10 border-purple-500/10 text-purple-500 hover:bg-purple-500/20 hover:text-purple-400 font-bold uppercase tracking-wide rounded-md h-11 px-6 flex-1 md:flex-none transition-all"
+                    >
+                      <ImageIcon className="mr-2 h-4 w-4" /> Banner
+                    </Button>
+                  )}
+
                   <Button
                     onClick={() => setShowLogoutConfirm(true)}
                     variant="outline"
                     size="sm"
-                    className="bg-red-500/10 border-red-500/20 text-red-500 hover:bg-red-500/20 hover:text-red-400 font-bold uppercase tracking-wide rounded-sm h-10 px-3"
+                    className="bg-red-500/10 border-red-500/10 text-red-500 hover:bg-red-500/20 hover:text-red-400 font-bold uppercase tracking-wide rounded-md h-11 px-4"
                   >
-                    <LogOut className="h-4 w-4" />
+                    <LogOut className="h-5 w-5" />
                   </Button>
                 </>
               ) : (
@@ -440,15 +482,17 @@ export default function ProfilePage({
                   <Button
                     onClick={handleSendFriendRequest}
                     disabled={sendingFriendRequest || friendRequestSent}
-                    className="bg-[#ff5500] hover:bg-[#e64d00] text-white font-black uppercase tracking-wider rounded-sm h-10 px-6 shadow-lg shadow-[#ff5500]/20 w-full md:w-auto"
+                    className="text-white font-black uppercase tracking-wider rounded-md h-11 px-8 shadow-lg w-full md:w-auto hover:brightness-110 transition-all"
+                    style={{ backgroundColor: themeColor, boxShadow: `0 8px 16px -4px ${themeColor}40` }}
                   >
-                    {friendRequestSent ? 'Sent' : 'Add Friend'}
+                    {friendRequestSent ? 'Request Sent' : 'Add Friend'}
                   </Button>
                 )
               )}
             </div>
 
           </div>
+
         </div>
       </div>
 
@@ -467,7 +511,10 @@ export default function ProfilePage({
 
           {/* Tab Navigation (Visual Only for now) */}
           <div className="flex items-center border-b border-white/10 mb-4 md:mb-6 overflow-x-auto">
-            <button className="px-4 md:px-6 py-3 md:py-4 text-[#ff5500] font-black uppercase tracking-wider border-b-2 border-[#ff5500] text-xs md:text-base whitespace-nowrap">
+            <button
+              className="px-4 md:px-6 py-3 md:py-4 font-black uppercase tracking-wider border-b-2 text-xs md:text-base whitespace-nowrap transition-colors"
+              style={{ color: themeColor, borderColor: themeColor }}
+            >
               Overview
             </button>
             <button className="px-4 md:px-6 py-3 md:py-4 text-[#555] font-bold uppercase tracking-wider hover:text-white transition-colors text-xs md:text-base whitespace-nowrap" onClick={() => setShowCasualHistory(true)}>
@@ -478,18 +525,21 @@ export default function ProfilePage({
           {/* Stats Overview Grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {/* Win Rate Stats */}
-            <Card className="bg-[#121418] border-none rounded-none border-l-2 border-[#ff5500] p-4 md:p-6 shadow-sm">
+            <Card
+              className="bg-[#121418] border-none rounded-none border-l-2 p-4 md:p-6 shadow-sm"
+              style={{ borderColor: themeColor }}
+            >
               <div className="flex items-start justify-between mb-4">
                 <div>
                   <h3 className="text-[#9ca3af] font-bold uppercase tracking-widest text-xs mb-1">Win Rate</h3>
                   <p className="text-3xl font-black text-white italic">{winRate}%</p>
                 </div>
-                <div className="h-10 w-10 text-[#ff5500]">
+                <div className="h-10 w-10" style={{ color: themeColor }}>
                   <Trophy className="h-full w-full opacity-20" />
                 </div>
               </div>
               <div className="w-full bg-[#1e2024] h-1.5 rounded-full overflow-hidden">
-                <div className="bg-[#ff5500] h-full" style={{ width: `${winRate}%` }} />
+                <div className="h-full" style={{ width: `${winRate}%`, backgroundColor: themeColor }} />
               </div>
               <p className="text-[10px] text-[#555] mt-2 font-bold uppercase">Based on last {totalMatches} matches</p>
             </Card>
@@ -622,7 +672,12 @@ export default function ProfilePage({
             />
           </div>
           <DialogFooter>
-            <Button onClick={handleSaveNickname} disabled={saving} className="bg-[#ff5500] hover:bg-[#e64d00]">
+            <Button
+              onClick={handleSaveNickname}
+              disabled={saving}
+              className="text-white hover:brightness-110"
+              style={{ backgroundColor: themeColor }}
+            >
               {saving ? 'Saving...' : 'Save'}
             </Button>
           </DialogFooter>
@@ -831,6 +886,33 @@ export default function ProfilePage({
         </DialogContent>
       </Dialog>
 
+      {/* VIP Banner Edit Modal */}
+      {user && (
+        <BannerEditModal
+          userId={user.id}
+          currentBanner={profile?.custom_banner}
+          currentMode={profile?.banner_mode}
+          isOpen={isEditingBanner}
+          onClose={() => setIsEditingBanner(false)}
+          onSave={(newUrl, newMode) => {
+            setProfile(prev => prev ? {
+              ...prev,
+              custom_banner: newUrl,
+              banner_mode: newMode || 'custom',
+              // If switching to custom, update the displayed banner URL immediately
+              discord_banner_url: (newMode === 'custom' || !newMode) ? newUrl : prev.discord_banner_url
+            } : null);
+            // Note: If switching to Discord mode, we can't easily set discord_banner_url locally without re-fetching, 
+            // but we'll assume the user refreshes or we handle it by not updating it if mode is 'discord' (let backend handle it next fetch)
+            // Actually, simplest is to force a re-fetch or reload window if switching to Discord mode, 
+            // but for now let's just accept the prop update.
+            if (newMode === 'discord') {
+              window.location.reload(); // Quick fix to revert to Discord banner
+            }
+          }}
+          backendUrl={import.meta.env.VITE_BACKEND_URL || "http://localhost:8787"}
+        />
+      )}
     </div>
   );
 }

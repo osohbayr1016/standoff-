@@ -19,7 +19,7 @@ export interface Match {
     player_count: number;
     max_players: number;
     map_name?: string;
-    match_type?: 'casual' | 'league' | 'competitive' | 'clan_lobby' | 'clan_war';
+    match_type?: 'casual' | 'league' | 'competitive' | 'clan_lobby' | 'clan_war' | 'cup';
     created_at: string;
     alpha_avg_elo?: number;
     bravo_avg_elo?: number;

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useTransition } from 'react';
 import { useWebSocket } from './WebSocketContext';
 import LobbyDetailPage from './LobbyDetailPage';
 import { Card, CardHeader, CardContent, CardFooter } from "@/components/ui/card";
@@ -43,6 +43,10 @@ interface Match {
     min_rank?: 'Bronze' | 'Silver' | 'Gold';
     host_elo?: number;
     clan_id?: string;
+    tournament_id?: string;
+    tournament_name?: string;
+    alpha_clan?: { id: string; name: string; tag: string; logo_url?: string };
+    bravo_clan?: { id: string; name: string; tag: string; logo_url?: string };
 }
 
 interface MatchmakingPageProps {
@@ -71,14 +75,15 @@ const MatchmakingPage: React.FC<MatchmakingPageProps> = ({ user, backendUrl, onV
     const [lobbyUrl, setLobbyUrl] = useState('');
     const [selectedMap, setSelectedMap] = useState<string | null>(null);
     const [matchType, setMatchType] = useState<'casual' | 'league' | 'clan_war' | 'competitive'>('casual');
+    const [, startTransition] = useTransition();
 
     const MAPS = [
         { name: 'Hanami', image: '/maps/thumbnails/hanami.webp' },
-        { name: 'Sandstone', image: '/maps/thumbnails/rust.webp' }, // Note: original code swapped names for Rust/Sandstone images? Keeping as is but optimized.
-        { name: 'Rust', image: '/maps/thumbnails/sandstone.webp' },
-        { name: 'Breeze', image: '/maps/thumbnails/dune.webp' },
-        { name: 'Dune', image: '/maps/thumbnails/breeze.webp' },
-        { name: 'Province', image: '/maps/thumbnails/dust.webp' },
+        { name: 'Sandstone', image: '/maps/thumbnails/sandstone.webp' },
+        { name: 'Rust', image: '/maps/thumbnails/rust.webp' },
+        { name: 'Breeze', image: '/maps/thumbnails/breeze.webp' },
+        { name: 'Dune', image: '/maps/thumbnails/dune.webp' },
+        { name: 'Dust', image: '/maps/thumbnails/dust.webp' },
         { name: 'Zone 7', image: '/maps/thumbnails/zone7.webp' }
     ];
     const [creating, setCreating] = useState(false);
@@ -253,93 +258,99 @@ const MatchmakingPage: React.FC<MatchmakingPageProps> = ({ user, backendUrl, onV
     };
 
     // Join lobby
-    const handleJoinLobby = async (matchId: string) => {
+    const handleJoinLobby = (matchId: string) => {
         if (!user) return;
         setProcessingId(matchId);
 
-        try {
-            const response = await fetch(`${backendUrl}/api/matches/${matchId}/join`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    player_id: user.id
-                })
-            });
+        startTransition(async () => {
+            try {
+                const response = await fetch(`${backendUrl}/api/matches/${matchId}/join`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        player_id: user.id
+                    })
+                });
 
-            const data = await response.json();
+                const data = await response.json();
 
-            if (data.success) {
-                fetchMatches();
-                setSelectedMatchId(matchId);
-                console.log("Joined lobby!");
-            } else {
-                setErrorMessage(data.error || 'Failed to join lobby');
+                if (data.success) {
+                    await fetchMatches();
+                    setSelectedMatchId(matchId);
+                    console.log("Joined lobby!");
+                } else {
+                    setErrorMessage(data.error || 'Failed to join lobby');
+                    setErrorDialogOpen(true);
+                }
+            } catch (err) {
+                setErrorMessage('Network error');
                 setErrorDialogOpen(true);
+            } finally {
+                setProcessingId(null);
             }
-        } catch (err) {
-            setErrorMessage('Network error');
-            setErrorDialogOpen(true);
-        } finally {
-            setProcessingId(null);
-        }
+        });
     };
 
     // Leave lobby
-    const handleLeaveLobby = async (matchId: string) => {
+    const handleLeaveLobby = (matchId: string) => {
         if (!user) return;
         setProcessingId(matchId);
 
-        try {
-            const response = await fetch(`${backendUrl}/api/matches/${matchId}/leave`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    player_id: user.id
-                })
-            });
+        startTransition(async () => {
+            try {
+                const response = await fetch(`${backendUrl}/api/matches/${matchId}/leave`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        player_id: user.id
+                    })
+                });
 
-            const data = await response.json();
+                const data = await response.json();
 
-            if (data.success) {
-                setUserMatch(null);
-                fetchMatches();
-                setMyActiveMatch(null);
-                console.log("Left lobby");
-            } else {
-                toast.error('Unable to leave lobby', { description: data.error || 'Please try again' });
+                if (data.success) {
+                    setUserMatch(null);
+                    await fetchMatches();
+                    setMyActiveMatch(null);
+                    console.log("Left lobby");
+                } else {
+                    toast.error('Unable to leave lobby', { description: data.error || 'Please try again' });
+                }
+            } catch (err) {
+                toast.error('Connection failed', { description: 'Please check your internet connection and try again' });
+            } finally {
+                setProcessingId(null);
             }
-        } catch (err) {
-            toast.error('Connection failed', { description: 'Please check your internet connection and try again' });
-        } finally {
-            setProcessingId(null);
-        }
+        });
     };
 
     // Start match
-    const handleStartMatch = async (matchId: string) => {
+    const handleStartMatch = (matchId: string) => {
         if (!user) return;
 
-        try {
-            const response = await fetch(`${backendUrl}/api/matches/${matchId}/status`, {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    host_id: user.id,
-                    status: 'in_progress'
-                })
-            });
+        startTransition(async () => {
+            try {
+                const response = await fetch(`${backendUrl}/api/matches/${matchId}/status`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        host_id: user.id,
+                        status: 'in_progress'
+                    })
+                });
 
-            const data = await response.json();
+                const data = await response.json();
 
-            if (data.success) {
-                fetchMatches();
-                console.log("Match started!");
-            } else {
-                toast.error('Cannot start match', { description: data.error || 'Please ensure all requirements are met' });
+                if (data.success) {
+                    await fetchMatches();
+                    console.log("Match started!");
+                } else {
+                    toast.error('Cannot start match', { description: data.error || 'Please ensure all requirements are met' });
+                }
+            } catch (err) {
+                toast.error('Connection failed', { description: 'Please check your internet connection and try again' });
             }
-        } catch (err) {
-            toast.error('Connection failed', { description: 'Please check your internet connection and try again' });
-        }
+        });
     };
 
     if (!user) {
@@ -476,8 +487,8 @@ const MatchmakingPage: React.FC<MatchmakingPageProps> = ({ user, backendUrl, onV
 
             {loading ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {[1, 2, 3].map((i) => (
-                        <Card key={i} className="bg-card/40 border-border/40 min-h-[200px] flex items-center justify-center">
+                    {[1, 2, 3, 4, 5, 6].map((i) => (
+                        <Card key={i} className="bg-card/40 border-border/40 min-h-[320px] flex items-center justify-center">
                             <Loader2 className="h-8 w-8 text-muted-foreground animate-spin" />
                         </Card>
                     ))}
@@ -499,7 +510,7 @@ const MatchmakingPage: React.FC<MatchmakingPageProps> = ({ user, backendUrl, onV
                 </div>
             ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {filteredMatches.map((match) => (
+                    {filteredMatches.map((match, index) => (
                         <Card
                             key={match.id}
                             onClick={() => setSelectedMatchId(match.id)}
@@ -529,66 +540,95 @@ const MatchmakingPage: React.FC<MatchmakingPageProps> = ({ user, backendUrl, onV
                                             // Fallback to original if thumbnail fails (or solid color)
                                             e.currentTarget.style.display = 'none';
                                         }}
-                                        loading="lazy"
+                                        loading={index < 6 ? "eager" : "lazy"}
+                                        // @ts-ignore - React 19 support
+                                        fetchPriority={index < 6 ? "high" : "low"}
                                         decoding="async"
                                     />
                                 </div>
                             )}
 
                             <CardHeader className="flex flex-row items-center justify-between pb-3 z-10 relative">
-                                <div className="flex items-center gap-3">
-                                    <div className="relative">
-                                        <Avatar className={`h-10 w-10 border-2 ${match.match_type === 'league' ? 'border-yellow-500/30' :
-                                            match.match_type === 'competitive' ? 'border-blue-500/50' :
-                                                match.match_type === 'clan_war' ? 'border-purple-500/50' :
-                                                    'border-border'
-                                            }`}>
-                                            <AvatarImage src={`https://cdn.discordapp.com/avatars/${match.host_id}/${match.host_avatar}.png`} />
-                                            <AvatarFallback className={
-                                                match.match_type === 'league' ? 'bg-yellow-950 text-yellow-500' :
-                                                    match.match_type === 'competitive' ? 'bg-blue-950 text-blue-200' :
-                                                        match.match_type === 'clan_war' ? 'bg-purple-950 text-purple-200' :
-                                                            ''
-                                            }>
-                                                {match.host_username?.[0]?.toUpperCase() || 'H'}
-                                            </AvatarFallback>
-                                        </Avatar>
-                                    </div>
-                                    <div className="flex flex-col">
+                                {/* Tournament/Clan War: Clan vs Clan Display */}
+                                {match.alpha_clan && match.bravo_clan ? (
+                                    <div className="flex items-center gap-2 flex-1">
                                         <div className="flex items-center gap-2">
-                                            <span className={`text-sm font-bold leading-none transition-colors ${match.match_type === 'league' ? 'text-foreground group-hover:text-yellow-400' :
-                                                match.match_type === 'competitive' ? 'text-white group-hover:text-blue-400' :
-                                                    match.match_type === 'clan_war' ? 'text-white group-hover:text-purple-400' :
-                                                        'text-foreground group-hover:text-primary'
-                                                }`}>
-                                                {match.host_username || 'Unknown Host'}
-                                            </span>
-                                            {match.match_type === 'clan_war' ? (
-                                                <Badge variant="secondary" className="bg-purple-500/20 text-purple-300 hover:bg-purple-500/30 text-[10px] h-4 px-1.5 border-none">CLAN</Badge>
-                                            ) : (
-                                                <LevelBadge elo={match.host_elo || 1000} className="scale-75 origin-left" />
-                                            )}
+                                            <Avatar className="h-8 w-8 border-2 border-purple-500/50">
+                                                <AvatarImage src={match.alpha_clan.logo_url} />
+                                                <AvatarFallback className="bg-purple-950 text-purple-200 text-xs">{match.alpha_clan.tag?.[0] || 'A'}</AvatarFallback>
+                                            </Avatar>
+                                            <div className="flex flex-col">
+                                                <span className="text-sm font-bold text-white leading-none">{match.alpha_clan.name}</span>
+                                                <span className="text-[10px] text-purple-300">[{match.alpha_clan.tag}]</span>
+                                            </div>
                                         </div>
-                                        <div className="flex items-center gap-1">
-                                            <span className="text-xs text-muted-foreground">{match.match_type === 'clan_war' ? 'Host (Captain)' : 'Host'}</span>
-                                            {match.min_rank && match.match_type === 'league' && (
-                                                <div className="flex items-center gap-1 bg-zinc-800/80 px-1.5 py-0.5 rounded-full border border-white/5">
-                                                    <img
-                                                        src={`/ranks/stats/${match.min_rank.toLowerCase()}_stat.png`}
-                                                        alt={match.min_rank}
-                                                        className="w-3 h-3 object-contain"
-                                                    />
-                                                    <span className={`text-[9px] font-bold uppercase ${match.min_rank === 'Gold' ? 'text-yellow-400' :
-                                                        match.min_rank === 'Silver' ? 'text-gray-300' :
-                                                            'text-[#cd7f32]'
-                                                        }`}>
-                                                        {match.min_rank}
-                                                    </span>
-                                                </div>
-                                            )}
+                                        <span className="text-xs font-bold text-yellow-500 mx-1">VS</span>
+                                        <div className="flex items-center gap-2">
+                                            <Avatar className="h-8 w-8 border-2 border-purple-500/50">
+                                                <AvatarImage src={match.bravo_clan.logo_url} />
+                                                <AvatarFallback className="bg-purple-950 text-purple-200 text-xs">{match.bravo_clan.tag?.[0] || 'B'}</AvatarFallback>
+                                            </Avatar>
+                                            <div className="flex flex-col">
+                                                <span className="text-sm font-bold text-white leading-none">{match.bravo_clan.name}</span>
+                                                <span className="text-[10px] text-purple-300">[{match.bravo_clan.tag}]</span>
+                                            </div>
                                         </div>
                                     </div>
-                                </div>
+                                ) : (
+                                    <div className="flex items-center gap-3">
+                                        <div className="relative">
+                                            <Avatar className={`h-10 w-10 border-2 ${match.match_type === 'league' ? 'border-yellow-500/30' :
+                                                match.match_type === 'competitive' ? 'border-blue-500/50' :
+                                                    match.match_type === 'clan_war' ? 'border-purple-500/50' :
+                                                        'border-border'
+                                                }`}>
+                                                <AvatarImage src={`https://cdn.discordapp.com/avatars/${match.host_id}/${match.host_avatar}.png`} />
+                                                <AvatarFallback className={
+                                                    match.match_type === 'league' ? 'bg-yellow-950 text-yellow-500' :
+                                                        match.match_type === 'competitive' ? 'bg-blue-950 text-blue-200' :
+                                                            match.match_type === 'clan_war' ? 'bg-purple-950 text-purple-200' :
+                                                                ''
+                                                }>
+                                                    {match.host_username?.[0]?.toUpperCase() || 'H'}
+                                                </AvatarFallback>
+                                            </Avatar>
+                                        </div>
+                                        <div className="flex flex-col">
+                                            <div className="flex items-center gap-2">
+                                                <span className={`text-sm font-bold leading-none transition-colors ${match.match_type === 'league' ? 'text-foreground group-hover:text-yellow-400' :
+                                                    match.match_type === 'competitive' ? 'text-white group-hover:text-blue-400' :
+                                                        match.match_type === 'clan_war' ? 'text-white group-hover:text-purple-400' :
+                                                            'text-foreground group-hover:text-primary'
+                                                    }`}>
+                                                    {match.host_username || 'Unknown Host'}
+                                                </span>
+                                                {match.match_type === 'clan_war' ? (
+                                                    <Badge variant="secondary" className="bg-purple-500/20 text-purple-300 hover:bg-purple-500/30 text-[10px] h-4 px-1.5 border-none">CLAN</Badge>
+                                                ) : (
+                                                    <LevelBadge elo={match.host_elo || 1000} className="scale-75 origin-left" />
+                                                )}
+                                            </div>
+                                            <div className="flex items-center gap-1">
+                                                <span className="text-xs text-muted-foreground">{match.match_type === 'clan_war' ? 'Host (Captain)' : 'Host'}</span>
+                                                {match.min_rank && match.match_type === 'league' && (
+                                                    <div className="flex items-center gap-1 bg-zinc-800/80 px-1.5 py-0.5 rounded-full border border-white/5">
+                                                        <img
+                                                            src={`/ranks/stats/${match.min_rank.toLowerCase()}_stat.png`}
+                                                            alt={match.min_rank}
+                                                            className="w-3 h-3 object-contain"
+                                                        />
+                                                        <span className={`text-[9px] font-bold uppercase ${match.min_rank === 'Gold' ? 'text-yellow-400' :
+                                                            match.min_rank === 'Silver' ? 'text-gray-300' :
+                                                                'text-[#cd7f32]'
+                                                            }`}>
+                                                            {match.min_rank}
+                                                        </span>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
                                 <Badge
                                     variant={match.status === 'in_progress' ? 'secondary' : 'default'}
                                     className={`${match.status === 'waiting' ? 'bg-green-500/10 text-green-500 hover:bg-green-500/20' : ''} uppercase text-[10px] tracking-wider font-bold`}

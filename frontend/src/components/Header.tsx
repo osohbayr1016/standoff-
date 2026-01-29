@@ -170,6 +170,17 @@ function Header({
         <Trophy className="mr-2 h-4 w-4 text-yellow-500" />
         TOURNAMENTS
       </Button>
+      <Button
+        variant={currentPage === "chat" ? "secondary" : "ghost"}
+        className={`justify-start ${mobile ? "w-full" : ""}`}
+        onClick={() => {
+          onNavigate("chat");
+          if (mobile) setIsOpen(false);
+        }}
+      >
+        <MessageCircle className="mr-2 h-4 w-4" />
+        CHAT
+      </Button>
       {(user?.role === 'moderator' || user?.role === 'admin') && (
         <Button
           variant={currentPage === "moderator" ? "destructive" : "ghost"}

@@ -65,6 +65,8 @@ app.get('/:id', async (c) => {
             winner_team: matches.winner_team,
             alpha_score: matches.alpha_score,
             bravo_score: matches.bravo_score,
+            alpha_clan_id: matches.alpha_clan_id, // Manual override
+            bravo_clan_id: matches.bravo_clan_id, // Manual override
             start_time: matches.created_at, // Using created_at as proxy for now
             // Get Clan Info for Teams
             // This is complex in a single query with our match_players structure.
@@ -77,33 +79,46 @@ app.get('/:id', async (c) => {
         // Hydrate matches with clan info
         // We need to know which clan is Alpha/Bravo for each match
         const hydratedMatches = await Promise.all(bracketMatches.map(async (m) => {
-            // Get players/teams for this match
-            // In a tournament match, all alpha players should be from Clan A, all bravo from Clan B.
-            // We just need one player from each team to identify the clan? 
-            // Better: We should probably store clan_id in match_players or matches for easier lookup?
-            // For now, let's query match_players -> clan_members -> clan
+            let alphaClanInfo = null;
+            let bravoClanInfo = null;
 
-            const participants = await db.select({
-                team: matchPlayers.team,
-                clan_id: clanMembers.clan_id,
-                clan_name: clans.name,
-                clan_tag: clans.tag,
-                clan_logo: clans.logo_url
-            })
-                .from(matchPlayers)
-                .innerJoin(clanMembers, eq(matchPlayers.player_id, clanMembers.user_id))
-                .innerJoin(clans, eq(clanMembers.clan_id, clans.id))
-                .where(eq(matchPlayers.match_id, m.id))
-                .groupBy(matchPlayers.team) // Distinct by team
-                .all();
+            // 1. Try manual override IDs (Direct lookup)
+            if (m.alpha_clan_id) {
+                const c = await db.select().from(clans).where(eq(clans.id, m.alpha_clan_id)).get();
+                if (c) alphaClanInfo = { id: c.id, name: c.name, tag: c.tag, logo: c.logo_url };
+            }
+            if (m.bravo_clan_id) {
+                const c = await db.select().from(clans).where(eq(clans.id, m.bravo_clan_id)).get();
+                if (c) bravoClanInfo = { id: c.id, name: c.name, tag: c.tag, logo: c.logo_url };
+            }
 
-            const alpha = participants.find(p => p.team === 'alpha');
-            const bravo = participants.find(p => p.team === 'bravo');
+            // 2. Fallback to match_players if not found (Legacy/Auto)
+            if (!alphaClanInfo || !bravoClanInfo) {
+                const participants = await db.select({
+                    team: matchPlayers.team,
+                    clan_id: clanMembers.clan_id,
+                    clan_name: clans.name,
+                    clan_tag: clans.tag,
+                    clan_logo: clans.logo_url
+                })
+                    .from(matchPlayers)
+                    .innerJoin(clanMembers, eq(matchPlayers.player_id, clanMembers.user_id))
+                    .innerJoin(clans, eq(clanMembers.clan_id, clans.id))
+                    .where(eq(matchPlayers.match_id, m.id))
+                    .groupBy(matchPlayers.team) // Distinct by team
+                    .all();
+
+                const alpha = participants.find(p => p.team === 'alpha');
+                const bravo = participants.find(p => p.team === 'bravo');
+
+                if (!alphaClanInfo && alpha) alphaClanInfo = { id: alpha.clan_id, name: alpha.clan_name, tag: alpha.clan_tag, logo: alpha.clan_logo };
+                if (!bravoClanInfo && bravo) bravoClanInfo = { id: bravo.clan_id, name: bravo.clan_name, tag: bravo.clan_tag, logo: bravo.clan_logo };
+            }
 
             return {
                 ...m,
-                alpha_clan: alpha ? { id: alpha.clan_id, name: alpha.clan_name, tag: alpha.clan_tag, logo: alpha.clan_logo } : null,
-                bravo_clan: bravo ? { id: bravo.clan_id, name: bravo.clan_name, tag: bravo.clan_tag, logo: bravo.clan_logo } : null,
+                alpha_clan: alphaClanInfo,
+                bravo_clan: bravoClanInfo,
             };
         }));
 

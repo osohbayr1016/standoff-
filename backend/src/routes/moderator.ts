@@ -748,6 +748,71 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
             console.error('Error updating clan Stats (non-fatal):', clanError);
         }
 
+        // 6. TOURNAMENT BRACKET ADVANCEMENT
+        if (match.tournament_id && match.tournament_round && match.bracket_match_id) {
+            try {
+                // Determine next match metrics
+                const nextRound = (match.tournament_round as number) + 1;
+                const nextBracketId = Math.ceil((match.bracket_match_id as number) / 2);
+                const nextTeamSide = (match.bracket_match_id as number) % 2 === 1 ? 'alpha' : 'bravo';
+
+                // Find existing next match
+                const nextMatch = await c.env.DB.prepare(
+                    'SELECT * FROM matches WHERE tournament_id = ? AND tournament_round = ? AND bracket_match_id = ?'
+                ).bind(match.tournament_id, nextRound, nextBracketId).first();
+
+                // Get Representative (Clan Leader)
+                let representativeId = null;
+                const winnerPlayer = playersList.find((p: any) => p.team === winnerTeam);
+
+                if (winnerPlayer) {
+                    const clanIdResult = await c.env.DB.prepare('SELECT clan_id FROM clan_members WHERE user_id = ?').bind(winnerPlayer.player_id).first<{ clan_id: string }>();
+                    if (clanIdResult) {
+                        const leader = await c.env.DB.prepare("SELECT user_id FROM clan_members WHERE clan_id = ? AND role IN ('leader', 'coleader') LIMIT 1").bind(clanIdResult.clan_id).first<{ user_id: string }>();
+                        representativeId = leader?.user_id;
+                    }
+                    if (!representativeId) representativeId = winnerPlayer.player_id; // Fallback
+                }
+
+                if (representativeId) {
+                    if (nextMatch) {
+                        // Update existing next match with this representative
+                        await c.env.DB.prepare(`
+                             INSERT OR IGNORE INTO match_players (match_id, player_id, team, is_captain)
+                             VALUES (?, ?, ?, 1)
+                         `).bind(nextMatch.id, representativeId, nextTeamSide).run();
+
+                        console.log(`Updated next match ${nextMatch.id} with winner`);
+                    } else {
+                        // Check if tournament continues (more than 1 match in current round)
+                        const currentRoundMatches = await c.env.DB.prepare("SELECT COUNT(*) as count FROM matches WHERE tournament_id = ? AND tournament_round = ?").bind(match.tournament_id, match.tournament_round).first<{ count: number }>();
+
+                        if (currentRoundMatches && currentRoundMatches.count > 1) {
+                            // Create Next Match
+                            const newMatchId = crypto.randomUUID();
+                            // Use raw SQL to bypass status constraints if needed, but here we just insert normally if valid
+                            await c.env.DB.prepare(`
+                                INSERT INTO matches (id, lobby_url, host_id, match_type, status, tournament_id, tournament_round, bracket_match_id, player_count, max_players)
+                                VALUES (?, ?, ?, 'clan_war', 'waiting', ?, ?, ?, 0, 10)
+                            `).bind(newMatchId, '#', representativeId, match.tournament_id, nextRound, nextBracketId).run();
+
+                            await c.env.DB.prepare(`
+                                 INSERT INTO match_players (match_id, player_id, team, is_captain)
+                                 VALUES (?, ?, ?, 1)
+                             `).bind(newMatchId, representativeId, nextTeamSide).run();
+
+                            console.log(`Created next bracket match: Round ${nextRound} Match ${nextBracketId}`);
+                        } else {
+                            console.log("Final match completed! Tournament winner determined.");
+                            await c.env.DB.prepare("UPDATE tournaments SET status = 'completed' WHERE id = ?").bind(match.tournament_id).run();
+                        }
+                    }
+                }
+            } catch (bracketError) {
+                console.error('Bracket advancement error:', bracketError);
+            }
+        }
+
         // Update match as completed
         // Include host_id in update to fix orphan matches
         await c.env.DB.prepare(`
@@ -921,6 +986,28 @@ moderatorRoutes.post('/tournaments/:id/start', async (c) => {
         // Shuffle & Seed
         const shuffled = participants.sort(() => Math.random() - 0.5);
 
+        // CLEANUP: Remove any existing matches for this tournament to prevent duplicates on retry
+        try {
+            // Get existing match IDs
+            const existMatches = await db.select({ id: matches.id }).from(matches).where(eq(matches.tournament_id, tournamentId)).all();
+            const existIds = existMatches.map(m => m.id);
+
+            if (existIds.length > 0) {
+                const placeholders = existIds.map(() => '?').join(',');
+                // Delete match_players
+                await c.env.DB.prepare(`DELETE FROM match_players WHERE match_id IN (${placeholders})`).bind(...existIds).run();
+                // Delete elo_history
+                await c.env.DB.prepare(`DELETE FROM elo_history WHERE match_id IN (${placeholders})`).bind(...existIds).run();
+                // Delete matches
+                await c.env.DB.prepare(`DELETE FROM matches WHERE id IN (${placeholders})`).bind(...existIds).run();
+                console.log(`Cleaned up ${existIds.length} existing matches before start.`);
+            }
+        } catch (cleanupErr) {
+            console.error('Cleanup existing matches error:', cleanupErr);
+            // Continue - might confuse bracket but better than failing completely? 
+            // Or fail? Best to log and continue to try.
+        }
+
         // Update seeds
         for (let i = 0; i < shuffled.length; i++) {
             await db.update(tournamentParticipants)
@@ -982,7 +1069,7 @@ moderatorRoutes.post('/tournaments/:id/start', async (c) => {
                 tournament_round: round,
                 bracket_match_id: bracketId,
                 next_match_id: nextMatchId,
-                match_type: 'clan_war',
+                match_type: 'cup',
                 host_id: tournament.id, // System hosted? Or use mod ID? Using tournament ID might fail FK if not player.
                 // We need a dummy host or the moderator who started it.
                 // Let's use the first admin/mod found or system default if possible.
@@ -1008,16 +1095,14 @@ moderatorRoutes.post('/tournaments/:id/start', async (c) => {
             const modId = c.req.header('X-User-Id');
             if (!modId) return c.json({ error: 'Moderator ID missing' }, 400);
 
-            await db.insert(matches).values({
-                id: mId,
-                tournament_id: tournamentId,
-                tournament_round: 1,
-                bracket_match_id: i + 1,
-                match_type: 'clan_war',
-                status: 'waiting',
-                host_id: modId, // The moderator who started it becomes Host
-                lobby_url: '#'
-            }).execute();
+            // Use the first team's leader as host (ensures host_id exists in players table)
+            const hostPlayerId = teamA ? (await getClanLeader(c.env, teamA.clan_id)) || modId : modId;
+
+            // Use raw SQL to bypass FK constraint on host_id
+            await c.env.DB.prepare(`
+                INSERT INTO matches (id, lobby_url, host_id, match_type, status, tournament_id, tournament_round, bracket_match_id, player_count, max_players)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 10)
+            `).bind(mId, '#', hostPlayerId, 'clan_war', 'waiting', tournamentId, 1, i + 1).run();
 
             // Add Players (We don't know players yet! Clans join as a group).
             // We need to insert generic placeholder participants? 
@@ -1056,8 +1141,60 @@ moderatorRoutes.post('/tournaments/:id/start', async (c) => {
         return c.json({ success: true });
 
     } catch (e: any) {
-        console.error(e);
-        return c.json({ error: 'Failed to start' }, 500);
+        console.error('Tournament start error:', e);
+        return c.json({ error: 'Failed to start', details: e.message || String(e) }, 500);
+    }
+});
+
+// DELETE /api/moderator/tournaments/:id - Delete tournament
+moderatorRoutes.delete('/tournaments/:id', async (c) => {
+    const tournamentId = c.req.param('id');
+    const db = drizzle(c.env.DB);
+
+    try {
+        // Check if tournament exists
+        const tournament = await db.select().from(tournaments).where(eq(tournaments.id, tournamentId)).get();
+        if (!tournament) {
+            return c.json({ error: 'Tournament not found' }, 404);
+        }
+
+        // Get all match IDs for this tournament
+        const tournamentMatches = await db.select({ id: matches.id })
+            .from(matches)
+            .where(eq(matches.tournament_id, tournamentId))
+            .all();
+
+        const matchIds = tournamentMatches.map(m => m.id);
+
+        // Delete match_players first (child records)
+        if (matchIds.length > 0) {
+            // Need to handle large lists or empty lists carefully
+            // Using raw SQL with placeholders for deletion
+            const placeholders = matchIds.map(() => '?').join(',');
+
+            // 1. Delete match_players
+            await c.env.DB.prepare(`DELETE FROM match_players WHERE match_id IN (${placeholders})`)
+                .bind(...matchIds).run();
+
+            // 2. Delete elo_history (referencing matches)
+            await c.env.DB.prepare(`DELETE FROM elo_history WHERE match_id IN (${placeholders})`)
+                .bind(...matchIds).run();
+        }
+
+        // Delete associated matches
+        await db.delete(matches).where(eq(matches.tournament_id, tournamentId)).execute();
+
+        // Delete tournament participants
+        await db.delete(tournamentParticipants).where(eq(tournamentParticipants.tournament_id, tournamentId)).execute();
+
+        // Delete the tournament itself
+        await db.delete(tournaments).where(eq(tournaments.id, tournamentId)).execute();
+
+        return c.json({ success: true, message: 'Tournament deleted successfully' });
+
+    } catch (e: any) {
+        console.error('Delete tournament error:', e);
+        return c.json({ error: 'Failed to delete tournament', details: e.message }, 500);
     }
 });
 
@@ -1660,6 +1797,89 @@ moderatorRoutes.get('/stats', async (c) => {
     }
 });
 
+// POST /api/moderator/matches/:id/force-update - Force update match details (admin tool)
+moderatorRoutes.post('/matches/:id/force-update', async (c) => {
+    const matchId = c.req.param('id');
+    const moderatorId = c.req.header('X-User-Id');
+    if (!moderatorId) return c.json({ success: false, error: 'Auth required' }, 401);
+
+    try {
+        const body = await c.req.json<{
+            status?: string;
+            alpha_clan_id?: string;
+            bravo_clan_id?: string;
+            winner_team?: 'alpha' | 'bravo' | null;
+            alpha_score?: number;
+            bravo_score?: number;
+        }>();
+
+        const updates: string[] = [];
+        const values: any[] = [];
+
+        if (body.status) { updates.push("status = ?"); values.push(body.status); }
+        if (body.alpha_clan_id !== undefined) { updates.push("alpha_clan_id = ?"); values.push(body.alpha_clan_id || null); }
+        if (body.bravo_clan_id !== undefined) { updates.push("bravo_clan_id = ?"); values.push(body.bravo_clan_id || null); }
+        if (body.winner_team !== undefined) { updates.push("winner_team = ?"); values.push(body.winner_team || null); }
+        if (body.alpha_score !== undefined) { updates.push("alpha_score = ?"); values.push(body.alpha_score); }
+        if (body.bravo_score !== undefined) { updates.push("bravo_score = ?"); values.push(body.bravo_score); }
+
+        updates.push("updated_at = datetime('now')");
+
+        if (updates.length === 1) { // Only updated_at
+            return c.json({ success: false, error: 'No fields to update' }, 400);
+        }
+
+        const query = `UPDATE matches SET ${updates.join(', ')} WHERE id = ?`;
+        values.push(matchId);
+
+        await c.env.DB.prepare(query).bind(...values).run();
+
+        // BRACKET ADVANCEMENT LOGIC
+        if ((body.status === 'completed' || updates.some(u => u.includes('status'))) && (body.winner_team || updates.some(u => u.includes('winner_team')))) {
+            const match = await c.env.DB.prepare('SELECT * FROM matches WHERE id = ?').bind(matchId).first();
+            // Ensure we have the latest status/winner if they were just updated, or fallback to body
+            const currentStatus = body.status || match?.status;
+            const currentWinner = body.winner_team || match?.winner_team;
+
+            if (match && match.tournament_id && match.tournament_round && match.bracket_match_id && currentStatus === 'completed' && currentWinner) {
+                const nextRound = Number(match.tournament_round) + 1;
+                const nextBracketId = Math.ceil(Number(match.bracket_match_id) / 2);
+                const isAlphaSide = Number(match.bracket_match_id) % 2 === 1;
+                const nextTeamSideColumn = isAlphaSide ? 'alpha_clan_id' : 'bravo_clan_id';
+
+                const winningClanId = currentWinner === 'alpha' ? (body.alpha_clan_id || match.alpha_clan_id) : (body.bravo_clan_id || match.bravo_clan_id);
+
+                if (winningClanId) {
+                    // Find next match
+                    const nextMatch = await c.env.DB.prepare(
+                        'SELECT * FROM matches WHERE tournament_id = ? AND tournament_round = ? AND bracket_match_id = ?'
+                    ).bind(match.tournament_id, nextRound, nextBracketId).first();
+
+                    if (nextMatch) {
+                        // Update existing
+                        await c.env.DB.prepare(`UPDATE matches SET ${nextTeamSideColumn} = ? WHERE id = ?`).bind(winningClanId, nextMatch.id).run();
+                        console.log(`Bracket Advance: Updated next match ${nextMatch.id} (${nextTeamSideColumn}) with clan ${winningClanId}`);
+                    } else {
+                        // Create next match
+                        const newMatchId = crypto.randomUUID();
+                        await c.env.DB.prepare(`
+                            INSERT INTO matches (id, lobby_url, host_id, match_type, status, tournament_id, tournament_round, bracket_match_id, ${nextTeamSideColumn}, created_at, updated_at)
+                            VALUES (?, ?, ?, 'clan_war', 'waiting', ?, ?, ?, ?, datetime('now'), datetime('now'))
+                         `).bind(newMatchId, '#', match.host_id, match.tournament_id, nextRound, nextBracketId, winningClanId).run();
+                        console.log(`Bracket Advance: Created next match ${newMatchId} for Round ${nextRound}`);
+                    }
+                }
+            }
+        }
+
+        await logModeratorAction(c, moderatorId, 'MATCH_FORCE_UPDATE', matchId, body);
+
+        return c.json({ success: true });
+    } catch (e: any) {
+        return c.json({ success: false, error: e.message }, 500);
+    }
+});
+
 // POST /api/moderator/matches/:id/cancel - Cancel a match
 moderatorRoutes.post('/matches/:id/cancel', async (c) => {
     const matchId = c.req.param('id');
@@ -2234,6 +2454,83 @@ moderatorRoutes.post('/vip-requests/:id/reject', async (c) => {
         });
     } catch (error: any) {
         console.error('Error rejecting VIP request:', error);
+        return c.json({ success: false, error: error.message }, 500);
+    }
+});
+
+// GET /api/moderator/vip-purchases - Get VIP purchase history with analytics
+moderatorRoutes.get('/vip-purchases', async (c) => {
+    const page = parseInt(c.req.query('page') || '1');
+    const limit = 50;
+    const offset = (page - 1) * limit;
+    const VIP_PRICE_LISTED = 10000; // Listed price in MNT
+    const VIP_PRICE_NET = 9900; // Net after 1% QPay fee
+
+    try {
+        // Get approved VIP requests (purchases)
+        const result = await c.env.DB.prepare(`
+            SELECT 
+                vr.id,
+                vr.user_id,
+                vr.discord_username,
+                vr.phone_number,
+                vr.screenshot_url,
+                vr.created_at as purchase_date,
+                vr.reviewed_at as approved_date,
+                vr.reviewed_by,
+                p.discord_avatar as user_avatar,
+                p.standoff_nickname,
+                p.is_vip,
+                p.vip_until,
+                reviewer.discord_username as reviewer_username
+            FROM vip_requests vr
+            LEFT JOIN players p ON vr.user_id = p.id
+            LEFT JOIN players reviewer ON vr.reviewed_by = reviewer.id
+            WHERE vr.status = 'approved'
+            ORDER BY vr.created_at DESC
+            LIMIT ? OFFSET ?
+        `).bind(limit, offset).all();
+
+        // Get total count
+        const countResult = await c.env.DB.prepare(
+            "SELECT COUNT(*) as count FROM vip_requests WHERE status = 'approved'"
+        ).first();
+
+        // Get stats
+        const statsResult = await c.env.DB.prepare(`
+            SELECT 
+                COUNT(*) as total_purchases,
+                COUNT(DISTINCT user_id) as unique_buyers,
+                (SELECT COUNT(*) FROM vip_requests WHERE status = 'approved' AND created_at >= datetime('now', '-30 days')) as last_30_days,
+                (SELECT COUNT(*) FROM vip_requests WHERE status = 'approved' AND created_at >= datetime('now', '-7 days')) as last_7_days
+            FROM vip_requests 
+            WHERE status = 'approved'
+        `).first();
+
+        const purchases = (result.results || []).map((p: any) => ({
+            ...p,
+            price: VIP_PRICE_NET,
+            price_listed: VIP_PRICE_LISTED,
+            payment_method: p.screenshot_url?.startsWith('QPAY:') ? 'QPay' : 'Bank Transfer'
+        }));
+
+        return c.json({
+            success: true,
+            purchases,
+            stats: {
+                total_purchases: statsResult?.total_purchases || 0,
+                unique_buyers: statsResult?.unique_buyers || 0,
+                total_revenue: ((statsResult?.total_purchases as number) || 0) * VIP_PRICE_NET,
+                last_30_days: statsResult?.last_30_days || 0,
+                last_7_days: statsResult?.last_7_days || 0,
+                vip_price_net: VIP_PRICE_NET,
+                vip_price_listed: VIP_PRICE_LISTED
+            },
+            page,
+            total: countResult?.count || 0
+        });
+    } catch (error: any) {
+        console.error('Error fetching VIP purchases:', error);
         return c.json({ success: false, error: error.message }, 500);
     }
 });

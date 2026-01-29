@@ -22,6 +22,20 @@
       "when": 1768651146406,
       "tag": "0002_tearful_jocasta",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1768801969720,
+      "tag": "0003_bent_richard_fisk",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1768803794265,
+      "tag": "0004_short_mariko_yashida",
+      "breakpoints": true
     }
   ]
 }
