@@ -41,6 +41,7 @@ async function getMatchPlayers(matchId: string, env: Env) {
                 p.discord_avatar,
                 p.standoff_nickname,
                 p.elo,
+                p.allies_elo,
                 p.role,
                 p.is_discord_member,
                 p.discord_id
@@ -63,7 +64,7 @@ async function validateMatchAction(
 ) {
     // 1. Fetch Player
     const player = await env.DB.prepare(
-        'SELECT id, discord_id, banned, is_vip, vip_until, elo, role, discord_roles FROM players WHERE id = ? OR discord_id = ?'
+        'SELECT id, discord_id, banned, is_vip, vip_until, elo, allies_elo, role, discord_roles FROM players WHERE id = ? OR discord_id = ?'
     ).bind(userId, userId).first();
 
     if (!player) return { allowed: false, error: 'Player not found', status: 404 };
@@ -141,6 +142,34 @@ async function validateMatchAction(
                     error: bonusMatches >= 2
                         ? 'Daily limit reached (including bonus matches). Upgrade to VIP for unlimited access.'
                         : 'Daily limit reached. Basic members can play 2 competitive matches per day. You can watch an AD to get +1 match (limited twice) or upgrade to VIP for unlimited access.',
+                    status: 403
+                };
+            }
+        }
+    }
+
+
+    // 4. Allies Restrictions (2v2)
+    if (matchType === 'allies') {
+        if (!isAdmin && !hasActiveVip) {
+            const today = new Date().toISOString().split('T')[0];
+
+            // Count completed matches
+            const countResult = await env.DB.prepare(`
+                SELECT COUNT(*) as count FROM matches m
+                JOIN match_players mp ON m.id = mp.match_id
+                WHERE (mp.player_id = ? OR mp.player_id = ?)
+                AND m.match_type = 'allies'
+                AND m.status = 'completed'
+                AND m.updated_at LIKE ?
+            `).bind(player.id, player.discord_id, `${today}%`).first<{ count: number }>();
+
+            const totalAllowed = 2; // Fixed limit of 2 for non-VIPs (no ad boost for allies yet)
+
+            if ((countResult?.count || 0) >= totalAllowed) {
+                return {
+                    allowed: false,
+                    error: 'Daily limit reached. Basic members can play 2 Allies matches per day. Upgrade to VIP for unlimited access.',
                     status: 403
                 };
             }
@@ -267,6 +296,7 @@ matchesRoutes.get('/', async (c) => {
                     p.discord_avatar,
                     p.standoff_nickname,
                     p.elo,
+                    p.allies_elo,
                     p.role,
                     p.is_discord_member,
                     p.discord_id
@@ -463,7 +493,7 @@ matchesRoutes.post('/', async (c) => {
             lobby_url: string;
             host_id: string;
             map_name?: string;
-            match_type?: 'casual' | 'league' | 'clan_lobby' | 'clan_war' | 'competitive';
+            match_type?: 'casual' | 'league' | 'clan_lobby' | 'clan_war' | 'competitive' | 'allies';
             max_players?: number;
         }>();
 
@@ -518,6 +548,10 @@ matchesRoutes.post('/', async (c) => {
                 maxPlayers = 10;
             }
             clanId = member.clan_id;
+        }
+
+        if (matchType === 'allies') {
+            maxPlayers = 4; // 2v2
         }
 
         // Check if host is already in an active match
@@ -727,7 +761,7 @@ matchesRoutes.post('/:id/join', async (c) => {
                     id: player.id,
                     username: player.discord_username || player.username || 'Unknown',
                     avatar: player.discord_avatar || player.avatar,
-                    elo: player.elo
+                    elo: match.match_type === 'allies' ? ((player as any).allies_elo || 1000) : player.elo
                 },
                 team: assignedTeam
             })
@@ -743,7 +777,7 @@ matchesRoutes.post('/:id/join', async (c) => {
 
         // Use DO's accurate count
         if (joinData.count >= maxPlayers && match.status === 'waiting' &&
-            (match.match_type === 'competitive' || match.match_type === 'league' || match.max_players === 2)) {
+            (match.match_type === 'competitive' || match.match_type === 'league' || match.match_type === 'allies' || match.max_players === 2)) {
             // AUTO-START MATCH
             await startMatchInternal(matchId, match.match_type as string, c.env);
         }

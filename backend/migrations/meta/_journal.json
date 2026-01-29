@@ -36,6 +36,13 @@
       "when": 1768803794265,
       "tag": "0004_short_mariko_yashida",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1769670991807,
+      "tag": "0005_bumpy_northstar",
+      "breakpoints": true
     }
   ]
 }

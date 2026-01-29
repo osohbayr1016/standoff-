@@ -39,7 +39,7 @@ interface Match {
     map_name?: string;
     current_players?: number;
     created_at: string;
-    match_type?: 'casual' | 'league' | 'clan_war' | 'competitive' | 'clan_lobby';
+    match_type?: 'casual' | 'league' | 'clan_war' | 'competitive' | 'clan_lobby' | 'allies';
     min_rank?: 'Bronze' | 'Silver' | 'Gold';
     host_elo?: number;
     clan_id?: string;
@@ -74,7 +74,7 @@ const MatchmakingPage: React.FC<MatchmakingPageProps> = ({ user, backendUrl, onV
     const [showCreateModal, setShowCreateModal] = useState(false);
     const [lobbyUrl, setLobbyUrl] = useState('');
     const [selectedMap, setSelectedMap] = useState<string | null>(null);
-    const [matchType, setMatchType] = useState<'casual' | 'league' | 'clan_war' | 'competitive'>('casual');
+    const [matchType, setMatchType] = useState<'casual' | 'league' | 'clan_war' | 'competitive' | 'allies'>('casual');
     const [, startTransition] = useTransition();
 
     const MAPS = [
@@ -95,7 +95,7 @@ const MatchmakingPage: React.FC<MatchmakingPageProps> = ({ user, backendUrl, onV
     const [errorDialogOpen, setErrorDialogOpen] = useState(false);
     const [errorMessage, setErrorMessage] = useState("");
     const [dailySlotsUsed, setDailySlotsUsed] = useState(0);
-    const [filterType, setFilterType] = useState<'all' | 'casual' | 'league' | 'competitive' | 'clan'>('all');
+    const [filterType, setFilterType] = useState<'all' | 'casual' | 'league' | 'competitive' | 'clan' | 'allies'>('all');
     const [myActiveMatch, setMyActiveMatch] = useState<Match | null>(null);
 
     // Sync targetMatchId from parent (e.g. Moderator Page deep link)
@@ -432,6 +432,7 @@ const MatchmakingPage: React.FC<MatchmakingPageProps> = ({ user, backendUrl, onV
                 {[
                     { id: 'all', label: 'All Lobbies', icon: Users },
                     { id: 'casual', label: 'Casual', icon: Gamepad2 },
+                    { id: 'allies', label: 'Allies (2v2)', icon: Users },
                     { id: 'league', label: 'League', icon: Trophy },
                     { id: 'competitive', label: 'Competitive', icon: Swords },
                     { id: 'clan', label: 'Clan Wars', icon: ShieldAlert },
@@ -518,13 +519,17 @@ const MatchmakingPage: React.FC<MatchmakingPageProps> = ({ user, backendUrl, onV
                                 backdrop-blur-sm transition-all cursor-pointer group overflow-hidden relative hover:shadow-xl
                                 ${match.match_type === 'league' ? 'bg-card/50 border-yellow-500/20 hover:border-yellow-500/50 hover:shadow-yellow-500/10' :
                                     match.match_type === 'competitive' ? 'bg-zinc-950/80 border-blue-500/20 hover:border-blue-500/50 hover:shadow-[0_0_20px_rgba(59,130,246,0.15)]' :
-                                        match.match_type === 'clan_war' ? 'bg-zinc-950/80 border-purple-500/20 hover:border-purple-500/50 hover:shadow-[0_0_20px_rgba(168,85,247,0.15)]' :
-                                            'bg-card/50 border-border/50 hover:border-primary/50 hover:shadow-primary/5'}
+                                        match.match_type === 'allies' ? 'bg-zinc-950/80 border-red-500/20 hover:border-red-500/50 hover:shadow-[0_0_20px_rgba(239,68,68,0.15)]' :
+                                            match.match_type === 'clan_war' ? 'bg-zinc-950/80 border-purple-500/20 hover:border-purple-500/50 hover:shadow-[0_0_20px_rgba(168,85,247,0.15)]' :
+                                                'bg-card/50 border-border/50 hover:border-primary/50 hover:shadow-primary/5'}
                             `}
                         >
                             {/* Special Effects based on type */}
                             {match.match_type === 'competitive' && (
                                 <div className="absolute top-0 right-0 w-24 h-24 bg-blue-500/10 blur-3xl rounded-full -mr-12 -mt-12 pointer-events-none" />
+                            )}
+                            {match.match_type === 'allies' && (
+                                <div className="absolute top-0 right-0 w-24 h-24 bg-red-500/10 blur-3xl rounded-full -mr-12 -mt-12 pointer-events-none" />
                             )}
                             {match.match_type === 'clan_war' && (
                                 <div className="absolute top-0 right-0 w-24 h-24 bg-purple-500/10 blur-3xl rounded-full -mr-12 -mt-12 pointer-events-none" />
@@ -535,7 +540,7 @@ const MatchmakingPage: React.FC<MatchmakingPageProps> = ({ user, backendUrl, onV
                                 <div className="absolute inset-0 z-0 opacity-20 group-hover:opacity-40 transition-opacity">
                                     <img
                                         src={MAPS.find(m => m.name === match.map_name)?.image || `/maps/thumbnails/${match.map_name?.toLowerCase()}.webp`}
-                                        className={`w-full h-full object-cover grayscale ${match.match_type === 'competitive' || match.match_type === 'clan_war' ? 'mix-blend-overlay' : ''}`}
+                                        className={`w-full h-full object-cover grayscale ${match.match_type === 'competitive' || match.match_type === 'clan_war' || match.match_type === 'allies' ? 'mix-blend-overlay' : ''}`}
                                         onError={(e) => {
                                             // Fallback to original if thumbnail fails (or solid color)
                                             e.currentTarget.style.display = 'none';
@@ -579,15 +584,17 @@ const MatchmakingPage: React.FC<MatchmakingPageProps> = ({ user, backendUrl, onV
                                         <div className="relative">
                                             <Avatar className={`h-10 w-10 border-2 ${match.match_type === 'league' ? 'border-yellow-500/30' :
                                                 match.match_type === 'competitive' ? 'border-blue-500/50' :
-                                                    match.match_type === 'clan_war' ? 'border-purple-500/50' :
-                                                        'border-border'
+                                                    match.match_type === 'allies' ? 'border-red-500/50' :
+                                                        match.match_type === 'clan_war' ? 'border-purple-500/50' :
+                                                            'border-border'
                                                 }`}>
                                                 <AvatarImage src={`https://cdn.discordapp.com/avatars/${match.host_id}/${match.host_avatar}.png`} />
                                                 <AvatarFallback className={
                                                     match.match_type === 'league' ? 'bg-yellow-950 text-yellow-500' :
                                                         match.match_type === 'competitive' ? 'bg-blue-950 text-blue-200' :
-                                                            match.match_type === 'clan_war' ? 'bg-purple-950 text-purple-200' :
-                                                                ''
+                                                            match.match_type === 'allies' ? 'bg-red-950 text-red-200' :
+                                                                match.match_type === 'clan_war' ? 'bg-purple-950 text-purple-200' :
+                                                                    ''
                                                 }>
                                                     {match.host_username?.[0]?.toUpperCase() || 'H'}
                                                 </AvatarFallback>
@@ -597,8 +604,9 @@ const MatchmakingPage: React.FC<MatchmakingPageProps> = ({ user, backendUrl, onV
                                             <div className="flex items-center gap-2">
                                                 <span className={`text-sm font-bold leading-none transition-colors ${match.match_type === 'league' ? 'text-foreground group-hover:text-yellow-400' :
                                                     match.match_type === 'competitive' ? 'text-white group-hover:text-blue-400' :
-                                                        match.match_type === 'clan_war' ? 'text-white group-hover:text-purple-400' :
-                                                            'text-foreground group-hover:text-primary'
+                                                        match.match_type === 'allies' ? 'text-white group-hover:text-red-400' :
+                                                            match.match_type === 'clan_war' ? 'text-white group-hover:text-purple-400' :
+                                                                'text-foreground group-hover:text-primary'
                                                     }`}>
                                                     {match.host_username || 'Unknown Host'}
                                                 </span>
@@ -647,8 +655,9 @@ const MatchmakingPage: React.FC<MatchmakingPageProps> = ({ user, backendUrl, onV
                                         <span className={match.current_players === match.max_players ? (
                                             match.match_type === 'league' ? "" :
                                                 match.match_type === 'competitive' ? "text-blue-400" :
-                                                    match.match_type === 'clan_war' ? "text-purple-400" :
-                                                        ""
+                                                    match.match_type === 'allies' ? "text-red-400" :
+                                                        match.match_type === 'clan_war' ? "text-purple-400" :
+                                                            ""
                                         ) : ""}>
                                             {match.current_players || match.player_count}
                                         </span>
@@ -672,8 +681,9 @@ const MatchmakingPage: React.FC<MatchmakingPageProps> = ({ user, backendUrl, onV
                                         <Button
                                             className={`w-full flex-1 text-white border-none font-bold ${match.match_type === 'league' ? 'bg-yellow-600 hover:bg-yellow-700' :
                                                 match.match_type === 'competitive' ? 'bg-blue-600 hover:bg-blue-700' :
-                                                    match.match_type === 'clan_war' ? 'bg-purple-600 hover:bg-purple-700' :
-                                                        'bg-primary hover:bg-primary/90'
+                                                    match.match_type === 'allies' ? 'bg-red-600 hover:bg-red-700' :
+                                                        match.match_type === 'clan_war' ? 'bg-purple-600 hover:bg-purple-700' :
+                                                            'bg-primary hover:bg-primary/90'
                                                 }`}
                                             onClick={(e) => { e.stopPropagation(); handleStartMatch(match.id); }}
                                             disabled={(match.current_players || match.player_count) < 10 || processingId === match.id}
@@ -693,8 +703,9 @@ const MatchmakingPage: React.FC<MatchmakingPageProps> = ({ user, backendUrl, onV
                                     <Button
                                         className={`w-full transition-all font-bold active:scale-95 group ${match.match_type === 'league' ? 'bg-white/5 hover:bg-yellow-500 hover:text-black border border-yellow-500/20' :
                                             match.match_type === 'competitive' ? 'bg-blue-500/10 hover:bg-blue-500 hover:text-white border border-blue-500/30' :
-                                                match.match_type === 'clan_war' ? 'bg-purple-500/10 hover:bg-purple-500 hover:text-white border border-purple-500/30' :
-                                                    'bg-white/5 hover:bg-primary hover:text-white border border-border/50'
+                                                match.match_type === 'allies' ? 'bg-red-500/10 hover:bg-red-500 hover:text-white border border-red-500/30' :
+                                                    match.match_type === 'clan_war' ? 'bg-purple-500/10 hover:bg-purple-500 hover:text-white border border-purple-500/30' :
+                                                        'bg-white/5 hover:bg-primary hover:text-white border border-border/50'
                                             }`}
                                         onClick={(e) => { e.stopPropagation(); handleJoinLobby(match.id); }}
                                         disabled={(match.current_players || match.player_count) >= match.max_players || processingId === match.id}
@@ -705,8 +716,9 @@ const MatchmakingPage: React.FC<MatchmakingPageProps> = ({ user, backendUrl, onV
                                             (match.current_players || match.player_count) >= match.max_players ? 'Lobby Full' : (
                                                 <span className="flex items-center gap-2">
                                                     {match.match_type === 'clan_war' ? 'Join Clan War' :
-                                                        match.match_type === 'league' ? 'Join League Match' : 'Join Match'}
-                                                    {(match.match_type === 'competitive' || match.match_type === 'clan_war') && (
+                                                        match.match_type === 'allies' ? 'Join Allies' :
+                                                            match.match_type === 'league' ? 'Join League Match' : 'Join Match'}
+                                                    {(match.match_type === 'competitive' || match.match_type === 'clan_war' || match.match_type === 'allies') && (
                                                         <Swords className="w-3 h-3 opacity-50 group-hover:opacity-100" />
                                                     )}
                                                 </span>
@@ -779,6 +791,15 @@ const MatchmakingPage: React.FC<MatchmakingPageProps> = ({ user, backendUrl, onV
                                                 borderColor: 'border-blue-500',
                                                 bgGradient: 'from-blue-500/20 via-blue-500/5 to-transparent',
                                                 description: 'Ranked'
+                                            },
+                                            {
+                                                id: 'allies',
+                                                label: 'Allies (2v2)',
+                                                icon: Users,
+                                                color: 'text-red-500',
+                                                borderColor: 'border-red-500',
+                                                bgGradient: 'from-red-500/20 via-red-500/5 to-transparent',
+                                                description: '2v2 Ranked'
                                             },
                                             {
                                                 id: 'league',

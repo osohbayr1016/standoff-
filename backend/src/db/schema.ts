@@ -8,6 +8,7 @@ export const players = sqliteTable('players', {
     discord_avatar: text('discord_avatar'),
     standoff_nickname: text('standoff_nickname').unique(),
     elo: integer('elo').default(1000).notNull(),
+    allies_elo: integer('allies_elo').default(1000).notNull(),
     wins: integer('wins').default(0).notNull(),
     losses: integer('losses').default(0).notNull(),
     created_at: text('created_at').default('CURRENT_TIMESTAMP'),
