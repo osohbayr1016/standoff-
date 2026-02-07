@@ -9,7 +9,7 @@ import React from 'react';
 let fontData: ArrayBuffer | null = null;
 async function getFontData() {
     if (fontData) return fontData;
-    const url = 'https://raw.githubusercontent.com/google/fonts/main/ofl/roboto/Roboto-Bold.ttf';
+    const url = 'https://raw.githubusercontent.com/shuding/satori/main/playground/public/Roboto-Bold.ttf';
     console.log(`fetching font from ${url}`);
     const response = await fetch(url);
     if (!response.ok) {
