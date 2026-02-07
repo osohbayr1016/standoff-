@@ -9,8 +9,14 @@ import React from 'react';
 let fontData: ArrayBuffer | null = null;
 async function getFontData() {
     if (fontData) return fontData;
-    const response = await fetch('https://github.com/google/fonts/raw/main/ofl/roboto/Roboto-Bold.ttf');
+    const url = 'https://raw.githubusercontent.com/google/fonts/main/ofl/roboto/Roboto-Bold.ttf';
+    console.log(`fetching font from ${url}`);
+    const response = await fetch(url);
+    if (!response.ok) {
+        throw new Error(`Failed to fetch font: ${response.status} ${response.statusText}`);
+    }
     fontData = await response.arrayBuffer();
+    console.log(`Font fetched, size: ${fontData.byteLength}`);
     return fontData;
 }
 
