@@ -95,7 +95,7 @@ export const profileCommand = {
                     // Top row: Avatar + Name/Rank
                     React.createElement('div', { key: 'header', style: { display: 'flex', alignItems: 'center', gap: '24px' } }, [
                         // Avatar with glow
-                        React.createElement('div', { key: 'avatar-wrap', style: { position: 'relative' } }, [
+                        React.createElement('div', { key: 'avatar-wrap', style: { display: 'flex', position: 'relative' } }, [
                             React.createElement('img', {
                                 key: 'avatar',
                                 src: `https://cdn.discordapp.com/avatars/${profile.discord_id}/${profile.discord_avatar}.png`,
