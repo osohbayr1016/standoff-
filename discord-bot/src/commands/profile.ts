@@ -5,18 +5,31 @@ import satori from 'satori';
 import { Resvg } from '@resvg/resvg-js';
 import React from 'react';
 
-// Fetch font once
-let fontData: ArrayBuffer | null = null;
-async function getFontData() {
+import fs from 'fs';
+import path from 'path';
+
+// Load font once
+let fontData: Buffer | null = null;
+function getFontData() {
     if (fontData) return fontData;
-    const url = 'https://raw.githubusercontent.com/shuding/satori/main/playground/public/Roboto-Bold.ttf';
-    console.log(`fetching font from ${url}`);
-    const response = await fetch(url);
-    if (!response.ok) {
-        throw new Error(`Failed to fetch font: ${response.status} ${response.statusText}`);
+
+    try {
+        const fontPath = path.join(process.cwd(), 'fonts', 'Roboto-Bold.ttf');
+        console.log(`Loading font from ${fontPath}`);
+        if (fs.existsSync(fontPath)) {
+            fontData = fs.readFileSync(fontPath);
+            console.log(`Font loaded, size: ${fontData.byteLength}`);
+        } else {
+            console.error(`Font file not found at ${fontPath}`);
+            // Fallback to fetch if local file missing? No, let's fail loud or try fetch.
+            // But we want robustness.
+            throw new Error(`Font file missing: ${fontPath}`);
+        }
+    } catch (err) {
+        console.error('Error loading font:', err);
+        throw err;
     }
-    fontData = await response.arrayBuffer();
-    console.log(`Font fetched, size: ${fontData.byteLength}`);
+
     return fontData;
 }
 
@@ -42,7 +55,8 @@ export const profileCommand = {
                 return;
             }
 
-            const font = await getFontData();
+            const font = getFontData();
+            if (!font) throw new Error('Font not loaded');
 
             const element = React.createElement(
                 'div',
