@@ -127,7 +127,7 @@ export const profileCommand = {
                                 isVIP ? React.createElement('span', {
                                     key: 'vip',
                                     style: {
-                                        backgroundColor: '#ffd700',
+                                        backgroundColor: '#beb26dff',
                                         color: '#000',
                                         padding: '4px 12px',
                                         borderRadius: '4px',
