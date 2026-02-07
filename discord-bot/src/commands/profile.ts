@@ -58,6 +58,23 @@ export const profileCommand = {
             const font = getFontData();
             if (!font) throw new Error('Font not loaded');
 
+            // Fetch leaderboard rank
+            const leaderboardRank = await backend.fetchLeaderboardRank(profile.discord_id);
+
+            // Extract clan info
+            const clan = profile.clan || null;
+
+            // Rank colors and names
+            const getRankInfo = (elo: number) => {
+                if (elo >= 2000) return { name: 'DIAMOND', color: '#b9f2ff', bgColor: '#0d4f5f' };
+                if (elo >= 1600) return { name: 'GOLD', color: '#ffd700', bgColor: '#5f4d0d' };
+                if (elo >= 1200) return { name: 'SILVER', color: '#c0c0c0', bgColor: '#3f3f3f' };
+                return { name: 'BRONZE', color: '#cd7f32', bgColor: '#4a3520' };
+            };
+
+            const compRank = getRankInfo(profile.elo);
+            const isVIP = profile.is_vip || profile.role === 'vip' || profile.role === 'admin';
+
             const element = React.createElement(
                 'div',
                 {
@@ -67,34 +84,120 @@ export const profileCommand = {
                         width: '100%',
                         backgroundColor: '#0a0a0a',
                         color: 'white',
-                        padding: '40px',
+                        padding: '30px',
                         flexDirection: 'column',
-                        justifyContent: 'space-between',
-                        backgroundImage: 'linear-gradient(135deg, #1a1c20 0%, #0a0a0a 100%)',
+                        backgroundImage: 'linear-gradient(135deg, #1a1c20 0%, #0a0a0a 50%, #1a0a0a 100%)',
                         fontFamily: 'Roboto',
+                        position: 'relative',
                     },
                 },
                 [
-                    React.createElement('div', { key: 'header', style: { display: 'flex', alignItems: 'center', gap: '20px' } }, [
-                        React.createElement('img', {
-                            key: 'avatar',
-                            src: `https://cdn.discordapp.com/avatars/${profile.discord_id}/${profile.discord_avatar}.png`,
-                            style: { width: '120px', height: '120px', borderRadius: '50%', border: '4px solid #f97316' }
-                        }),
-                        React.createElement('div', { key: 'info', style: { display: 'flex', flexDirection: 'column' } }, [
-                            React.createElement('span', { key: 'nick', style: { fontSize: '48px', fontWeight: 'bold' } }, profile.standoff_nickname || 'Unknown'),
-                            React.createElement('span', { key: 'rank', style: { fontSize: '24px', color: '#aaa' } }, `Rank: ${profile.elo >= 1600 ? 'GOLD' : profile.elo >= 1200 ? 'SILVER' : 'BRONZE'}`)
+                    // Top row: Avatar + Name/Rank
+                    React.createElement('div', { key: 'header', style: { display: 'flex', alignItems: 'center', gap: '24px' } }, [
+                        // Avatar with glow
+                        React.createElement('div', { key: 'avatar-wrap', style: { position: 'relative' } }, [
+                            React.createElement('img', {
+                                key: 'avatar',
+                                src: `https://cdn.discordapp.com/avatars/${profile.discord_id}/${profile.discord_avatar}.png`,
+                                style: {
+                                    width: '100px',
+                                    height: '100px',
+                                    borderRadius: '50%',
+                                    border: `4px solid ${compRank.color}`,
+                                    boxShadow: `0 0 20px ${compRank.color}40`
+                                }
+                            }),
+                        ]),
+                        // Name and badges
+                        React.createElement('div', { key: 'info', style: { display: 'flex', flexDirection: 'column', gap: '8px' } }, [
+                            // Name row with clan tag and VIP badge
+                            React.createElement('div', { key: 'name-row', style: { display: 'flex', alignItems: 'center', gap: '12px' } }, [
+                                // Clan tag (if exists)
+                                clan ? React.createElement('span', {
+                                    key: 'clan-tag',
+                                    style: {
+                                        color: '#8b5cf6',
+                                        fontSize: '28px',
+                                        fontWeight: 'bold'
+                                    }
+                                }, `[${clan.tag}]`) : null,
+                                // Nickname
+                                React.createElement('span', { key: 'nick', style: { fontSize: '36px', fontWeight: 'bold' } }, profile.standoff_nickname || 'Unknown'),
+                                // VIP badge
+                                isVIP ? React.createElement('span', {
+                                    key: 'vip',
+                                    style: {
+                                        backgroundColor: '#ffd700',
+                                        color: '#000',
+                                        padding: '4px 12px',
+                                        borderRadius: '4px',
+                                        fontSize: '14px',
+                                        fontWeight: 'bold'
+                                    }
+                                }, '⭐ VIP') : null
+                            ].filter(Boolean)),
+                            // Rank and Leaderboard row
+                            React.createElement('div', { key: 'rank-row', style: { display: 'flex', alignItems: 'center', gap: '12px' } }, [
+                                // Rank badge
+                                React.createElement('div', {
+                                    key: 'rank-badge',
+                                    style: {
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '8px',
+                                        backgroundColor: compRank.bgColor,
+                                        padding: '6px 16px',
+                                        borderRadius: '6px'
+                                    }
+                                }, [
+                                    React.createElement('span', { key: 'rank-icon', style: { fontSize: '18px' } }, '🏆'),
+                                    React.createElement('span', { key: 'rank-text', style: { color: compRank.color, fontSize: '18px', fontWeight: 'bold' } }, compRank.name)
+                                ]),
+                                // Leaderboard rank (if exists)
+                                leaderboardRank ? React.createElement('div', {
+                                    key: 'lb-rank',
+                                    style: {
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '6px',
+                                        backgroundColor: '#1e1e23',
+                                        padding: '6px 14px',
+                                        borderRadius: '6px',
+                                        border: '1px solid #3f3f46'
+                                    }
+                                }, [
+                                    React.createElement('span', { key: 'lb-icon', style: { fontSize: '16px' } }, '📊'),
+                                    React.createElement('span', { key: 'lb-text', style: { color: '#a1a1aa', fontSize: '16px' } }, `#${leaderboardRank}`)
+                                ]) : null
+                            ].filter(Boolean))
                         ])
                     ]),
-                    React.createElement('div', { key: 'stats', style: { display: 'flex', gap: '40px', marginTop: '40px' } }, [
-                        React.createElement('div', { key: 'comp', style: { display: 'flex', flexDirection: 'column', backgroundColor: '#222', padding: '20px', borderRadius: '10px', flex: 1, borderLeft: '4px solid #f97316' } }, [
-                            React.createElement('span', { key: 'comp-label', style: { color: '#888', fontSize: '18px', textTransform: 'uppercase' } }, 'Competitive Elo'),
-                            React.createElement('span', { key: 'comp-val', style: { fontSize: '42px', fontWeight: 'bold' } }, String(profile.elo))
+                    // Stats row
+                    React.createElement('div', { key: 'stats', style: { display: 'flex', gap: '20px', marginTop: '24px' } }, [
+                        // Competitive ELO
+                        React.createElement('div', { key: 'comp', style: { display: 'flex', flexDirection: 'column', backgroundColor: '#18181b', padding: '16px', borderRadius: '12px', flex: 1, borderLeft: `4px solid ${compRank.color}` } }, [
+                            React.createElement('span', { key: 'comp-label', style: { color: '#71717a', fontSize: '14px', textTransform: 'uppercase', marginBottom: '4px' } }, 'Competitive'),
+                            React.createElement('span', { key: 'comp-val', style: { fontSize: '32px', fontWeight: 'bold', color: compRank.color } }, String(profile.elo)),
+                            React.createElement('div', { key: 'comp-wl', style: { display: 'flex', gap: '12px', marginTop: '8px' } }, [
+                                React.createElement('span', { key: 'wins', style: { color: '#22c55e', fontSize: '14px' } }, `W: ${profile.wins || 0}`),
+                                React.createElement('span', { key: 'losses', style: { color: '#ef4444', fontSize: '14px' } }, `L: ${profile.losses || 0}`)
+                            ])
                         ]),
-                        React.createElement('div', { key: 'allies', style: { display: 'flex', flexDirection: 'column', backgroundColor: '#222', padding: '20px', borderRadius: '10px', flex: 1, borderLeft: '4px solid #f97316' } }, [
-                            React.createElement('span', { key: 'allies-label', style: { color: '#888', fontSize: '18px', textTransform: 'uppercase' } }, 'Allies Elo'),
-                            React.createElement('span', { key: 'allies-val', style: { fontSize: '42px', fontWeight: 'bold' } }, String(profile.allies_elo || 1000))
+                        // Allies ELO
+                        React.createElement('div', { key: 'allies', style: { display: 'flex', flexDirection: 'column', backgroundColor: '#18181b', padding: '16px', borderRadius: '12px', flex: 1, borderLeft: '4px solid #8b5cf6' } }, [
+                            React.createElement('span', { key: 'allies-label', style: { color: '#71717a', fontSize: '14px', textTransform: 'uppercase', marginBottom: '4px' } }, 'Allies'),
+                            React.createElement('span', { key: 'allies-val', style: { fontSize: '32px', fontWeight: 'bold', color: '#8b5cf6' } }, String(profile.allies_elo || 1000)),
+                            React.createElement('div', { key: 'allies-wl', style: { display: 'flex', gap: '12px', marginTop: '8px' } }, [
+                                React.createElement('span', { key: 'a-wins', style: { color: '#22c55e', fontSize: '14px' } }, `W: ${profile.allies_wins || 0}`),
+                                React.createElement('span', { key: 'a-losses', style: { color: '#ef4444', fontSize: '14px' } }, `L: ${profile.allies_losses || 0}`)
+                            ])
                         ]),
+                        // Matches played
+                        React.createElement('div', { key: 'matches', style: { display: 'flex', flexDirection: 'column', backgroundColor: '#18181b', padding: '16px', borderRadius: '12px', flex: 1, borderLeft: '4px solid #f97316' } }, [
+                            React.createElement('span', { key: 'matches-label', style: { color: '#71717a', fontSize: '14px', textTransform: 'uppercase', marginBottom: '4px' } }, 'Total Matches'),
+                            React.createElement('span', { key: 'matches-val', style: { fontSize: '32px', fontWeight: 'bold', color: '#f97316' } }, String((profile.wins || 0) + (profile.losses || 0) + (profile.allies_wins || 0) + (profile.allies_losses || 0))),
+                            React.createElement('span', { key: 'matches-sub', style: { color: '#71717a', fontSize: '14px', marginTop: '8px' } }, 'Played')
+                        ])
                     ])
                 ]
             );

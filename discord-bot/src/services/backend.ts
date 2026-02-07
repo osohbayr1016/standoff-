@@ -163,6 +163,24 @@ export class BackendService {
         return null;
     }
 
+    async fetchLeaderboardRank(discordId: string): Promise<number | null> {
+        try {
+            const normalizedUrl = this.backendUrl.endsWith('/') ? this.backendUrl.slice(0, -1) : this.backendUrl;
+            const response = await fetch(`${normalizedUrl}/api/leaderboard?type=competitive&limit=500`);
+            if (response.ok) {
+                const data = await response.json() as { players?: any[] };
+                const players = data.players || [];
+                const index = players.findIndex((p: any) => p.discord_id === discordId);
+                if (index !== -1) {
+                    return index + 1; // 1-indexed rank
+                }
+            }
+        } catch (error) {
+            console.error(`❌ Error fetching leaderboard rank for ${discordId}:`, error);
+        }
+        return null;
+    }
+
     // Check moderator status directly
     async checkModerator(discordId: string): Promise<boolean> {
         if (!this.moderatorService) {
