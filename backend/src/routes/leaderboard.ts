@@ -52,6 +52,9 @@ export function setupLeaderboardRoutes(app: Hono<any>) {
                     elo: player.elo,
                     wins: player.wins,
                     losses: player.losses,
+                    allies_elo: player.allies_elo,
+                    allies_wins: player.allies_wins,
+                    allies_losses: player.allies_losses,
                     total_matches: totalPlayerMatches,
                     win_rate: Math.round(winRate * 10) / 10, // Round to 1 decimal
                     is_discord_member: player.is_discord_member === 1,

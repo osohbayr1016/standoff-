@@ -44,6 +44,7 @@ export default function MatchesTab({ backendUrl, onViewLobby, userId }: MatchesT
     const [reviewBravoScore, setReviewBravoScore] = useState("");
     const [reviewWinner, setReviewWinner] = useState("alpha");
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [isEditingResult, setIsEditingResult] = useState(false);
 
     useEffect(() => {
         if (matchesCategory === "active") fetchActiveMatches();
@@ -162,6 +163,8 @@ export default function MatchesTab({ backendUrl, onViewLobby, userId }: MatchesT
 
     const handleEditResultSubmit = async () => {
         if (!editingMatch || !editAlphaScore || !editBravoScore) return;
+        if (isEditingResult) return;
+        setIsEditingResult(true);
 
         try {
             const res = await fetch(`${backendUrl}/api/moderator/matches/${editingMatch.id}/edit-result`, {
@@ -178,15 +181,20 @@ export default function MatchesTab({ backendUrl, onViewLobby, userId }: MatchesT
                 })
             });
 
-            if (res.ok) {
-                toast.success("Match result updated");
+            const data = await res.json();
+
+            if (res.ok && data.success) {
+                toast.success("Match result updated successfully");
                 setIsEditResultModalOpen(false);
                 fetchRecentMatches();
             } else {
-                toast.error("Failed to update result");
+                toast.error(data.error || "Failed to update result");
             }
         } catch (error) {
-            toast.error("Error updating result");
+            console.error("Edit result error:", error);
+            toast.error("Network error while updating result");
+        } finally {
+            setIsEditingResult(false);
         }
     };
 
@@ -267,6 +275,7 @@ export default function MatchesTab({ backendUrl, onViewLobby, userId }: MatchesT
                         <SelectContent className="bg-[#1e1f22] border-white/10 text-white">
                             <SelectItem value="all">All Types</SelectItem>
                             <SelectItem value="competitive">Competitive</SelectItem>
+                            <SelectItem value="allies">Allies (2v2)</SelectItem>
                             <SelectItem value="league">League</SelectItem>
                             <SelectItem value="clan_war">Clan War</SelectItem>
                             <SelectItem value="casual">Casual</SelectItem>
@@ -322,8 +331,9 @@ export default function MatchesTab({ backendUrl, onViewLobby, userId }: MatchesT
                                             <Badge variant="outline" className={
                                                 match.match_type === 'league' ? "bg-yellow-500/10 text-yellow-500 border-yellow-500/20" :
                                                     match.match_type === 'competitive' ? "bg-blue-500/10 text-blue-500 border-blue-500/20" :
-                                                        match.match_type === 'clan_war' ? "bg-red-500/10 text-red-500 border-red-500/20" :
-                                                            "text-zinc-400 border-zinc-700 bg-zinc-900/50"
+                                                        match.match_type === 'allies' ? "bg-red-500/10 text-red-500 border-red-500/20" :
+                                                            match.match_type === 'clan_war' ? "bg-red-500/10 text-red-500 border-red-500/20" :
+                                                                "text-zinc-400 border-zinc-700 bg-zinc-900/50"
                                             }>
                                                 {match.match_type.replace('_', ' ')}
                                             </Badge>
@@ -424,7 +434,26 @@ export default function MatchesTab({ backendUrl, onViewLobby, userId }: MatchesT
                                                         <AvatarFallback className="text-[10px]">{p.discord_username?.substring(0, 2)}</AvatarFallback>
                                                     </Avatar>
                                                     <div className="overflow-hidden">
-                                                        <div className="text-white font-medium truncate text-xs" title={p.discord_username}>{p.discord_username}</div>
+                                                        <div className="text-white font-medium truncate text-xs" title={p.discord_username}>
+                                                            {p.discord_username}
+                                                            {/* Rank Badge */}
+                                                            {(matchTypeFilter === 'allies' || reviewingMatch.match_type === 'allies' || reviewingMatch.match_type === 'competitive' || reviewingMatch.match_type === 'league') && (
+                                                                <span className={`ml-2 text-[10px] px-1 rounded border ${(() => {
+                                                                    const elo = reviewingMatch.match_type === 'allies' ? (p.allies_elo ?? 1000) : p.elo;
+                                                                    if (elo >= 1600) return "bg-yellow-500/20 text-yellow-500 border-yellow-500/30";
+                                                                    if (elo >= 1200) return "bg-zinc-400/20 text-zinc-300 border-zinc-400/30";
+                                                                    return "bg-orange-800/20 text-orange-700 border-orange-800/30";
+                                                                })()
+                                                                    }`}>
+                                                                    {(() => {
+                                                                        const elo = reviewingMatch.match_type === 'allies' ? (p.allies_elo ?? 1000) : p.elo;
+                                                                        if (elo >= 1600) return "Gold";
+                                                                        if (elo >= 1200) return "Silver";
+                                                                        return "Bronze";
+                                                                    })()} ({reviewingMatch.match_type === 'allies' ? (p.allies_elo ?? 1000) : p.elo})
+                                                                </span>
+                                                            )}
+                                                        </div>
                                                         <div className="text-zinc-500 text-[10px] truncate">{p.standoff_nickname || 'No Nick'}</div>
                                                     </div>
                                                 </div>
@@ -445,7 +474,26 @@ export default function MatchesTab({ backendUrl, onViewLobby, userId }: MatchesT
                                                         <AvatarFallback className="text-[10px]">{p.discord_username?.substring(0, 2)}</AvatarFallback>
                                                     </Avatar>
                                                     <div className="overflow-hidden">
-                                                        <div className="text-white font-medium truncate text-xs" title={p.discord_username}>{p.discord_username}</div>
+                                                        <div className="text-white font-medium truncate text-xs" title={p.discord_username}>
+                                                            {p.discord_username}
+                                                            {/* Rank Badge */}
+                                                            {(matchTypeFilter === 'allies' || reviewingMatch.match_type === 'allies' || reviewingMatch.match_type === 'competitive' || reviewingMatch.match_type === 'league') && (
+                                                                <span className={`ml-2 text-[10px] px-1 rounded border ${(() => {
+                                                                    const elo = reviewingMatch.match_type === 'allies' ? (p.allies_elo ?? 1000) : p.elo;
+                                                                    if (elo >= 1600) return "bg-yellow-500/20 text-yellow-500 border-yellow-500/30";
+                                                                    if (elo >= 1200) return "bg-zinc-400/20 text-zinc-300 border-zinc-400/30";
+                                                                    return "bg-orange-800/20 text-orange-700 border-orange-800/30";
+                                                                })()
+                                                                    }`}>
+                                                                    {(() => {
+                                                                        const elo = reviewingMatch.match_type === 'allies' ? (p.allies_elo ?? 1000) : p.elo;
+                                                                        if (elo >= 1600) return "Gold";
+                                                                        if (elo >= 1200) return "Silver";
+                                                                        return "Bronze";
+                                                                    })()} ({reviewingMatch.match_type === 'allies' ? (p.allies_elo ?? 1000) : p.elo})
+                                                                </span>
+                                                            )}
+                                                        </div>
                                                         <div className="text-zinc-500 text-[10px] truncate">{p.standoff_nickname || 'No Nick'}</div>
                                                     </div>
                                                 </div>
@@ -565,8 +613,17 @@ export default function MatchesTab({ backendUrl, onViewLobby, userId }: MatchesT
                     </div>
 
                     <DialogFooter>
-                        <Button variant="outline" onClick={() => setIsEditResultModalOpen(false)}>Cancel</Button>
-                        <Button onClick={handleEditResultSubmit}>Save Changes</Button>
+                        <Button variant="outline" onClick={() => setIsEditResultModalOpen(false)} disabled={isEditingResult}>Cancel</Button>
+                        <Button onClick={handleEditResultSubmit} disabled={isEditingResult}>
+                            {isEditingResult ? (
+                                <>
+                                    <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                                    Saving...
+                                </>
+                            ) : (
+                                'Save Changes'
+                            )}
+                        </Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>

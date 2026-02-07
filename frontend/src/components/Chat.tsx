@@ -21,8 +21,7 @@ const Chat: React.FC<ChatProps> = ({
     variant = 'floating'
 }) => {
     const sendChat = useWebSocket(state => state.sendChat);
-    const chatMessages = useWebSocket(state => state.chatMessages);
-    const lobbyChatMessages = useWebSocket(state => state.lobbyChatMessages);
+    const messages = useWebSocket(state => lobbyId ? state.lobbyChatMessages : state.chatMessages) || [];
     const isConnected = useWebSocket(state => state.isConnected);
     const [inputValue, setInputValue] = useState('');
     const [isMinimized, setIsMinimized] = useState(variant === 'floating');
@@ -32,7 +31,8 @@ const Chat: React.FC<ChatProps> = ({
 
     const scrollRef = useRef<HTMLDivElement>(null);
 
-    const messages = (lobbyId ? lobbyChatMessages : chatMessages) || [];
+    // const messages = (lobbyId ? lobbyChatMessages : chatMessages) || []; // Removed
+
 
     // Reset unread count when opening the chat
     useEffect(() => {

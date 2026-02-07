@@ -88,6 +88,8 @@ export interface Env {
     ADMIN_SECRET?: string;
     TURNSTILE_SECRET_KEY?: string;
     DD_API_KEY?: string;
+    DISCORD_PUBLIC_KEY: string;
+    IMAGES_BUCKET: R2Bucket;
 }
 
 export interface WebhookData {

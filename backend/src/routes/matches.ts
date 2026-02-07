@@ -18,11 +18,12 @@ async function queryWithRetry<T>(operation: () => Promise<T>, retries = 3, delay
     for (let i = 0; i < retries; i++) {
         try {
             return await operation();
-        } catch (err: any) {
-            const isNetworkError = err.message && (
-                err.message.includes('Network connection lost') ||
-                err.message.includes('D1_ERROR') ||
-                err.message.includes('internal error')
+        } catch (err: unknown) {
+            const message = (err as Error).message;
+            const isNetworkError = message && (
+                message.includes('Network connection lost') ||
+                message.includes('D1_ERROR') ||
+                message.includes('internal error')
             );
 
             if (i === retries - 1 || !isNetworkError) throw err;
@@ -55,12 +56,17 @@ async function getMatchPlayers(matchId: string, env: Env) {
     });
 }
 
+interface MatchActionData {
+    min_rank?: string;
+    // Add other properties as needed
+}
+
 async function validateMatchAction(
     userId: string,
     matchType: string,
     env: Env,
     action: 'create' | 'join',
-    matchData?: any
+    matchData?: MatchActionData
 ) {
     // 1. Fetch Player
     const player = await env.DB.prepare(
@@ -179,10 +185,10 @@ async function validateMatchAction(
     return { allowed: true, player };
 }
 
-async function notifyLobbyUpdate(matchId: string, env: Env, type: string = 'LOBBY_UPDATED', extraData: any = {}) {
+async function notifyLobbyUpdate(matchId: string, env: Env, type: string = 'LOBBY_UPDATED', extraData: Record<string, unknown> = {}) {
     try {
         const players = await getMatchPlayers(matchId, env);
-        const userIds = players.map((p: any) => p.player_id);
+        const userIds = players.map((p: Record<string, unknown>) => p.player_id);
 
         if (userIds.length > 0) {
             const doId = env.MATCH_QUEUE.idFromName('global-matchmaking-v2');
@@ -254,7 +260,7 @@ async function getOpponentClanId(matchId: string, hostClanId: string, env: Env):
 // ============= MATCH CRUD =============
 
 // Status-based cache for matches list
-const matchesListCache = new Map<string, { data: any, timestamp: number }>();
+const matchesListCache = new Map<string, { data: Record<string, unknown>, timestamp: number }>();
 const CACHE_TTL = 3000; // 3 seconds
 
 // GET /api/matches - List all active matches
@@ -353,9 +359,9 @@ matchesRoutes.get('/', async (c) => {
         });
 
         return c.json(responseData);
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error('Error fetching matches:', error);
-        return c.json({ success: false, error: error.message }, 500);
+        return c.json({ success: false, error: (error as Error).message }, 500);
     }
 });
 
@@ -392,7 +398,7 @@ matchesRoutes.get('/:id', async (c) => {
                 const doRes = await doStub.fetch(`http://do/lobby/${matchId}`);
 
                 if (doRes.ok) {
-                    liveState = await doRes.json() as any;
+                    liveState = await doRes.json() as Record<string, unknown>;
                 }
             } catch (e) {
                 console.warn(`Failed to fetch live state for ${matchId}`, e);
@@ -406,19 +412,21 @@ matchesRoutes.get('/:id', async (c) => {
         let alphaElo = 0, alphaCount = 0;
         let bravoElo = 0, bravoCount = 0;
 
-        players.forEach((p: any) => {
+        const isAllies = matchResult.match_type === 'allies';
+        players.forEach((p: Record<string, any>) => {
+            const eloValue = (isAllies ? p.allies_elo : p.elo) || 1000;
             if (p.team === 'alpha') {
-                alphaElo += (p.elo || 1000);
+                alphaElo += eloValue;
                 alphaCount++;
             } else if (p.team === 'bravo') {
-                bravoElo += (p.elo || 1000);
+                bravoElo += eloValue;
                 bravoCount++;
             }
         });
 
         // Clan War: Fetch Clan Names
-        let alphaClan: any = null;
-        let bravoClan: any = null;
+        let alphaClan: Record<string, unknown> | null = null;
+        let bravoClan: Record<string, unknown> | null = null;
 
         if (matchResult.match_type === 'clan_war') {
             // Alpha Clan = Host Clan (stored in match.clan_id)
@@ -427,7 +435,7 @@ matchesRoutes.get('/:id', async (c) => {
             }
 
             // Bravo Clan = Determine from Bravo players
-            const bravoPlayer = players.find((p: any) => p.team === 'bravo');
+            const bravoPlayer = players.find((p: Record<string, any>) => p.team === 'bravo');
             if (bravoPlayer) {
                 // Find clan of a Bravo player. Ideally, all Bravo players are in the same clan.
                 const bMember = await c.env.DB.prepare('SELECT clan_id FROM clan_members WHERE user_id = ?').bind(bravoPlayer.player_id).first<{ clan_id: string }>();
@@ -449,9 +457,9 @@ matchesRoutes.get('/:id', async (c) => {
             },
             players
         });
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error('Error fetching match:', error);
-        return c.json({ success: false, error: error.message }, 500);
+        return c.json({ success: false, error: (error as Error).message }, 500);
     }
 });
 
@@ -480,9 +488,9 @@ matchesRoutes.get('/user/:userId/active', async (c) => {
             success: true,
             match: activeMatch || null
         });
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error('Error fetching user active match:', error);
-        return c.json({ success: false, error: error.message }, 500);
+        return c.json({ success: false, error: (error as Error).message }, 500);
     }
 });
 
@@ -593,9 +601,9 @@ matchesRoutes.post('/', async (c) => {
             matchId,
             message: 'Match created successfully'
         }, 201);
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error('Error creating match:', error);
-        return c.json({ success: false, error: error.message }, 500);
+        return c.json({ success: false, error: (error as Error).message }, 500);
     }
 });
 
@@ -738,10 +746,10 @@ matchesRoutes.post('/:id/join', async (c) => {
         const teamCounts = await c.env.DB.prepare(`
             SELECT team, COUNT(*) as count FROM match_players 
             WHERE match_id = ? GROUP BY team
-        `).bind(matchId).all();
+        `).bind(matchId).all<{ team: string; count: number }>();
 
         const counts = { alpha: 0, bravo: 0 };
-        (teamCounts.results || []).forEach((r: any) => {
+        (teamCounts.results || []).forEach((r) => {
             if (r.team === 'alpha') counts.alpha = r.count;
             if (r.team === 'bravo') counts.bravo = r.count;
         });
@@ -767,7 +775,7 @@ matchesRoutes.post('/:id/join', async (c) => {
             })
         });
 
-        const joinData = await joinRes.json() as any;
+        const joinData = await joinRes.json() as { success: boolean; error?: string; count: number };
         if (!joinData.success) {
             return c.json({ success: false, error: joinData.error }, 400);
         }
@@ -787,9 +795,9 @@ matchesRoutes.post('/:id/join', async (c) => {
             team: assignedTeam,
             message: 'Joined match successfully'
         });
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error('Error joining match:', error);
-        return c.json({ success: false, error: error.message }, 500);
+        return c.json({ success: false, error: (error as Error).message }, 500);
     }
 });
 
@@ -846,7 +854,7 @@ matchesRoutes.patch('/:id/lobby-url', async (c) => {
 
         return c.json({ success: true, message: 'Lobby URL updated' });
 
-    } catch (error) {
+    } catch (error: unknown) {
         console.error('Error updating lobby URL:', error);
         return c.json({ error: 'Failed to update lobby URL' }, 500);
     }
@@ -916,9 +924,9 @@ matchesRoutes.post('/:id/leave', async (c) => {
             success: true,
             message: 'Left match successfully'
         });
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error('Error leaving match:', error);
-        return c.json({ success: false, error: error.message }, 500);
+        return c.json({ success: false, error: (error as Error).message }, 500);
     }
 });
 
@@ -988,9 +996,9 @@ matchesRoutes.post('/:id/kick', async (c) => {
             success: true,
             message: 'Player kicked successfully'
         });
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error('Error kicking player:', error);
-        return c.json({ success: false, error: error.message }, 500);
+        return c.json({ success: false, error: (error as Error).message }, 500);
     }
 });
 
@@ -1052,9 +1060,9 @@ matchesRoutes.post('/:id/switch-team', async (c) => {
             newTeam,
             message: `Switched to team ${newTeam}`
         });
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error('Error switching team:', error);
-        return c.json({ success: false, error: error.message }, 500);
+        return c.json({ success: false, error: (error as Error).message }, 500);
     }
 });
 
@@ -1146,9 +1154,9 @@ matchesRoutes.patch('/:id/status', async (c) => {
             success: true,
             message: 'Match status updated'
         });
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error('Error updating match status:', error);
-        return c.json({ success: false, error: error.message }, 500);
+        return c.json({ success: false, error: (error as Error).message }, 500);
     }
 });
 
@@ -1201,9 +1209,9 @@ matchesRoutes.patch('/:id/update-link', async (c) => {
             success: true,
             message: 'Match link updated'
         });
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error('Error updating match link:', error);
-        return c.json({ success: false, error: error.message }, 500);
+        return c.json({ success: false, error: (error as Error).message }, 500);
     }
 });
 
@@ -1231,8 +1239,8 @@ matchesRoutes.post('/:id/result', async (c) => {
         }
 
         // Validate screenshot requirement based on match type
-        if ((match.match_type === 'league' || match.match_type === 'competitive') && !body.screenshot_url) {
-            return c.json({ success: false, error: 'Screenshot is required for league and competitive matches' }, 400);
+        if ((match.match_type === 'league' || match.match_type === 'competitive' || match.match_type === 'allies') && !body.screenshot_url) {
+            return c.json({ success: false, error: 'Screenshot is required for league, competitive, and allies matches' }, 400);
         }
 
         if (!body.winner_team) {
@@ -1323,9 +1331,9 @@ matchesRoutes.post('/:id/result', async (c) => {
             success: true,
             message: 'Result submitted, pending moderator review'
         });
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error('Error submitting result:', error);
-        return c.json({ success: false, error: error.message }, 500);
+        return c.json({ success: false, error: (error as Error).message }, 500);
     }
 });
 
@@ -1395,8 +1403,8 @@ matchesRoutes.post('/:id/queue', async (c) => {
             await notifyLobbyUpdate(matchId, c.env, 'LOBBY_UPDATED'); // Status changed
             return c.json({ success: true, matchFound: false, message: 'Queued for Clan Match' });
         }
-    } catch (e: any) {
-        return c.json({ success: false, error: e.message }, 500);
+    } catch (e: unknown) {
+        return c.json({ success: false, error: (e as Error).message }, 500);
     }
 });
 
@@ -1477,13 +1485,16 @@ matchesRoutes.post('/:id/fill-bots', async (c) => {
         }
 
         return c.json({ success: true, botsAdded: botsNeeded });
-    } catch (e: any) {
-        return c.json({ success: false, error: e.message }, 500);
+    } catch (e: unknown) {
+        {
+            const msg = e instanceof Error ? e.message : String(e);
+            return c.json({ success: false, error: msg }, 500);
+        }
     }
 });
 
 // Helper to start match (Draft or Normal)
-async function startMatchInternal(matchId: string, matchType: string, env: any) {
+async function startMatchInternal(matchId: string, matchType: string, env: Env) {
     try {
         console.log(`[startMatchInternal] Starting match ${matchId} (${matchType})`);
 
@@ -1501,7 +1512,7 @@ async function startMatchInternal(matchId: string, matchType: string, env: any) 
             console.log(`[startMatchInternal] Found ${players.length} players`);
 
             // Sort by Elo (Descending)
-            const sortedPlayers = [...players].sort((a: any, b: any) => (b.elo || 1000) - (a.elo || 1000));
+            const sortedPlayers = [...players].sort((a: Record<string, any>, b: Record<string, any>) => (b.elo || 1000) - (a.elo || 1000));
 
             if (sortedPlayers.length >= 2) {
                 const captainA = sortedPlayers[0];
@@ -1546,7 +1557,7 @@ async function startMatchInternal(matchId: string, matchType: string, env: any) 
             'UPDATE matches SET status = ?, updated_at = datetime(\'now\') WHERE id = ?'
         ).bind(newStatus, matchId).run();
 
-        const extraData: any = {
+        const extraData: Record<string, unknown> = {
             status: newStatus, // DO will broadcast drafting if draft started
             startedAt: Date.now(),
             matchType: matchType

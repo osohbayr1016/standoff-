@@ -11,29 +11,30 @@ import RecentMatches from "./components/RecentMatches";
 import LoadingSpinner from "./components/LoadingSpinner";
 
 // Lazy Loaded Routes
-const ProfilePage = lazy(() => import("./components/ProfilePage"));
-const LeaderboardPage = lazy(() => import("./components/LeaderboardPage"));
-const FriendsPage = lazy(() => import("./components/FriendsPage"));
-const AuthPage = lazy(() => import("./components/AuthPage"));
-const NotFoundPage = lazy(() => import("./components/NotFoundPage"));
-const ModeratorPage = lazy(() => import("./components/ModeratorPage"));
-const AdminPage = lazy(() => import("@/components/AdminPage"));
-const MatchmakingPage = lazy(() => import("./components/MatchmakingPage"));
-const VIPPage = lazy(() => import("./components/VIPPage"));
-const JoinGatePage = lazy(() => import("./components/JoinGatePage"));
-const StreamersPage = lazy(() => import("./components/StreamersPage"));
-const StreamerDashboard = lazy(() => import("./components/StreamerDashboard"));
-const ClanPage = lazy(() => import("@/components/ClanPage"));
-const ClanProfilePage = lazy(() => import("@/components/ClanProfilePage"));
-const GoldPage = lazy(() => import("./components/GoldPage"));
-const RewardsPage = lazy(() => import("./components/RewardsPage"));
-const TournamentPage = lazy(() => import("./components/TournamentPage"));
-const ChatPage = lazy(() => import("./components/ChatPage"));
+const ProfilePage = lazy(() => import("./pages/ProfilePage"));
+const LeaderboardPage = lazy(() => import("./pages/LeaderboardPage"));
+const FriendsPage = lazy(() => import("./pages/FriendsPage"));
+const AuthPage = lazy(() => import("./pages/AuthPage"));
+const NotFoundPage = lazy(() => import("./pages/NotFoundPage"));
+const ModeratorPage = lazy(() => import("./pages/ModeratorPage"));
+const AdminPage = lazy(() => import("./pages/AdminPage"));
+const MatchmakingPage = lazy(() => import("./pages/MatchmakingPage"));
+const VIPPage = lazy(() => import("./pages/VIPPage"));
+const JoinGatePage = lazy(() => import("./pages/JoinGatePage"));
+const StreamersPage = lazy(() => import("./pages/StreamersPage"));
+const StreamerDashboard = lazy(() => import("./pages/StreamerDashboard"));
+const ClanPage = lazy(() => import("./pages/ClanPage"));
+const ClanProfilePage = lazy(() => import("./pages/ClanProfilePage"));
+const GoldPage = lazy(() => import("./pages/GoldPage"));
+const RewardsPage = lazy(() => import("./pages/RewardsPage"));
+const TournamentPage = lazy(() => import("./pages/TournamentPage"));
+const ChatPage = lazy(() => import("./pages/ChatPage"));
+const ExplorePage = lazy(() => import("./pages/ExplorePage"));
 
 // Placeholder components (to be implemented)
 const DailyRewards = () => <div className="placeholder-card border border-white/5 bg-white/5 rounded-xl p-6 flex items-center justify-center text-muted-foreground italic h-full">Daily Rewards - Coming Soon</div>;
 
-const MatchLobbyPage = lazy(() => import("./components/LobbyDetailPage"));
+const MatchLobbyPage = lazy(() => import("./pages/LobbyDetailPage"));
 
 interface User {
   id: string;
@@ -57,7 +58,7 @@ function AppContent() {
   const [currentPage, setCurrentPage] = useState(() => {
     const savedPage = localStorage.getItem("currentPage");
     const validPages = [
-      "home", "profile", "leaderboard", "friends", "vip", "join_gate", "matchmaking", "streamers", "streamer-dashboard", "clans", "clan-profile", "gold-dashboard", "chat"
+      "home", "profile", "leaderboard", "friends", "vip", "join_gate", "matchmaking", "streamers", "streamer-dashboard", "clans", "clan-profile", "gold-dashboard", "chat", "explore"
     ];
     if (savedPage && validPages.includes(savedPage)) {
       return savedPage;
@@ -426,7 +427,7 @@ function AppContent() {
 
   const validPages = [
     "home", "profile", "leaderboard", "rewards", "friends",
-    "matchmaking", "moderator", "admin", "vip", "join_gate", "matchgame", "streamers", "streamer-dashboard", "clans", "clan-profile", "gold-dashboard", "tournaments", "chat"
+    "matchmaking", "moderator", "admin", "vip", "join_gate", "matchgame", "streamers", "streamer-dashboard", "clans", "clan-profile", "gold-dashboard", "tournaments", "chat", "explore"
   ];
 
   if (!validPages.includes(currentPage)) return <NotFoundPage onGoHome={handleGoHome} />;
@@ -497,6 +498,7 @@ function AppContent() {
           {currentPage === "gold-dashboard" && <GoldPage />}
           {currentPage === "tournaments" && <TournamentPage user={user} />}
           {currentPage === "chat" && <ChatPage />}
+          {currentPage === "explore" && <ExplorePage onNavigate={handleNavigate} />}
           {currentPage === "matchmaking" && (
             <MatchmakingPage
               user={user}
@@ -513,6 +515,7 @@ function AppContent() {
               user={user}
               backendUrl={import.meta.env.VITE_BACKEND_URL || "http://localhost:8787"}
               onBack={() => handleNavigate("home")}
+              onNavigateToProfile={handleViewProfile}
             />
           )}
         </Suspense>

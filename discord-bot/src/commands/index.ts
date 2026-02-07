@@ -92,7 +92,10 @@ const matchCommand: Command = {
     }
 };
 
+import { profileCommand } from './profile';
+
 export const commands: Command[] = [
     setNicknameCommand,
-    matchCommand
+    matchCommand,
+    profileCommand
 ];

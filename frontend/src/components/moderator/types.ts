@@ -5,6 +5,7 @@ export interface MatchPlayer {
     discord_avatar?: string;
     standoff_nickname?: string;
     elo: number;
+    allies_elo?: number;
     is_captain?: number;
 }
 
@@ -67,6 +68,10 @@ export interface EloHistoryEntry {
     reason: string;
     created_at: string;
     result_screenshot_url?: string;
+    created_by?: string;
+    moderator_username?: string;
+    moderator_avatar?: string;
+    type?: 'elo' | 'action';
 }
 
 export interface ModeratorStats {

@@ -93,7 +93,7 @@ function Hero({ backendUrl, onNavigate, onViewProfile }: HeroProps) {
       <div className="text-center space-y-4">
         <div className="flex flex-col items-center gap-2">
           <Badge className="bg-orange-500/10 text-orange-500 border-orange-500/20 px-4 py-1.5 text-xs font-black uppercase tracking-widest animate-pulse">
-            Шинэ Шинэчлэлт v2.0
+            NEW UPDATE v2.0
           </Badge>
           <h1 className="flex flex-wrap items-center justify-center gap-1 text-5xl md:text-7xl font-display font-black tracking-tighter italic uppercase">
             <span className="text-foreground">STAND</span>
@@ -101,7 +101,7 @@ function Hero({ backendUrl, onNavigate, onViewProfile }: HeroProps) {
           </h1>
         </div>
         <p className="text-muted-foreground max-w-[600px] mx-auto text-sm md:text-lg font-light leading-relaxed">
-          Монголын хамгийн том Standoff 2 тэмцээний платформ. Хамт олонтойгоо нэгдэж, ур чадвараа батал.
+          Mongolia's largest Standoff 2 tournament platform. Join the community and prove your skills.
         </p>
       </div>
 
@@ -115,9 +115,9 @@ function Hero({ backendUrl, onNavigate, onViewProfile }: HeroProps) {
               <Users className="h-8 w-8 text-orange-500" />
             </div>
             <div className="space-y-1">
-              <h2 className="text-2xl font-bold text-white uppercase tracking-tight">Нийгэмлэгтээ Нэгдээрэй</h2>
+              <h2 className="text-2xl font-bold text-white uppercase tracking-tight">Join the Community</h2>
               <p className="text-zinc-400 text-sm max-w-md">
-                Манай Discord серверт нэгдэж тэмцээн, шинэчлэлтийн мэдээллийг цаг алдалгүй аваарай.
+                Join our Discord server to get tournament and update news immediately.
               </p>
             </div>
           </div>
@@ -125,7 +125,7 @@ function Hero({ backendUrl, onNavigate, onViewProfile }: HeroProps) {
             onClick={() => window.open('https://discord.com/invite/FFCBrMACKm', '_blank')}
             className="bg-[#5865F2] hover:bg-[#4752C4] text-white px-10 py-7 text-lg font-bold rounded-2xl shadow-lg shadow-blue-500/20 whitespace-nowrap group"
           >
-            DISCORD-Д НЭГДЭХ
+            JOIN DISCORD
             <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
           </Button>
         </div>
@@ -328,7 +328,7 @@ function Hero({ backendUrl, onNavigate, onViewProfile }: HeroProps) {
           <CardHeader className="border-b border-border/50 relative z-10">
             <CardTitle className="flex items-center gap-2 text-xl font-bold">
               <Trophy className="h-5 w-5 text-primary" />
-              Ranking Систем & Дивизион
+              Ranking System & Division
             </CardTitle>
           </CardHeader>
           <CardContent className="p-6 relative z-10">
@@ -374,7 +374,7 @@ function Hero({ backendUrl, onNavigate, onViewProfile }: HeroProps) {
                   </div>
                 </div>
                 <p className="text-sm text-zinc-400 leading-relaxed relative z-10">
-                  Lvl 1-5 хүртэлх тоглогчид багтана. Энэ дивизионд та тоглолтын үндсэн арга барил болон ELO онооны системтэй танилцах болно.
+                  Includes players Lvl 1-5. In this division, you will learn the basics of the game and the ELO system.
                 </p>
               </div>
 
@@ -388,7 +388,7 @@ function Hero({ backendUrl, onNavigate, onViewProfile }: HeroProps) {
                   </div>
                 </div>
                 <p className="text-sm text-zinc-400 leading-relaxed relative z-10">
-                  Lvl 6-9 хүртэлх тоглогчид багтана. Ур чадвар болон туршлага хуримтлуулсан, дунд шатны өрсөлдөөнт тоглолтууд явагдана.
+                  Includes players Lvl 6-9. Intermediate competitive matches where skills and experience are accumulated.
                 </p>
               </div>
 
@@ -402,7 +402,7 @@ function Hero({ backendUrl, onNavigate, onViewProfile }: HeroProps) {
                   </div>
                 </div>
                 <p className="text-sm text-zinc-400 leading-relaxed relative z-10">
-                  Lvl 10 хүртэлх хамгийн шилдэг тоглогчид багтана. Мэргэжлийн түвшний өрсөлдөөн болон хамгийн өндөр ELO онооны төлөөх тулаан.
+                  Includes players up to Lvl 10. Professional level competition and battles for the highest ELO points.
                 </p>
               </div>
             </div>

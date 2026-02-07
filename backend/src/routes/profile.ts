@@ -61,8 +61,11 @@ export function setupProfileRoutes(app: Hono<any>) {
 
                 standoff_nickname: user.standoff_nickname,
                 elo: user.elo || 1000,
+                allies_elo: user.allies_elo || 1000,
                 wins: user.wins || 0,
                 losses: user.losses || 0,
+                allies_wins: user.allies_wins || 0,
+                allies_losses: user.allies_losses || 0,
                 role: user.role || 'user',
                 is_vip: isVip,
                 vip_until: user.vip_until,
@@ -85,9 +88,17 @@ export function setupProfileRoutes(app: Hono<any>) {
                     `).bind(user.id, user.discord_id, `${today}%`).first() as { count: number } | null;
                     return count?.count || 0;
                 })(),
-                // These fields are not defined in the original code, but added as per instruction.
-                // They would typically be fetched from other tables or calculated.
-                clans: [], // Placeholder
+                // Fetch user's clan
+                clan: await (async () => {
+                    const clanData = await c.env.DB.prepare(`
+                        SELECT c.id, c.name, c.tag, c.logo_url, c.description, cm.role as member_role,
+                               (SELECT COUNT(*) FROM clan_members WHERE clan_id = c.id) as member_count
+                        FROM clans c
+                        JOIN clan_members cm ON c.id = cm.clan_id
+                        WHERE cm.user_id = ? OR cm.user_id = ?
+                    `).bind(user.id, user.discord_id).first();
+                    return clanData || null;
+                })(),
                 rank: null, // Placeholder
                 next_rank: null // Placeholder
             });
@@ -391,13 +402,44 @@ export function setupProfileRoutes(app: Hono<any>) {
         try {
             const userId = c.req.param('userId');
 
-            const history = await c.env.DB.prepare(
-                `SELECT * FROM elo_history 
-                 WHERE user_id = ? OR user_id IN (SELECT discord_id FROM players WHERE id = ?)
-                 ORDER BY created_at ASC`
+            // 1. Fetch ELO History
+            const eloHistory = await c.env.DB.prepare(
+                `SELECT 
+                    eh.*,
+                    moderator.discord_username as moderator_username,
+                    moderator.discord_avatar as moderator_avatar,
+                    'elo' as type
+                 FROM elo_history eh
+                 LEFT JOIN players moderator ON eh.created_by = moderator.id
+                 WHERE eh.user_id = ? OR eh.user_id IN (SELECT discord_id FROM players WHERE id = ?)
+                 ORDER BY eh.created_at DESC LIMIT 50`
             ).bind(userId, userId).all();
 
-            return c.json({ history: history.results || [] });
+            // 2. Fetch Ban/Unban Logs
+            const modLogs = await c.env.DB.prepare(
+                `SELECT 
+                    ml.id,
+                    ml.created_at,
+                    ml.action_type as reason,
+                    0 as elo_change,
+                    0 as elo_before,
+                    0 as elo_after,
+                    moderator.discord_username as moderator_username,
+                    moderator.discord_avatar as moderator_avatar,
+                    'action' as type
+                 FROM moderator_logs ml
+                 LEFT JOIN players moderator ON ml.moderator_id = moderator.id
+                 WHERE (ml.target_id = ? OR ml.target_id IN (SELECT discord_id FROM players WHERE id = ?))
+                 AND ml.action_type IN ('BAN_USER', 'UNBAN_USER')
+                 ORDER BY ml.created_at DESC LIMIT 50`
+            ).bind(userId, userId).all();
+
+            // 3. Merge and Sort
+            const combinedHistory = [...(eloHistory.results || []), ...(modLogs.results || [])]
+                .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+                .slice(0, 100);
+
+            return c.json({ history: combinedHistory });
         } catch (error) {
             console.error('ELO history error:', error);
             return c.json({ error: 'Failed to fetch ELO history' }, 500);

@@ -1,3 +1,3 @@
-ALTER TABLE `players` ADD `allies_elo` integer DEFAULT 1000 NOT NULL;--> statement-breakpoint
-ALTER TABLE `players` ADD `custom_banner` text;--> statement-breakpoint
-ALTER TABLE `players` ADD `banner_mode` text DEFAULT 'discord';
+-- ALTER TABLE `players` ADD `allies_elo` integer DEFAULT 1000 NOT NULL;--> statement-breakpoint
+-- ALTER TABLE `players` ADD `custom_banner` text;--> statement-breakpoint
+-- ALTER TABLE `players` ADD `banner_mode` text DEFAULT 'discord';

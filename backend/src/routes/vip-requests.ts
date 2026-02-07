@@ -223,7 +223,7 @@ vipRequestsRoutes.post('/check-payment', async (c) => {
 
             await c.env.DB.prepare(`
                 UPDATE players 
-                SET is_vip = 1, vip_until = ? 
+                SET is_vip = 1, vip_until = ?, vip_started_at = CURRENT_TIMESTAMP 
                 WHERE id = ?
             `).bind(vipUntilIso, userId).run();
 

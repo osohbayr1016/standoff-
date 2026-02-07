@@ -18,7 +18,8 @@ import {
   Cast,
   Video,
   Flag,
-  Coins
+  Coins,
+  ChevronDown
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -83,6 +84,16 @@ function Header({
         </div>
       </Button>
       <Button
+        variant={currentPage === "explore" ? "secondary" : "ghost"}
+        className={`justify-start text-yellow-500 hover:text-yellow-400 ${mobile ? "w-full" : ""}`}
+        onClick={() => {
+          onNavigate("explore");
+          if (mobile) setIsOpen(false);
+        }}
+      >
+        <span className="font-display font-bold">EXPLORE</span>
+      </Button>
+      <Button
         variant={currentPage === "matchmaking" ? "secondary" : "ghost"}
         className={`justify-start ${mobile ? "w-full" : ""}`}
         onClick={() => {
@@ -113,19 +124,67 @@ function Header({
         }}
       >
         <Gift className="mr-2 h-4 w-4" />
-        REWARDS
+        GIFTS
       </Button>
-      <Button
-        variant={currentPage === "streamers" ? "secondary" : "ghost"}
-        className={`justify-start ${mobile ? "w-full" : ""}`}
-        onClick={() => {
-          onNavigate("streamers");
-          if (mobile) setIsOpen(false);
-        }}
-      >
-        <Cast className="mr-2 h-4 w-4" />
-        STREAMERS
-      </Button>
+
+      {/* Compete Dropdown */}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant={["leaderboard", "tournaments"].includes(currentPage) ? "secondary" : "ghost"}
+            className={`justify-start ${mobile ? "w-full" : ""}`}
+            onClick={(e) => { if (mobile) e.preventDefault(); }}
+          >
+            <Trophy className="mr-2 h-4 w-4" />
+            COMPETE
+            {!mobile && <ChevronDown className="ml-1 h-3 w-3 opacity-50" />}
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align={mobile ? "start" : "center"} className={mobile ? "w-[300px]" : "w-48"}>
+          <DropdownMenuItem onClick={() => { onNavigate("leaderboard"); if (mobile) setIsOpen(false); }}>
+            <Trophy className="mr-2 h-4 w-4" />
+            Rankings
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => { onNavigate("tournaments"); if (mobile) setIsOpen(false); }}>
+            <Trophy className="mr-2 h-4 w-4 text-yellow-500" />
+            Tournaments
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      {/* Community Dropdown */}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant={["friends", "clans", "streamers", "chat"].includes(currentPage) ? "secondary" : "ghost"}
+            className={`justify-start ${mobile ? "w-full" : ""}`}
+            onClick={(e) => { if (mobile) e.preventDefault(); }}
+          >
+            <Users className="mr-2 h-4 w-4" />
+            COMMUNITY
+            {!mobile && <ChevronDown className="ml-1 h-3 w-3 opacity-50" />}
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align={mobile ? "start" : "center"} className={mobile ? "w-[300px]" : "w-48"}>
+          <DropdownMenuItem onClick={() => { onNavigate("friends"); if (mobile) setIsOpen(false); }}>
+            <Users className="mr-2 h-4 w-4" />
+            Friends
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => { onNavigate("clans"); if (mobile) setIsOpen(false); }}>
+            <Flag className="mr-2 h-4 w-4" />
+            Clans
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => { onNavigate("streamers"); if (mobile) setIsOpen(false); }}>
+            <Cast className="mr-2 h-4 w-4" />
+            Streamers
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => { onNavigate("chat"); if (mobile) setIsOpen(false); }}>
+            <MessageCircle className="mr-2 h-4 w-4" />
+            Chat
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+
       <Button
         variant={currentPage === "vip" ? "secondary" : "ghost"}
         className={`justify-start ${mobile ? "w-full" : ""} ${currentPage !== "vip" ? "text-yellow-500 hover:text-yellow-600 hover:bg-yellow-500/10" : "bg-gradient-to-r from-yellow-400 to-yellow-600 text-black font-bold"}`}
@@ -137,76 +196,7 @@ function Header({
         <Crown className={`mr-2 h-4 w-4 ${currentPage === "vip" ? "text-black" : "text-yellow-500"}`} />
         VIP
       </Button>
-      <Button
-        variant={currentPage === "friends" ? "secondary" : "ghost"}
-        className={`justify-start ${mobile ? "w-full" : ""}`}
-        onClick={() => {
-          onNavigate("friends");
-          if (mobile) setIsOpen(false);
-        }}
-      >
-        <Users className="mr-2 h-4 w-4" />
-        FRIENDS
-      </Button>
-      <Button
-        variant={currentPage === "clans" ? "secondary" : "ghost"}
-        className={`justify-start ${mobile ? "w-full" : ""}`}
-        onClick={() => {
-          onNavigate("clans");
-          if (mobile) setIsOpen(false);
-        }}
-      >
-        <Flag className="mr-2 h-4 w-4" />
-        CLANS
-      </Button>
-      <Button
-        variant={currentPage === "tournaments" ? "secondary" : "ghost"}
-        className={`justify-start ${mobile ? "w-full" : ""}`}
-        onClick={() => {
-          onNavigate("tournaments");
-          if (mobile) setIsOpen(false);
-        }}
-      >
-        <Trophy className="mr-2 h-4 w-4 text-yellow-500" />
-        TOURNAMENTS
-      </Button>
-      <Button
-        variant={currentPage === "chat" ? "secondary" : "ghost"}
-        className={`justify-start ${mobile ? "w-full" : ""}`}
-        onClick={() => {
-          onNavigate("chat");
-          if (mobile) setIsOpen(false);
-        }}
-      >
-        <MessageCircle className="mr-2 h-4 w-4" />
-        CHAT
-      </Button>
-      {(user?.role === 'moderator' || user?.role === 'admin') && (
-        <Button
-          variant={currentPage === "moderator" ? "destructive" : "ghost"}
-          className={`justify-start text-destructive hover:text-destructive-foreground hover:bg-destructive/90 ${mobile ? "w-full" : ""}`}
-          onClick={() => {
-            onNavigate("moderator");
-            if (mobile) setIsOpen(false);
-          }}
-        >
-          <Shield className="mr-2 h-4 w-4" />
-          MOD PANEL
-        </Button>
-      )}
-      {user?.role === 'admin' && (
-        <Button
-          variant={currentPage === "admin" ? "default" : "ghost"}
-          className={`justify-start text-primary hover:text-primary-foreground hover:bg-primary/90 ${mobile ? "w-full" : ""}`}
-          onClick={() => {
-            onNavigate("admin");
-            if (mobile) setIsOpen(false);
-          }}
-        >
-          <ShieldAlert className="mr-2 h-4 w-4" />
-          ADMIN PANEL
-        </Button>
-      )}
+
       {user && (
         <Button
           variant={currentPage === "gold-dashboard" ? "secondary" : "ghost"}
@@ -217,7 +207,35 @@ function Header({
           }}
         >
           <Coins className="mr-2 h-4 w-4" />
-          GOLD MARKET
+          GOLD
+        </Button>
+      )}
+
+      {(user?.role === 'moderator' || user?.role === 'admin') && (
+        <Button
+          variant={currentPage === "moderator" ? "destructive" : "ghost"}
+          className={`justify-start text-destructive hover:text-destructive-foreground hover:bg-destructive/90 ${mobile ? "w-full" : ""}`}
+          onClick={() => {
+            onNavigate("moderator");
+            if (mobile) setIsOpen(false);
+          }}
+        >
+          <Shield className="mr-2 h-4 w-4" />
+          MOD
+        </Button>
+      )}
+
+      {user?.role === 'admin' && (
+        <Button
+          variant={currentPage === "admin" ? "default" : "ghost"}
+          className={`justify-start text-primary hover:text-primary-foreground hover:bg-primary/90 ${mobile ? "w-full" : ""}`}
+          onClick={() => {
+            onNavigate("admin");
+            if (mobile) setIsOpen(false);
+          }}
+        >
+          <ShieldAlert className="mr-2 h-4 w-4" />
+          ADMIN
         </Button>
       )}
     </>
@@ -225,7 +243,7 @@ function Header({
 
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <div className="container flex h-16 items-center justify-between px-4">
+      <div className="w-full flex h-16 items-center justify-between px-6">
 
         {/* Logo */}
         <div

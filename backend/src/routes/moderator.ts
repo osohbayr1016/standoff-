@@ -1,4 +1,4 @@
-﻿import { Hono } from 'hono';
+﻿import { Hono, Context } from 'hono';
 import { drizzle } from 'drizzle-orm/d1';
 import { eq, desc, and, sql, like, or } from 'drizzle-orm';
 import { players, matches, matchPlayers, clans, clanMembers, clanRequests, moderatorLogs, tournaments, tournamentParticipants } from '../db/schema';
@@ -46,7 +46,7 @@ async function purgeLobby(matchId: string, env: Env) {
 }
 
 // Log Moderator Action Helper
-const logModeratorAction = async (c: any, moderatorId: string, actionType: string, targetId: string | null, details: any) => {
+const logModeratorAction = async (c: Context<{ Bindings: Env }>, moderatorId: string, actionType: string, targetId: string | null, details: Record<string, unknown>) => {
     try {
         await c.env.DB.prepare(
             'INSERT INTO moderator_logs (moderator_id, action_type, target_id, details) VALUES (?, ?, ?, ?)'
@@ -65,8 +65,8 @@ const logModeratorAction = async (c: any, moderatorId: string, actionType: strin
                 action_type: actionType,
                 target_id: targetId,
                 details,
-                trace_id: traceId,
-                span_id: spanId
+                trace_id: traceId || '',
+                span_id: spanId || ''
             }
         );
 
@@ -76,7 +76,7 @@ const logModeratorAction = async (c: any, moderatorId: string, actionType: strin
 };
 
 // Middleware to check moderator role
-const requireModerator = async (c: any, next: () => Promise<void>) => {
+const requireModerator = async (c: Context<{ Bindings: Env }, any>, next: () => Promise<void>) => {
     const userId = c.req.header('X-User-Id');
 
     if (!userId) {
@@ -85,7 +85,7 @@ const requireModerator = async (c: any, next: () => Promise<void>) => {
 
     const user = await c.env.DB.prepare(
         'SELECT role FROM players WHERE id = ? OR discord_id = ?'
-    ).bind(userId, userId).first();
+    ).bind(userId, userId).first<{ role: string }>();
 
     if (!user || (user.role !== 'moderator' && user.role !== 'admin')) {
         return c.json({ success: false, error: 'Moderator access required' }, 403);
@@ -116,7 +116,8 @@ moderatorRoutes.get('/pending-reviews', async (c) => {
                         'discord_username', pl.discord_username,
                         'discord_avatar', pl.discord_avatar,
                         'standoff_nickname', pl.standoff_nickname,
-                        'elo', pl.elo
+                        'elo', pl.elo,
+                        'allies_elo', pl.allies_elo
                     ))
                     FROM match_players mp
                     JOIN players pl ON mp.player_id = pl.id
@@ -137,9 +138,9 @@ moderatorRoutes.get('/pending-reviews', async (c) => {
             success: true,
             matches
         });
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error('Error fetching pending reviews:', error);
-        return c.json({ success: false, error: error.message }, 500);
+        return c.json({ success: false, error: (error as Error).message }, 500);
     }
 });
 
@@ -166,9 +167,9 @@ moderatorRoutes.get('/cancelled-matches', async (c) => {
             success: true,
             matches: result.results || []
         });
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error('Error fetching cancelled matches:', error);
-        return c.json({ success: false, error: error.message }, 500);
+        return c.json({ success: false, error: (error as Error).message }, 500);
     }
 });
 
@@ -191,9 +192,9 @@ m.*,
             success: true,
             matches: result.results || []
         });
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error('Error fetching active matches:', error);
-        return c.json({ success: false, error: error.message }, 500);
+        return c.json({ success: false, error: (error as Error).message }, 500);
     }
 });
 
@@ -317,7 +318,7 @@ moderatorRoutes.post('/matches/:id/force-result', async (c) => {
         }
 
         return c.json({ success: true, message: 'Match advanced' });
-    } catch (e: any) {
+    } catch (e: unknown) {
         console.error("Force result error", e);
         return c.json({ error: 'Failed' }, 500);
     }
@@ -342,9 +343,9 @@ m.*,
             success: true,
             matches: matches.results || []
         });
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error('Error fetching recent matches:', error);
-        return c.json({ success: false, error: error.message }, 500);
+        return c.json({ success: false, error: (error as Error).message }, 500);
     }
 });
 
@@ -633,6 +634,8 @@ moderatorRoutes.post('/matches/:id/review', async (c) => {
             eloChange = 10;
         } else if (match.match_type === 'league') {
             eloChange = 25;
+        } else if (match.match_type === 'allies') {
+            eloChange = 25;
         }
 
         if (!winnerTeam) {
@@ -643,11 +646,11 @@ moderatorRoutes.post('/matches/:id/review', async (c) => {
 
         // Get all players in match
         const matchPlayersResult = await c.env.DB.prepare(`
-            SELECT mp.player_id, mp.team, p.elo
+            SELECT mp.player_id, mp.team, p.elo, p.allies_elo
             FROM match_players mp
             JOIN players p ON mp.player_id = p.id
             WHERE mp.match_id = ?
-    `).bind(matchId).all();
+        `).bind(matchId).all();
 
         const playersList = matchPlayersResult.results || [];
 
@@ -677,18 +680,34 @@ moderatorRoutes.post('/matches/:id/review', async (c) => {
         for (const player of playersList) {
             const isWinner = player.team === winnerTeam;
             const change = isWinner ? eloChange : -eloChange;
-            const newElo = Math.max(0, (player.elo as number) + change);
+
+            const isAllies = match.match_type === 'allies';
+            const currentElo = isAllies ? (player.allies_elo as number || 1000) : (player.elo as number || 1000);
+            const newElo = Math.max(0, currentElo + change);
+
             const reason = isWinner ? 'match_win' : 'match_loss';
 
             // Update player ELO and stats
-            if (isWinner) {
-                await c.env.DB.prepare(`
-                    UPDATE players SET elo = ?, wins = wins + 1 WHERE id = ?
-    `).bind(newElo, player.player_id).run();
+            if (isAllies) {
+                if (isWinner) {
+                    await c.env.DB.prepare(`
+                        UPDATE players SET allies_elo = ?, allies_wins = allies_wins + 1 WHERE id = ?
+                    `).bind(newElo, player.player_id).run();
+                } else {
+                    await c.env.DB.prepare(`
+                        UPDATE players SET allies_elo = ?, allies_losses = allies_losses + 1 WHERE id = ?
+                    `).bind(newElo, player.player_id).run();
+                }
             } else {
-                await c.env.DB.prepare(`
-                    UPDATE players SET elo = ?, losses = losses + 1 WHERE id = ?
-    `).bind(newElo, player.player_id).run();
+                if (isWinner) {
+                    await c.env.DB.prepare(`
+                        UPDATE players SET elo = ?, wins = wins + 1 WHERE id = ?
+                    `).bind(newElo, player.player_id).run();
+                } else {
+                    await c.env.DB.prepare(`
+                        UPDATE players SET elo = ?, losses = losses + 1 WHERE id = ?
+                    `).bind(newElo, player.player_id).run();
+                }
             }
 
             // Record ELO history
@@ -698,7 +717,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
             `).bind(
                 player.player_id,
                 matchId,
-                player.elo,
+                currentElo,
                 newElo,
                 change,
                 reason,
@@ -1479,7 +1498,10 @@ moderatorRoutes.post('/players/:id/elo-adjust', async (c) => {
         const body = await c.req.json<{
             elo_change: number;
             reason: string;
+            elo_type?: 'competitive' | 'allies';
         }>();
+
+        const eloType = body.elo_type || 'competitive';
 
         if (!body.elo_change || !body.reason) {
             return c.json({ success: false, error: 'elo_change and reason are required' }, 400);
@@ -1487,45 +1509,58 @@ moderatorRoutes.post('/players/:id/elo-adjust', async (c) => {
 
         // Get current player ELO
         const player = await c.env.DB.prepare(
-            'SELECT elo FROM players WHERE id = ? OR discord_id = ?'
+            'SELECT elo, allies_elo FROM players WHERE id = ? OR discord_id = ?'
         ).bind(playerId, playerId).first();
 
         if (!player) {
             return c.json({ success: false, error: 'Player not found' }, 404);
         }
 
-        const newElo = Math.max(0, (player.elo as number) + body.elo_change);
+        let currentElo = (player.elo as number) || 1000;
+        let dbColumn = 'elo';
+        let reasonSuffix = '';
+
+        if (eloType === 'allies') {
+            currentElo = (player.allies_elo as number) || 1000;
+            dbColumn = 'allies_elo';
+            reasonSuffix = ' (Allies)';
+        }
+
+        const newElo = Math.max(0, currentElo + body.elo_change);
 
         // Update player ELO
         await c.env.DB.prepare(
-            'UPDATE players SET elo = ? WHERE id = ? OR discord_id = ?'
+            `UPDATE players SET ${dbColumn} = ? WHERE id = ? OR discord_id = ?`
         ).bind(newElo, playerId, playerId).run();
 
         // Record in history
         await c.env.DB.prepare(`
             INSERT INTO elo_history(user_id, match_id, elo_before, elo_after, elo_change, reason, created_by, notes, created_at)
-VALUES(?, NULL, ?, ?, ?, 'manual_adjustment', ?, ?, datetime('now'))
+VALUES(?, NULL, ?, ?, ?, ?, ?, ?, datetime('now'))
         `).bind(
             playerId,
-            player.elo,
+            currentElo,
             newElo,
             body.elo_change,
+            'manual_adjustment',
             moderatorId,
-            body.reason
+            body.reason + reasonSuffix
         ).run();
 
-        // Sync Discord Tiers
-        await syncDiscordTiers(c.env, playerId, newElo);
+        // Sync Discord Tiers only for Competitive
+        if (eloType === 'competitive') {
+            await syncDiscordTiers(c.env, playerId, newElo);
+        }
 
         // Log Action
         await logModeratorAction(c, moderatorId || 'system', 'MANUAL_ELO_ADJUST', playerId, {
-            oldElo: player.elo, newElo, change: body.elo_change, reason: body.reason
+            oldElo: currentElo, newElo, change: body.elo_change, reason: body.reason, type: eloType
         });
 
         return c.json({
             success: true,
-            message: 'ELO adjusted',
-            previousElo: player.elo,
+            message: `${eloType === 'allies' ? 'Allies ' : ''}ELO adjusted`,
+            previousElo: currentElo,
             newElo
         });
     } catch (error: any) {
@@ -1714,8 +1749,9 @@ moderatorRoutes.post('/players/:id/vip/grant', async (c) => {
         await c.env.DB.prepare(`
             UPDATE players 
             SET is_vip = 1,
-    vip_until = ?
-        WHERE id = ? OR discord_id = ?
+                vip_until = ?,
+                vip_started_at = CURRENT_TIMESTAMP
+            WHERE id = ? OR discord_id = ?
             `).bind(isoVipUntil, playerId, playerId).run();
 
         // Instant Discord Role assignment
@@ -2009,8 +2045,8 @@ VALUES(?, ?, ?, ?, ?, ?, ?, 'Force result by moderator', datetime('now'))
 
         // Clan Logic
         if (match.match_type === 'clan_war') {
-            const alphaPlayer = playersList.find((p: any) => p.team === 'alpha');
-            const bravoPlayer = playersList.find((p: any) => p.team === 'bravo');
+            const alphaPlayer = playersList.find((p: Record<string, unknown>) => p.team === 'alpha');
+            const bravoPlayer = playersList.find((p: Record<string, unknown>) => p.team === 'bravo');
 
             if (alphaPlayer && bravoPlayer) {
                 const clanAlpha = await c.env.DB.prepare(`SELECT c.* FROM clans c JOIN clan_members cm ON c.id = cm.clan_id WHERE cm.user_id = ? `).bind(alphaPlayer.player_id).first();
@@ -2060,9 +2096,9 @@ VALUES(?, ?, ?, ?, ?, ?, ?, 'Force result by moderator', datetime('now'))
 
         return c.json({ success: true, message: 'Match force ended and results applied' });
 
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error('Error force ending match:', error);
-        return c.json({ success: false, error: error.message }, 500);
+        return c.json({ success: false, error: (error as Error).message }, 500);
     }
 });
 
@@ -2103,9 +2139,9 @@ VALUES(?, ?, 'alpha', 1, datetime('now'))
     `).bind(matchId, realHostId).run();
 
         return c.json({ success: true, matchId });
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error('Error creating match:', error);
-        return c.json({ success: false, error: error.message }, 500);
+        return c.json({ success: false, error: (error as Error).message }, 500);
     }
 });
 
@@ -2125,7 +2161,7 @@ moderatorRoutes.get('/clans', async (c) => {
             FROM clans c
             LEFT JOIN players p ON c.leader_id = p.id
     `;
-        const params: any[] = [];
+        const params: (string | number)[] = [];
 
         if (search) {
             query += ` WHERE c.name LIKE ? OR c.tag LIKE ? `;
@@ -2144,9 +2180,9 @@ moderatorRoutes.get('/clans', async (c) => {
             page,
             total: countResult?.count || 0
         });
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error('Error fetching clans:', error);
-        return c.json({ success: false, error: error.message }, 500);
+        return c.json({ success: false, error: (error as Error).message }, 500);
     }
 });
 
@@ -2529,9 +2565,9 @@ moderatorRoutes.get('/vip-purchases', async (c) => {
             page,
             total: countResult?.count || 0
         });
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error('Error fetching VIP purchases:', error);
-        return c.json({ success: false, error: error.message }, 500);
+        return c.json({ success: false, error: (error as Error).message }, 500);
     }
 });
 
@@ -2613,8 +2649,8 @@ VALUES(?, ?, ?, ?, ?, ?)
         await logModeratorAction(c, moderatorId, 'create_clan', id, { name, tag, leader_id });
 
         return c.json({ success: true, clan_id: id });
-    } catch (e: any) {
-        return c.json({ success: false, error: e.message }, 500);
+    } catch (e: unknown) {
+        return c.json({ success: false, error: (e as Error).message }, 500);
     }
 });
 
@@ -2683,61 +2719,3 @@ moderatorRoutes.delete('/clans/:id', async (c) => {
 
 export { moderatorRoutes };
 
-// POST /api/moderator/players/:id/elo-adjust - Manual Elo Adjustment
-moderatorRoutes.post('/players/:id/elo-adjust', async (c) => {
-    const userId = c.req.param('id');
-    const moderatorId = c.req.header('X-User-Id');
-    const body = await c.req.json<{ elo_change: number; reason: string }>();
-
-    if (!moderatorId) return c.json({ error: 'Unauthorized' }, 401);
-    if (!body.elo_change || isNaN(body.elo_change)) return c.json({ error: 'Valid elo_change is required' }, 400);
-
-    try {
-        const player = await c.env.DB.prepare('SELECT * FROM players WHERE id = ?').bind(userId).first();
-        if (!player) return c.json({ error: 'Player not found' }, 404);
-
-        const currentElo = player.elo as number;
-        const newElo = Math.max(0, currentElo + body.elo_change); // Ensure Elo doesn't go below 0
-        const actualChange = newElo - currentElo;
-
-        // Update Player Elo
-        await c.env.DB.prepare('UPDATE players SET elo = ? WHERE id = ?')
-            .bind(newElo, userId)
-            .run();
-
-        // Record History
-        await c.env.DB.prepare(`
-            INSERT INTO elo_history(user_id, elo_before, elo_after, elo_change, reason, created_by, notes, created_at)
-VALUES(?, ?, ?, ?, ?, ?, ?, datetime('now'))
-        `).bind(
-            userId,
-            currentElo,
-            newElo,
-            actualChange,
-            'manual_adjustment',
-            moderatorId,
-            body.reason || 'Manual Adjustment via Moderator Dashboard'
-        ).run();
-
-        // Sync Discord Role
-        // We fire and forget this to not block the response
-        c.executionCtx.waitUntil(syncDiscordTiers(c.env, userId, newElo));
-
-        // Log Action
-        c.executionCtx.waitUntil(logModeratorAction(c.env, moderatorId, 'ELO_ADJUST', userId, {
-            old_elo: currentElo,
-            new_elo: newElo,
-            change: actualChange,
-            reason: body.reason
-        }));
-
-        return c.json({
-            success: true,
-            message: `Elo adjusted by ${actualChange} (New Elo: ${newElo})`
-        });
-
-    } catch (error: any) {
-        console.error('Error adjusting elo:', error);
-        return c.json({ success: false, error: error.message }, 500);
-    }
-});

@@ -1,0 +1,2 @@
+-- ALTER TABLE `players` ADD `allies_wins` integer DEFAULT 0 NOT NULL;--> statement-breakpoint
+-- ALTER TABLE `players` ADD `allies_losses` integer DEFAULT 0 NOT NULL;

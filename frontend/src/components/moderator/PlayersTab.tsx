@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Search, Ban, History, Shield, MoreHorizontal, CheckCircle2, Crown } from "lucide-react";
 import { toast } from "sonner";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import LoadingSpinner from "../LoadingSpinner";
 import type { User, EloHistoryEntry } from "./types";
 
@@ -27,6 +28,7 @@ export default function PlayersTab({ backendUrl, userId }: PlayersTabProps) {
     const [playerHistory, setPlayerHistory] = useState<EloHistoryEntry[]>([]);
     const [manualEloChange, setManualEloChange] = useState("");
     const [manualEloReason, setManualEloReason] = useState("");
+    const [manualEloType, setManualEloType] = useState<"competitive" | "allies">("competitive");
     const [isAdjusting, setIsAdjusting] = useState(false);
 
     useEffect(() => {
@@ -151,7 +153,8 @@ export default function PlayersTab({ backendUrl, userId }: PlayersTabProps) {
                 credentials: 'include',
                 body: JSON.stringify({
                     elo_change: parseInt(manualEloChange), // Backend expects elo_change
-                    reason: manualEloReason || "Manual Adjustment"
+                    reason: manualEloReason || "Manual Adjustment",
+                    elo_type: manualEloType
                 })
             });
 
@@ -294,6 +297,18 @@ export default function PlayersTab({ backendUrl, userId }: PlayersTabProps) {
                                     <Shield className="h-4 w-4" /> Manual Adjustment
                                 </h4>
                                 <div className="grid grid-cols-2 gap-4">
+                                    <div className="space-y-2 col-span-2">
+                                        <Label>Elo Type</Label>
+                                        <Select value={manualEloType} onValueChange={(v) => setManualEloType(v as "competitive" | "allies")}>
+                                            <SelectTrigger className="bg-zinc-900 border-zinc-800">
+                                                <SelectValue placeholder="Select type" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="competitive">Competitive Elo</SelectItem>
+                                                <SelectItem value="allies">Allies Elo</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
                                     <div className="space-y-2">
                                         <Label>Elo Change (+/-)</Label>
                                         <Input
@@ -327,10 +342,25 @@ export default function PlayersTab({ backendUrl, userId }: PlayersTabProps) {
                                     {playerHistory.map(entry => (
                                         <div key={entry.id} className="flex items-center justify-between p-2 bg-zinc-900/30 rounded text-sm">
                                             <div className="flex items-center gap-2">
-                                                <span className={entry.elo_change >= 0 ? "text-green-500" : "text-red-500"}>
-                                                    {entry.elo_change > 0 ? "+" : ""}{entry.elo_change}
+                                                {entry.reason === 'BAN_USER' ? (
+                                                    <Badge variant="destructive" className="text-[10px] px-1.5 py-0.5">BANNED</Badge>
+                                                ) : entry.reason === 'UNBAN_USER' ? (
+                                                    <Badge variant="default" className="text-[10px] bg-green-500/20 text-green-500 hover:bg-green-500/30 px-1.5 py-0.5">UNBANNED</Badge>
+                                                ) : (
+                                                    <span className={entry.elo_change >= 0 ? "text-green-500 font-mono" : "text-red-500 font-mono"}>
+                                                        {entry.elo_change > 0 ? "+" : ""}{entry.elo_change}
+                                                    </span>
+                                                )}
+
+                                                <span className="text-zinc-500 text-xs">
+                                                    {entry.reason === 'BAN_USER' || entry.reason === 'UNBAN_USER' ? '' : entry.reason}
                                                 </span>
-                                                <span className="text-zinc-500 text-xs">{entry.reason}</span>
+
+                                                {entry.moderator_username && (
+                                                    <span className="text-[10px] bg-white/10 px-1 rounded text-zinc-300 flex items-center gap-1" title="Performed by moderator">
+                                                        <Shield className="h-2 w-2" /> {entry.moderator_username}
+                                                    </span>
+                                                )}
                                             </div>
                                             <span className="text-zinc-600 text-xs">
                                                 {new Date(entry.created_at).toLocaleDateString()}

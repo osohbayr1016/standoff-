@@ -1,4 +1,4 @@
-ALTER TABLE `matches` ADD `alpha_clan_id` text;--> statement-breakpoint
-ALTER TABLE `matches` ADD `bravo_clan_id` text;--> statement-breakpoint
-ALTER TABLE `players` ADD `discord_banner` text;--> statement-breakpoint
-ALTER TABLE `players` ADD `discord_accent_color` integer;
+-- ALTER TABLE `matches` ADD `alpha_clan_id` text;--> statement-breakpoint
+-- ALTER TABLE `matches` ADD `bravo_clan_id` text;--> statement-breakpoint
+-- ALTER TABLE `players` ADD `discord_banner` text;--> statement-breakpoint
+-- ALTER TABLE `players` ADD `discord_accent_color` integer;

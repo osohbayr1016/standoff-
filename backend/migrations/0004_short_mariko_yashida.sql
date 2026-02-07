@@ -1,2 +1,2 @@
-ALTER TABLE `players` ADD `is_guild_banner` integer DEFAULT 0;--> statement-breakpoint
-ALTER TABLE `players` ADD `is_guild_avatar` integer DEFAULT 0;
+-- ALTER TABLE `players` ADD `is_guild_banner` integer DEFAULT 0;--> statement-breakpoint
+-- ALTER TABLE `players` ADD `is_guild_avatar` integer DEFAULT 0;

@@ -4,6 +4,7 @@ export interface MatchPlayer {
     discord_username?: string;
     discord_avatar?: string;
     elo?: number;
+    allies_elo?: number;
     is_vip?: number | boolean;
     standoff_nickname?: string;
     role?: string;
@@ -19,7 +20,7 @@ export interface Match {
     player_count: number;
     max_players: number;
     map_name?: string;
-    match_type?: 'casual' | 'league' | 'competitive' | 'clan_lobby' | 'clan_war' | 'cup';
+    match_type?: 'casual' | 'league' | 'competitive' | 'clan_lobby' | 'clan_war' | 'cup' | 'allies';
     created_at: string;
     alpha_avg_elo?: number;
     bravo_avg_elo?: number;

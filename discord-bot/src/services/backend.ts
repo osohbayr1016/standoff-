@@ -150,6 +150,19 @@ export class BackendService {
         return null;
     }
 
+    async fetchProfile(userId: string): Promise<any> {
+        try {
+            const normalizedUrl = this.backendUrl.endsWith('/') ? this.backendUrl.slice(0, -1) : this.backendUrl;
+            const response = await fetch(`${normalizedUrl}/api/profile/${userId}`);
+            if (response.ok) {
+                return await response.json();
+            }
+        } catch (error) {
+            console.error(`❌ Error fetching profile for ${userId}:`, error);
+        }
+        return null;
+    }
+
     // Check moderator status directly
     async checkModerator(discordId: string): Promise<boolean> {
         if (!this.moderatorService) {

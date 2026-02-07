@@ -11,6 +11,8 @@ export const players = sqliteTable('players', {
     allies_elo: integer('allies_elo').default(1000).notNull(),
     wins: integer('wins').default(0).notNull(),
     losses: integer('losses').default(0).notNull(),
+    allies_wins: integer('allies_wins').default(0).notNull(),
+    allies_losses: integer('allies_losses').default(0).notNull(),
     created_at: text('created_at').default('CURRENT_TIMESTAMP'),
     nickname_updated_at: text('nickname_updated_at'),
     avatar_url: text('avatar_url'),
@@ -20,6 +22,7 @@ export const players = sqliteTable('players', {
     is_discord_member: integer('is_discord_member').default(0),
     is_vip: integer('is_vip').default(0),
     vip_until: text('vip_until'),
+    vip_started_at: text('vip_started_at'),
     discord_roles: text('discord_roles', { mode: 'json' }), // Store JSON array of role IDs
     gold: integer('gold').default(0).notNull(), // Premium currency
     discord_banner: text('discord_banner'),

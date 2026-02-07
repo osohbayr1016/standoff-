@@ -20,6 +20,12 @@ export class MatchQueueDO extends DurableObject {
     lastQueueBroadcast: string = '';
     lastQueueBroadcastTime: number = 0;
 
+    // Optimization: Dirty Tracking
+    dirtyLobbies: Set<string> = new Set();
+
+    // Circuit Breaker
+    readonly MAX_LOBBIES = 1000;
+
     // Track initialization state
     initialized: boolean = false;
 
@@ -126,7 +132,7 @@ export class MatchQueueDO extends DurableObject {
                         lastPickTimestamp: Date.now()
                     };
 
-                    await this.saveMatchState();
+                    await this.saveLobby(lobby);
 
                     // CRITICAL: Set playerLobbyMap for reconnection support
                     lobby.players.forEach(p => {
@@ -197,7 +203,7 @@ export class MatchQueueDO extends DurableObject {
                         });
 
                         console.log(`📌 Updated existing lobby ${matchId} (DraftActive: ${!!existingLobby.draftState?.isActive})`);
-                        this.saveMatchState(); // Bug #17 Fix: Persist updates
+                        this.saveLobby(existingLobby); // Bug #17 Fix: Persist updates
                     } else {
                         // Prevent Zombie Lobbies: Do not create new lobby if status is final
                         if (msgData.status === 'completed' || msgData.status === 'cancelled' || msgData.status === 'pending_review') {
@@ -228,7 +234,8 @@ export class MatchQueueDO extends DurableObject {
                         });
 
                         console.log(`📌 Synced NEW manual lobby ${matchId} with ${players.length} players`);
-                        this.saveMatchState(); // Bug #17 Fix: Persist new lobby
+                        // Circuit breakers handled in specific creation flows, but valid here for sync
+                        this.saveLobby(this.activeLobbies.get(matchId)!); // Bug #17 Fix: Persist new lobby
                     }
                 }
 
@@ -333,7 +340,7 @@ export class MatchQueueDO extends DurableObject {
             };
 
             // Save state
-            await this.saveMatchState();
+            await this.saveLobby(lobby);
 
             const mapBanFinished = true;
 
@@ -447,51 +454,89 @@ export class MatchQueueDO extends DurableObject {
 
     // Load match state from storage
     // Load match state from storage
+    // Load match state from storage (Migrated to Granular)
     async loadMatchState() {
         try {
-            // 1. Load active lobbies
-            const activeLobbiesMap = await this.state.storage.get<Map<string, Lobby>>('activeLobbies');
-            if (activeLobbiesMap) {
-                this.activeLobbies = activeLobbiesMap;
+            // 1. Try to load monolithic key first (Migration)
+            const oldActiveLobbies = await this.state.storage.get<Map<string, Lobby>>('activeLobbies');
+            if (oldActiveLobbies && oldActiveLobbies.size > 0) {
+                console.log(`📦 MIGRATION: Found ${oldActiveLobbies.size} lobbies in legacy storage. Migrating...`);
 
-                // CRITICAL: Rebuild playerLobbyMap for reconnection support after DO restart
-                for (const [lobbyId, lobby] of this.activeLobbies) {
-                    lobby.players.forEach(p => {
-                        const pid = p.id || p.player_id || p.discord_id;
-                        if (pid) this.playerLobbyMap.set(pid, lobbyId);
-                    });
+                this.activeLobbies = oldActiveLobbies;
+
+                // Explode to individual keys
+                const putOps: Record<string, Lobby> = {};
+                for (const [id, lobby] of oldActiveLobbies) {
+                    putOps[`lobby_${id}`] = lobby;
                 }
+                await this.state.storage.put(putOps);
+                console.log(`✅ MIGRATION: Saved individual lobby keys.`);
+
+                // Delete legacy key
+                await this.state.storage.delete('activeLobbies');
+                console.log(`🗑️ MIGRATION: Deleted legacy 'activeLobbies' key.`);
+            } else {
+                // 2. Load Granular Keys
+                const list = await this.state.storage.list({ prefix: 'lobby_' });
+                for (const [key, value] of list) {
+                    // key is "lobby_UUID"
+                    const lobby = value as Lobby;
+                    this.activeLobbies.set(lobby.id, lobby);
+                }
+                console.log(`Loaded ${this.activeLobbies.size} active lobbies from granular storage.`);
             }
 
-            // 2. Load queues
-            // const localQueue = await this.state.storage.get<Map<string, QueuePlayer>>('localQueue');
-            // if (localQueue) this.localQueue = localQueue;
+            // CRITICAL: Rebuild playerLobbyMap for reconnection support (COMMON PATH)
+            for (const [lobbyId, lobby] of this.activeLobbies) {
+                lobby.players.forEach(p => {
+                    const pid = p.id || p.player_id || p.discord_id;
+                    if (pid) this.playerLobbyMap.set(pid, lobbyId);
+                });
+            }
 
-            console.log(`Loaded ${this.activeLobbies.size} active lobbies from storage.`);
         } catch (e: unknown) {
             console.error('Failed to load match state:', e);
+            throw e; // Critical: Re-throw to prevent starting with empty state and ensure visibility in metrics
         }
     }
 
-    // Save match state to storage
-    async saveMatchState() {
+    // Save specific lobby state
+    async saveLobby(lobby: Lobby) {
         try {
-            // 1. Persist active lobbies
-            await this.state.storage.put('activeLobbies', this.activeLobbies);
-
-            // 2. Persist queue? (Maybe not needed for volatile queue)
-            // await this.state.storage.put('localQueue', this.localQueue);
+            await this.state.storage.put(`lobby_${lobby.id}`, lobby);
         } catch (e: unknown) {
-            console.error('Failed to save match state:', e);
+            console.error(`Failed to save lobby ${lobby.id}:`, e);
+        }
+    }
+
+    // Batch save for Alarm/Dirty tracking
+    async saveDirtyLobbies() {
+        if (this.dirtyLobbies.size === 0) return;
+
+        const putOps: Record<string, Lobby> = {};
+        for (const lobbyId of this.dirtyLobbies) {
+            const lobby = this.activeLobbies.get(lobbyId);
+            if (lobby) {
+                putOps[`lobby_${lobbyId}`] = lobby;
+            }
+        }
+
+        try {
+            if (Object.keys(putOps).length > 0) {
+                await this.state.storage.put(putOps);
+                console.log(`💾 Saved ${Object.keys(putOps).length} dirty lobbies.`);
+            }
+            this.dirtyLobbies.clear();
+        } catch (e) {
+            console.error("Failed to save dirty lobbies", e);
         }
     }
 
     // Helper to delete a lobby from storage
     async deleteLobbyFromStorage(lobbyId: string) {
         await this.state.storage.delete(`lobby_${lobbyId}`);
-        // Also remove from master map if we were storing it separately
-        // Since we store the whole map:
-        await this.saveMatchState();
+        // Legacy cleanup just in case
+        // await this.state.storage.delete('activeLobbies'); 
     }
 
     async alarm() {
@@ -537,7 +582,9 @@ export class MatchQueueDO extends DurableObject {
                         if (pid) this.playerLobbyMap.delete(pid);
                     });
                     this.activeLobbies.delete(lobbyId);
-                    stateChanged = true;
+                    this.deleteLobbyFromStorage(lobbyId); // Clean up immediately
+
+                    // stateChanged = true; // Handled by delete
                 } else {
                     // Continue alarm
                     // stateChanged = true; // Optimization: don't save every second
@@ -551,6 +598,7 @@ export class MatchQueueDO extends DurableObject {
                 if (lobby.draftState.draftTimeout <= 0) {
                     // AUTO PICK LOGIC
                     await this.executeAutoPick(lobbyId, false);
+                    this.dirtyLobbies.add(lobbyId); // Mark dirty handled in executeAutoPick usually, but ensuring
                     stateChanged = true;
                 } else {
                     // Broadcast tick every second for smooth UI
@@ -573,8 +621,8 @@ export class MatchQueueDO extends DurableObject {
             }
         }
 
-        if (stateChanged) {
-            await this.saveMatchState();
+        if (stateChanged || this.dirtyLobbies.size > 0) {
+            await this.saveDirtyLobbies();
         }
     }
 
@@ -597,6 +645,11 @@ export class MatchQueueDO extends DurableObject {
     }
 
     async startMatch(players: QueuePlayer[]) {
+        if (this.activeLobbies.size >= this.MAX_LOBBIES) {
+            console.error(`circuit breaker: Refusing to start match. Max lobbies (${this.MAX_LOBBIES}) reached.`);
+            return;
+        }
+
         const matchId = crypto.randomUUID();
         const lobby: Lobby = {
             id: matchId,
@@ -623,7 +676,7 @@ export class MatchQueueDO extends DurableObject {
         players.forEach(p => this.playerLobbyMap.set(p.id, matchId));
 
         // Persist
-        await this.saveMatchState();
+        await this.saveLobby(lobby);
 
         // Broadcast
         const msg = JSON.stringify({
@@ -1083,7 +1136,7 @@ export class MatchQueueDO extends DurableObject {
                 if (pid) this.playerLobbyMap.set(pid, lobbyId);
             });
 
-            await this.saveMatchState();
+            await this.saveLobby(lobby);
             console.log(`✅ successfully resurrected lobby ${lobbyId} (Status: ${lobby.status})`);
 
             return lobby;
@@ -1307,7 +1360,7 @@ export class MatchQueueDO extends DurableObject {
                 await this.deleteLobbyFromStorage(matchId);
 
                 // 3. Save master state (playerMap_v2 update)
-                await this.saveMatchState();
+                // await this.saveMatchState(); // Not needed as we deleted the specific key + playerMap is in-memory mostly (will be rebuilt on load)
 
                 console.log(`✅ [${matchId}] Purge complete.`);
             }
@@ -1382,6 +1435,12 @@ export class MatchQueueDO extends DurableObject {
             // 2. CHECK CAPACITY (Synchronous Check - The Race Condition Fix)
             if (lobby!.players.length >= (lobby!.max_players || 10)) {
                 return new Response(JSON.stringify({ success: false, error: 'Lobby is full' }), { status: 400 });
+            }
+
+            // Circuit Breaker for NEW lobbies (if this flow allows creating, though handleJoin usually assumes exist or hydrate)
+            // If lobby was just created (not in activeLobbies), check limit
+            if (!this.activeLobbies.has(matchId) && this.activeLobbies.size >= this.MAX_LOBBIES) {
+                return new Response(JSON.stringify({ success: false, error: 'Server unavailable (Circuit Breaker)' }), { status: 503 });
             }
 
             const joinTeam = body.team;

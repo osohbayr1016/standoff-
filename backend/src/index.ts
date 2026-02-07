@@ -34,7 +34,7 @@ async function cleanupExpiredVips(env: Env) {
   try {
     const expiredPlayers = await env.DB.prepare(`
             SELECT id FROM players 
-            WHERE is_vip = 1 AND vip_until < datetime('now')
+            WHERE is_vip = 1 AND vip_until < strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
         `).all();
 
     const playersList = expiredPlayers.results || [];
